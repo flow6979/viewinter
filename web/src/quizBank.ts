@@ -7,7 +7,7 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { syncCollection } from './firestoreCache'
 import { db } from './firebase'
 import { allPages, pageBySlug, type Page } from './content'
-import { generateJson } from './gemini'
+import { NO_TEX, generateJson } from './gemini'
 import { readLocal, writeLocal } from './store'
 
 export type Section = 'hld' | 'lld' | 'java' | 'db' | 'cs' | 'rag' | 'dsa' | 'agents'
@@ -95,7 +95,7 @@ function prompt(page: Page, section: Section, existing: QuizQuestion[], count: n
 Return ONLY a JSON array. Each item:
 {"level":"easy|medium|hard","q":{"hi":"Hinglish (Roman script Hindi + English tech terms)","en":"English"},"options":{"hi":["4 options"],"en":["same 4 options in English, same order"]},"answer":0,"why":{"hi":"1-2 lines","en":"1-2 lines"}}
 
-Rules: exactly 4 plausible options, one correct; spread the correct index across 0-3; no "all/none of the above"; mix concept checks, scenarios, trade-offs, failure cases${section === 'java' ? ', code-output and complexity questions (short code inline with backticks)' : ''}; answers must agree with the study notes; tech terms stay in English in both languages.
+Rules: ${NO_TEX} Exactly 4 plausible options, one correct; spread the correct index across 0-3; no "all/none of the above"; mix concept checks, scenarios, trade-offs, failure cases${section === 'java' ? ', code-output and complexity questions (short code inline with backticks)' : ''}; answers must agree with the study notes; tech terms stay in English in both languages.
 Do not repeat or rephrase these existing questions:
 ${existing.map((q) => `- ${q.q.en}`).join('\n') || '- (none yet)'}
 

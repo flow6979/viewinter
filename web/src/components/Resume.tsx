@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { allPages, localize, pageBySlug, route } from '../content'
-import { generateJson } from '../gemini'
+import { generateJson, NO_TEX } from '../gemini'
 import { useLang, useTr, type Lang } from '../i18n'
 import { useResumeAnswers, type AnswerRecord, type Feedback } from '../resumeStore'
 import { readLocal, useStore, writeLocal } from '../store'
@@ -77,7 +77,7 @@ function questionPrompt(text: string, existing: ResumeQ[], count: number, lang: 
   return `You are a senior interviewer at an Indian product company. Read the candidate's resume and write ${count} NEW interview questions that an interviewer would ask about THIS resume.
 Mix: ~40% "project" (deep dives into their projects: why this design, scale numbers, what broke, what they would change, their exact contribution), ~25% "tech" (skills and tools they list, probed at the depth their claims imply), ~20% "design" (system design questions grown out of their projects, e.g. "how would you scale X to 10x"), ~15% "behavioral" (conflicts, ownership, failures, tied to their actual roles).
 Make every question specific: name the project, company, metric or tool from the resume. Spot vague or inflated claims ("improved performance by 40%") and ask how it was measured.
-Write in ${replyIn(lang)}; keep tech terms in English.
+Write in ${replyIn(lang)}; keep tech terms in English. ${NO_TEX}
 ${existing.length ? `Do not repeat or rephrase these existing questions:\n${existing.map((q) => `- ${q.q}`).join('\n')}\n` : ''}
 For "related", pick the single most relevant study page slug from this list, or "" if none fits:
 ${pages}
@@ -90,7 +90,7 @@ ${text.slice(0, MAX_CHARS)}`
 
 function feedbackPrompt(q: CardQ, answer: string, resume: string | undefined, lang: Lang): string {
   return `You are a friendly but strict interview coach at an Indian product company. Grade the candidate's answer to an interview question about their experience.
-Write every text field in ${replyIn(lang)}. Be concrete; quote their words when pointing at a problem.
+Write every text field in ${replyIn(lang)}. ${NO_TEX} Be concrete; quote their words when pointing at a problem.
 Scoring (0-10): 9-10 = specific, own contribution clear ("I"), numbers/impact, trade-offs, structured (STAR); 6-8 = good but missing depth or numbers; 3-5 = vague or generic; 0-2 = off-topic or empty.
 
 Return ONLY JSON: {"score": <integer 0-10>, "verdict": "one line summary", "good": ["1-3 things that worked"], "improve": ["2-4 specific things to fix or add, most important first"], "better": "a tight 5-8 line model answer in first person built from THEIR answer${resume ? ' and resume' : ''}; never invent numbers, use placeholders like <X%> they must fill in"}

@@ -187,7 +187,7 @@ export function ChatPanel({
       )}
       <div className="messages">
         {!messages.length && (
-          <div className="quick">
+          <div className="chat-quick">
             {QUICK[lang][page.kind].map((q) => (
               <button key={q} className="chip" onClick={() => send(q)}>
                 {q}

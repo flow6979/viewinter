@@ -1342,3 +1342,13 @@ a.btn { text-decoration: none; }
 .side-panel .tabs .tab-ask.on, .side-panel .tabs .tab-mock.on { color: var(--ink); border-bottom-color: var(--ai); box-shadow: inset 0 -2px 0 var(--ai); }
 .side-panel .tabs .tab-ask, .side-panel .tabs .tab-mock { color: color-mix(in srgb, var(--ai) 70%, var(--muted)); }
 .problem-tabs button:last-child { color: var(--ai); } .problem-tabs button:last-child.on { color: var(--ink); }
+
+/* Side-panel chat suggestions: full-width rows (was colliding with the dashboard .quick grid) */
+.chat-quick { display: flex; flex-direction: column; gap: 8px; }
+.chat-quick .chip { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border-radius: 10px; text-align: left; white-space: normal; line-height: 1.4; font-size: 0.88rem; }
+.chat-quick .chip::before { content: '✦'; color: var(--ai); font-size: 0.8rem; flex: none; }
+.chat-quick .chip:hover { border-color: var(--ai); background: var(--ai-soft); }
+
+/* On this page: the hover hugs the text instead of filling the column */
+.toc-list button { width: auto; max-width: 100%; display: inline-flex; padding: 4px 8px; margin-left: -8px; }
+.toc-list button:hover { background: none; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--ink) 40%, transparent); }

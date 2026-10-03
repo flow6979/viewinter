@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { Mermaid } from './Mermaid'
 import { CodeBlock, ShowAllCodeContext, useVisibleCode } from './CodeBlock'
 import { resolveMdLink } from '../content'
+import { deTex } from '../mathText'
 import { BASE } from '../router'
 
 function starred(children: ReactNode): ReactNode {
@@ -71,7 +72,7 @@ export function Markdown({ text, showAllCode = false }: { text: string; showAllC
           },
         }}
       >
-        {text}
+        {deTex(text)}
       </ReactMarkdown>
     </div>
     </ShowAllCodeContext.Provider>

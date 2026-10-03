@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { localize, pageBySlug } from '../content'
-import { streamGemini, type ChatMessage } from '../gemini'
+import { NO_TEX, streamGemini, type ChatMessage } from '../gemini'
 import { useLang, useTr, type Lang } from '../i18n'
 import type { QuizQuestion } from '../quizBank'
 import { Markdown } from './Markdown'
@@ -15,6 +15,7 @@ function quizPrompt(q: QuizQuestion, lang: Lang, answered: boolean): string {
     : `Correct answer: ${String.fromCharCode(65 + q.answer)} — the student has NOT answered yet. Do not reveal it or hint which option is right, even if asked; help them understand the concepts and terms instead.`
   return `You are a friendly interview coach. A student preparing for software engineering interviews is stuck on a quiz question.
 ${lang === 'en' ? 'Reply in simple, clear English' : 'Reply in simple Hinglish (Roman script Hindi mixed with English tech terms)'}. Keep it short (under ~150 words unless they ask for more), use bullets and a tiny real example where it helps.
+${NO_TEX}
 Explain any jargon in the question (e.g. what "redirect", "301/302" mean) from first principles. Ground the answer in the study page below; if you go beyond it, say so.
 
 === Quiz question ===

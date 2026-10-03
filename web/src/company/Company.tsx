@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { openSettings, streamGemini, useGemini } from '../gemini'
+import { NO_TEX, openSettings, streamGemini, useGemini } from '../gemini'
 import { useLang, useTr, type Lang } from '../i18n'
 import { useLists } from '../lists'
 import { readLocal, useStore, writeLocal } from '../store'
@@ -24,7 +24,7 @@ function answerPrompt(c: CompanyQuestion, company: string, role: string, lang: L
   return `You are a senior ${company} interviewer coaching a candidate for the "${role}" role. Question (${c.section}${c.level ? `, reported for ${c.level}` : ''}${c.round ? `, round: ${c.round}` : ''}):
 "${c.q}"
 ${style[c.section]}
-Reply in ${lang === 'en' ? 'clear English' : 'simple Hinglish (Roman Hindi + English tech terms)'}; structured with short headings and bullets; no filler.`
+Reply in ${lang === 'en' ? 'clear English' : 'simple Hinglish (Roman Hindi + English tech terms)'}; structured with short headings and bullets; no filler. ${NO_TEX}`
 }
 
 export function Company() {

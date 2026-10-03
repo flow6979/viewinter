@@ -3,7 +3,7 @@
 // 2. Gemini writes a spec: statement, signature, examples, ~35 test inputs, a fast reference and a brute force.
 // 3. We never trust AI-written outputs: both solutions run on the real compiler, expected answers come from the
 //    reference, and a test is kept only when the brute force agrees. One repair round if they disagree.
-import { groundedJson, longJson, type Source } from '../gemini'
+import { groundedJson, longJson, NO_TEX, type Source } from '../gemini'
 import { fitsType, isSupportedType, sameAnswer, starterCode, type Compare, type Json, type Signature } from './harness'
 import { runFull } from './runner'
 import type { Problem } from './practice'
@@ -82,7 +82,8 @@ interface Spec {
   approach: { en: string; hi: string }
 }
 
-const SPEC_RULES = `Our judge wraps a LeetCode-style \`class Solution\` in a main() that reads test arguments and prints the return value.
+const SPEC_RULES = `${NO_TEX} Statements, hints and constraints are Markdown: wrap code identifiers in backticks.
+Our judge wraps a LeetCode-style \`class Solution\` in a main() that reads test arguments and prints the return value.
 Supported C++ types (params and return): int, long long, double, bool, char, string, vector<int>, vector<long long>, vector<double>, vector<bool>, vector<char>, vector<string>, vector<vector<int>>, vector<vector<char>>, vector<vector<string>>, TreeNode* (LeetCode TreeNode, given as level-order array with null), ListNode* (given as array), and void (only as return, then set "mutates" to the index of the argument whose final value is the answer).
 If the original uses other types you MUST ADAPT it (never refuse for this reason) and explain the format in the statement:
 - Custom node structures (Quad-Tree Node, N-ary Node, Node with random pointer, graph Node, vector<ListNode*>): use LeetCode's own serialized form for input and output. Examples: Construct Quad Tree → \`vector<vector<int>> construct(vector<vector<int>>& grid)\` returning the level-order list of [isLeaf, val] pairs with [-1, -1] where LeetCode prints null; Clone Graph → \`vector<vector<int>> cloneGraph(vector<vector<int>>& adjList)\`; Copy List with Random Pointer → \`vector<vector<int>> copyRandomList(vector<vector<int>>& nodes)\` with [val, randomIndex or -1]; Merge k Sorted Lists → \`vector<int> mergeKLists(vector<vector<int>>& lists)\`. The candidate may define their own struct inside \`class Solution\` and convert; the reference solution must do exactly that.

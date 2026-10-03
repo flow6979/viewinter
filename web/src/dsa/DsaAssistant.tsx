@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { openSettings, streamGemini, useGemini, type ChatMessage } from '../gemini'
+import { NO_TEX, openSettings, streamGemini, useGemini, type ChatMessage } from '../gemini'
 import { useLang, useTr, type Lang } from '../i18n'
 import { readLocal, writeLocal } from '../store'
 import { Icon } from '../components/Icon'
@@ -15,6 +15,7 @@ function systemPrompt(p: Problem, code: string, judge: JudgeSummary, lang: Lang)
 Reply in ${lang === 'en' ? 'simple, clear English' : 'simple Hinglish (Roman script Hindi mixed with English tech terms)'}; short, structured, with small C++ snippets only when they help.
 
 Coaching rules:
+- ${NO_TEX}
 - Default mode is guidance, not answers: work from THEIR current code. Point to the exact line/idea that is wrong or missing, explain why with a tiny example input, and suggest the next step. Do not write the full solution unless they explicitly ask for it (e.g. "full solution", "pura solution", "complete code").
 - If they ask for the full solution: give the complete \`class Solution\` matching the signature exactly, then the idea, a dry run on example 1, and time/space complexity.
 - If the judge reported a failure, start from it: reproduce what their code does on that input.

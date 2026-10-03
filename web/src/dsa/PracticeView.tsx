@@ -11,6 +11,7 @@ import { draftKey, loadProblem, useProblemIndex, usePractice, type Problem, type
 import { AddProblems } from './AddProblems'
 import { runCpp, type RunResult } from './runner'
 import { DsaAssistant } from './DsaAssistant'
+import { deTex } from '../mathText'
 
 const CodeEditor = lazy(() => import('./CodeEditor').then((m) => ({ default: m.CodeEditor })))
 
@@ -293,7 +294,7 @@ export function ProblemView({ id }: { id: string }) {
                   <span className="muted">Output: </span>
                   {show(ex.expected)}
                 </pre>
-                {ex.explain && <p className="small muted">{ex.explain[lang]}</p>}
+                {ex.explain && <p className="small muted">{deTex(ex.explain[lang])}</p>}
               </div>
             ))}
             {p.constraints.length > 0 && (
@@ -302,7 +303,7 @@ export function ProblemView({ id }: { id: string }) {
                 <ul className="constraints">
                   {p.constraints.map((c) => (
                     <li key={c}>
-                      <code>{c}</code>
+                      <code>{deTex(c)}</code>
                     </li>
                   ))}
                 </ul>

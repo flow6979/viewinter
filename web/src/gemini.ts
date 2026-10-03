@@ -16,6 +16,9 @@ const API = 'https://generativelanguage.googleapis.com/v1beta'
 // Alias that Google keeps pointed at the current Flash model, so retirements don't break the app
 export const DEFAULT_MODEL = 'gemini-flash-latest'
 
+/** Appended to every prompt: the site shows Markdown, not LaTeX */
+export const NO_TEX = 'Never use LaTeX or $…$ math; write math as plain text and Unicode (n × n, 1 ≤ n ≤ 10⁵, O(n log n)).'
+
 // The key stays in this browser only. It is never written to Firestore or the repo.
 export const getGeminiSettings = (): GeminiSettings =>
   readLocal(SETTINGS_KEY, { apiKey: '', model: DEFAULT_MODEL })
@@ -167,6 +170,7 @@ const replyIn = (lang: 'hi' | 'en') =>
 export function tutorPrompt(title: string, body: string, lang: 'hi' | 'en' = 'hi'): string {
   return `You are a friendly system design and LLD interview coach helping an Indian software engineer prepare for interviews in 1 week.
 ${replyIn(lang)}, short and crisp, with bullet points where useful. For code, use Java unless the user asks for C++.
+${NO_TEX}
 Use the study page below as the main context. If the question goes beyond it, answer from general system design knowledge and say so.
 When a diagram helps, use a mermaid code block (flowchart LR or sequenceDiagram, all node labels in double quotes).
 
@@ -186,6 +190,7 @@ Rules:
 - Never reveal the full answer. Give small hints only if the candidate is stuck twice.
 - When the candidate says "END" or asks for a score, give a scorecard: Requirements, High-level design, Deep dives, Trade-offs, Communication, each out of 10 with one line why, then 3 concrete things to improve, and a hire/no-hire signal for SDE-2 level.
 
+${NO_TEX}
 Hidden reference answer (use it to judge, never paste it):
 ${body}`
 }
