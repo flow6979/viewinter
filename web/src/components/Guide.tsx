@@ -13,16 +13,19 @@ export function Guide() {
     writeLocal('hld.guide.open', !open)
   }
 
-  const cards: [IconName, string, string, string?][] = [
-    ['book', tr('Padho', 'Study'), tr('Sidebar me saare subjects. Har page interview ke liye likha hai.', 'Every subject is in the sidebar, each page written for interviews.')],
-    ['bolt', tr('3 reading modes', '3 reading modes'), tr('Full page pehli baar, Revision sirf zaroori, Quick look 1 minute me.', 'Full page first, Revision for the key parts, Quick look in a minute.')],
-    ['check', 'Checklist', tr('Page ke end me tick karo. Progress aur plan isi se chalte hain.', 'Tick it at the end of a page. Progress and your plan run on it.')],
-    ['sparkle', tr('Ask AI', 'Ask AI'), tr('Right panel me notes, page pe sawal, aur HLD mock interview.', 'Right panel: notes, questions on the page, and HLD mock interviews.')],
-    ['target', 'Quiz', tr('Endless MCQs. ☆ se star karo, galat wale dobara karo.', 'Endless MCQs. Star with ☆, retry the ones you missed.'), href('quiz')],
-    ['plan', tr('Mera plan', 'My plan'), tr('Din aur ghante batao, day-by-day plan lo. Must-do pehle.', 'Give days and hours, get a day-by-day plan. Must-do first.'), href('plan')],
-    ['list', tr('Meri lists', 'My lists'), tr('Apni revise-list banao, ek click me sabka Quick look.', 'Build your own revise lists, Quick look all of it in one go.'), href('lists')],
-    ['file', tr('Resume prep', 'Resume prep'), tr('Resume pe sawal, common sawal, aur har jawab ka score.', 'Questions on your resume, common ones, and a score for every answer.'), href('resume')],
-    ['flask', tr('Agent labs', 'Agent labs'), tr('ReAct, RAG, multi-agent: browser me chalao.', 'ReAct, RAG, multi-agent: run them in the browser.'), href('agents')],
+  // Things to know (plain text) vs places to go (links): they must not look alike
+  const info: [IconName, string, string][] = [
+    ['book', tr('Padho', 'Study'), tr('Sidebar me saare subjects, har page interview ke liye.', 'Every subject is in the sidebar, each page written for interviews.')],
+    ['bolt', tr('3 reading modes', '3 reading modes'), tr('Har page pe: Full page, Revision, Quick look.', 'On every page: Full page, Revision, Quick look.')],
+    ['check', 'Checklist', tr('Page ke end me tick karo; progress isi se.', 'Tick it at the end of a page; progress runs on it.')],
+    ['sparkle', 'Ask AI', tr('Right panel: notes, sawal, HLD mock interview.', 'Right panel: notes, questions, HLD mock interviews.')],
+  ]
+  const links: [IconName, string, string, string][] = [
+    ['target', 'Quiz', tr('Endless MCQs, star aur retry', 'Endless MCQs, star and retry'), href('quiz')],
+    ['plan', tr('Mera plan', 'My plan'), tr('Day-by-day plan, must-do pehle', 'Day-by-day plan, must-do first'), href('plan')],
+    ['list', tr('Meri lists', 'My lists'), tr('Apni revise-lists', 'Your own revise lists'), href('lists')],
+    ['file', tr('Resume prep', 'Resume prep'), tr('Resume pe sawal + score', 'Resume questions + score'), href('resume')],
+    ['flask', tr('Agent labs', 'Agent labs'), tr('ReAct, RAG, multi-agent', 'ReAct, RAG, multi-agent'), href('agents')],
   ]
 
   const flow = [
@@ -49,29 +52,29 @@ export function Guide() {
               </li>
             ))}
           </ol>
-          <div className="guide-grid">
-            {cards.map(([icon, title, text, link]) => {
-              const body = (
-                <>
-                  <span className="guide-icon">
-                    <Icon name={icon} size={18} />
-                  </span>
-                  <span className="guide-text">
-                    <b>{title}</b>
-                    <span>{text}</span>
-                  </span>
-                </>
-              )
-              return link ? (
-                <a key={title} className="guide-card" href={link}>
-                  {body}
-                </a>
-              ) : (
-                <div key={title} className="guide-card">
-                  {body}
-                </div>
-              )
-            })}
+          <ul className="guide-info">
+            {info.map(([icon, title, text]) => (
+              <li key={title}>
+                <Icon name={icon} size={16} />
+                <span>
+                  <b>{title}.</b> {text}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="guide-links">
+            {links.map(([icon, title, text, link]) => (
+              <a key={title} className="guide-link" href={link}>
+                <Icon name={icon} size={18} />
+                <span className="guide-link-text">
+                  <b>{title}</b>
+                  <span>{text}</span>
+                </span>
+                <span className="guide-arrow">
+                  <Icon name="arrow" size={16} />
+                </span>
+              </a>
+            ))}
           </div>
         </>
       )}
