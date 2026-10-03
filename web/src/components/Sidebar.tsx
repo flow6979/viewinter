@@ -185,6 +185,10 @@ export function Sidebar({ current, onNavigate }: { current: string; onNavigate: 
         <Icon name="file" size={17} />
         {tr('Resume se sawal', 'Resume questions')}
       </a>
+      <a href={href('about')} className={`side-item home ${current === 'about' ? 'active' : ''}`}>
+        <Icon name="info2" size={17} />
+        {tr('Viewinter kya hai', 'About Viewinter')}
+      </a>
       <input
         id="side-filter"
         className="side-filter"

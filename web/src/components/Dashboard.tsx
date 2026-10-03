@@ -59,6 +59,9 @@ export function Dashboard() {
     <div className="dashboard">
       <header className="greet">
         <h1>{firstName ? tr(`Namaste, ${firstName}`, `Hi, ${firstName}`) : tr('Namaste', 'Welcome')}</h1>
+        <a className="dash-link about-link" href={href('about')}>
+          {tr('Viewinter kya kya karta hai?', 'What can Viewinter do?')} <Icon name="arrow" size={14} />
+        </a>
         {daysLeft !== null && (
           <p className="countdown">
             <span className="mono">{daysLeft}</span> {tr('din baaki', daysLeft === 1 ? 'day left' : 'days left')}
