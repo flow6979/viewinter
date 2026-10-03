@@ -27,6 +27,7 @@ const only = (args.find((a) => a.startsWith('--only='))?.slice(7) ?? (args.inclu
   .filter(Boolean)
 
 const clone = (v) => JSON.parse(JSON.stringify(v))
+const retIsDouble = (sig) => (sig.ret === 'void' ? sig.params[sig.mutates].type : sig.ret).includes('double')
 
 function toJsArg(type, v) {
   if (type === 'TreeNode*') return buildTree(v)
@@ -129,11 +130,11 @@ function verifyCpp(p, tests) {
   mkdirSync(dir, { recursive: true })
   const src = join(dir, `${p.id}.cpp`)
   const bin = join(dir, p.id)
-  writeFileSync(src, buildProgram(p.solution.cpp, p.signature))
+  writeFileSync(src, buildProgram(p.solution.cpp, p.signature, p.compare ?? 'exact'))
   execFileSync('clang++', ['-std=c++17', '-O2', '-I', shimDir(), '-o', bin, src], { stdio: ['ignore', 'pipe', 'pipe'] })
   const stdout = execFileSync(bin, { input: buildInput(p.signature, tests.map((t) => t.args)), maxBuffer: 64 * 1024 * 1024, timeout: 20000 }).toString()
   const got = parseOutput(stdout, tests.length)
-  const bad = tests.map((t, i) => (sameAnswer(got[i] ?? null, t.expected, p.compare ?? 'exact') && got[i] !== undefined ? -1 : i)).filter((i) => i >= 0)
+  const bad = tests.map((t, i) => (sameAnswer(got[i] ?? null, t.expected, p.compare ?? 'exact', retIsDouble(p.signature)) && got[i] !== undefined ? -1 : i)).filter((i) => i >= 0)
   if (bad.length) {
     const i = bad[0]
     throw new Error(`${p.id}: C++ solution disagrees on ${bad.length} test(s); first #${i}\n  args ${JSON.stringify(tests[i].args).slice(0, 200)}\n  want ${JSON.stringify(tests[i].expected).slice(0, 200)}\n  got  ${JSON.stringify(got[i]).slice(0, 200)}`)

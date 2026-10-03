@@ -6,9 +6,10 @@ import { readLocal, writeLocal } from '../store'
 import { Icon } from '../components/Icon'
 import { Markdown } from '../components/Markdown'
 import { shortTitle } from '../components/Sidebar'
-import { sameAnswer, type Json } from './harness'
+import { isFingerprint, sameAnswer, type Got, type Json } from './harness'
 import { draftKey, loadProblem, PROBLEMS, usePractice, type Problem, type ProblemMeta } from './practice'
 import { runCpp, type RunResult } from './runner'
+import { DsaAssistant } from './DsaAssistant'
 
 const CodeEditor = lazy(() => import('./CodeEditor').then((m) => ({ default: m.CodeEditor })))
 
@@ -149,7 +150,7 @@ type Verdict =
   | { kind: 'compile'; message: string }
   | { kind: 'done'; what: 'run' | 'submit'; result: RunResult; pass: boolean[]; firstFail: number; newPoints: boolean }
 
-const show = (v: Json | undefined) => (v === undefined ? '—' : JSON.stringify(v))
+const show = (v: Got | undefined) => (v === undefined ? '—' : isFingerprint(v) ? `${v.prefix}… (${v.len} chars)` : JSON.stringify(v))
 
 export function ProblemView({ id }: { id: string }) {
   const { lang } = useLang()
@@ -157,7 +158,7 @@ export function ProblemView({ id }: { id: string }) {
   const { solved, markSolved } = usePractice()
   const [problem, setProblem] = useState<Problem | null | undefined>(undefined)
   const [code, setCode] = useState('')
-  const [tab, setTab] = useState<'problem' | 'hints' | 'solution'>('problem')
+  const [tab, setTab] = useState<'problem' | 'hints' | 'solution' | 'ai'>('problem')
   const [verdict, setVerdict] = useState<Verdict | null>(null)
   const [revealed, setRevealed] = useState(false)
   const abort = useRef<AbortController | null>(null)
@@ -203,9 +204,10 @@ export function ProblemView({ id }: { id: string }) {
     abort.current = ctrl
     setVerdict({ kind: 'running', what })
     try {
-      const result = await runCpp(code, sig, cases.map((c) => c.args), ctrl.signal)
+      const result = await runCpp(code, sig, cases.map((c) => c.args), p.compare, ctrl.signal)
+      const dbl = (sig.ret === 'void' ? sig.params[sig.mutates ?? 0].type : sig.ret).includes('double')
       if (result.compileError) return setVerdict({ kind: 'compile', message: result.compileError })
-      const pass = cases.map((c, i) => result.outputs[i] !== undefined && sameAnswer(result.outputs[i] as Json, c.expected, p.compare))
+      const pass = cases.map((c, i) => result.outputs[i] !== undefined && sameAnswer(result.outputs[i] as Got, c.expected, p.compare, dbl))
       const firstFail = pass.indexOf(false)
       const newPoints = what === 'submit' && firstFail < 0 ? markSolved(p) : false
       setVerdict({ kind: 'done', what, result, pass, firstFail, newPoints })
@@ -231,12 +233,13 @@ export function ProblemView({ id }: { id: string }) {
           {isSolved && <span className="solved-pill">✓ {tr('Solved', 'Solved')}</span>}
         </div>
 
-        <div className="seg-tabs problem-tabs" role="tablist">
+        <div className="seg-tabs problem-tabs four" role="tablist">
           {(
             [
               ['problem', tr('Problem', 'Problem')],
               ['hints', tr('Hints', 'Hints')],
               ['solution', tr('Solution', 'Solution')],
+              ['ai', 'Ask AI'],
             ] as const
           ).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
@@ -283,6 +286,8 @@ export function ProblemView({ id }: { id: string }) {
           </div>
         )}
 
+        {tab === 'ai' && <DsaAssistant problem={p} code={code} judge={judgeSummary(verdict, p)} />}
+
         {tab === 'hints' && (
           <ol className="hints">
             {p.hints[lang].map((h, i) => (
@@ -327,6 +332,9 @@ export function ProblemView({ id }: { id: string }) {
         </div>
         <div className="run-bar">
           <span className="muted small">{tr('Ctrl/⌘ + Enter = Run', 'Ctrl/⌘ + Enter = Run')}</span>
+          <button className="ghost-btn" onClick={() => setTab('ai')}>
+            <Icon name="sparkle" size={14} /> {tr('Atke ho? AI se poochho', 'Stuck? Ask AI')}
+          </button>
           <button className="btn" onClick={() => judge('run')} disabled={busy}>
             {busy && verdict?.what === 'run' ? tr('Chal raha hai…', 'Running…') : 'Run'}
           </button>
@@ -338,6 +346,24 @@ export function ProblemView({ id }: { id: string }) {
       </section>
     </div>
   )
+}
+
+/** Plain-text summary of the last run for the AI coach */
+function judgeSummary(v: Verdict | null, p: Problem): string {
+  if (!v || v.kind === 'running') return ''
+  if (v.kind === 'error') return `The run failed to start: ${v.message}`
+  if (v.kind === 'compile') return `Compile error:\n${v.message.slice(0, 2000)}`
+  const cases = v.what === 'run' ? p.examples : p.tests
+  const passed = v.pass.filter(Boolean).length
+  if (v.firstFail < 0) return `${v.what === 'run' ? 'Run on examples' : 'Submit'}: all ${cases.length} tests passed.`
+  const c = cases[v.firstFail]
+  const got = v.result.outputs[v.firstFail]
+  const verdict = v.result.timedOut ? 'Time Limit Exceeded' : got === undefined ? `Runtime Error (exit ${v.result.exitCode})` : 'Wrong Answer'
+  const input = p.signature.params.map((prm, j) => `${prm.name} = ${JSON.stringify(c.args[j])}`).join(', ')
+  return `${v.what === 'run' ? 'Run on examples' : 'Submit'}: ${verdict}, ${passed}/${cases.length} passed. First failing test #${v.firstFail + 1}:
+input: ${input.slice(0, 1200)}
+expected: ${JSON.stringify(c.expected).slice(0, 600)}
+got: ${show(got).slice(0, 600)}${v.result.stderr ? `\nstderr: ${v.result.stderr.slice(0, 600)}` : ''}`
 }
 
 function Hint({ n, text }: { n: number; text: string }) {

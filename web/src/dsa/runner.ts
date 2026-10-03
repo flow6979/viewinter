@@ -1,6 +1,6 @@
 // Compiles and runs the user's C++ on Compiler Explorer (godbolt.org: free, CORS-enabled, real g++).
 // All test cases go in one run: the harness prints "@@i <json>" per test, so one request judges everything.
-import { buildInput, buildProgram, parseOutput, type Json, type Signature } from './harness'
+import { buildInput, buildProgram, parseOutput, type Compare, type Got, type Json, type Signature } from './harness'
 
 const ENDPOINT = 'https://godbolt.org/api/compiler/g132/compile'
 
@@ -8,7 +8,7 @@ export interface RunResult {
   /** compiler errors (solution.cpp:line:col ...) — nothing ran */
   compileError?: string
   /** stdout parsed per test; undefined = the program died before printing it */
-  outputs: (Json | undefined)[]
+  outputs: (Got | undefined)[]
   stderr: string
   exitCode: number
   timedOut: boolean
@@ -18,9 +18,9 @@ export interface RunResult {
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 const lines = (arr?: { text: string }[]) => (arr ?? []).map((l) => stripAnsi(l.text)).join('\n')
 
-export async function runCpp(code: string, sig: Signature, tests: Json[][], signal?: AbortSignal): Promise<RunResult> {
+export async function runCpp(code: string, sig: Signature, tests: Json[][], compare: Compare, signal?: AbortSignal): Promise<RunResult> {
   const body = {
-    source: buildProgram(code, sig),
+    source: buildProgram(code, sig, compare),
     options: {
       userArguments: '-O2 -std=c++17 -fdiagnostics-color=never',
       executeParameters: { args: [], stdin: buildInput(sig, tests) },

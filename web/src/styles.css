@@ -1176,3 +1176,12 @@ a.btn { text-decoration: none; }
 .side-item.done .side-count { color: var(--ok); }
 .list-pages li.done .list-page-link .mono { color: var(--ok); }
 .quiz-why { border: 1px solid transparent; }
+.problem-tabs.four { grid-template-columns: repeat(4, 1fr); }
+.dsa-ai { display: flex; flex-direction: column; gap: 10px; }
+.dsa-ai > p { margin: 0; }
+.dsa-ai-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dsa-ai-quick .q-btn { justify-content: flex-start; }
+.dsa-ai-quick .ghost-solution { border-style: dashed; color: var(--muted); }
+.dsa-ai-log { display: flex; flex-direction: column; gap: 10px; }
+.dsa-ai-log .quiz-ask-msg.model { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.dsa-ai .quiz-ask-form { position: sticky; bottom: 0; background: var(--bg); padding: 6px 0; }

@@ -99,32 +99,49 @@ static void rd(TreeNode*& root) {
 }
 static void rd(ListNode*& head) { int n; cin >> n; ListNode d; ListNode* t = &d; for (int i = 0; i < n; i++) { int v; cin >> v; t->next = new ListNode(v); t = t->next; } head = d.next; }
 
-static void pr(int x) { cout << x; }
-static void pr(long long x) { cout << x; }
-static void pr(double x) { if (std::isnan(x) || std::isinf(x)) cout << "null"; else cout << fixed << setprecision(6) << x; }
-static void pr(bool x) { cout << (x ? "true" : "false"); }
-static void pr(const string& s) { cout << '"'; for (unsigned char c : s) { if (c == '"' || c == '\\') cout << '\\' << c; else if (c == '\n') cout << "\\n"; else if (c < 32) cout << ' '; else cout << c; } cout << '"'; }
-static void pr(char c) { pr(string(1, c)); }
-template <class T> static void pr(const vector<T>& v) { cout << '['; for (size_t i = 0; i < v.size(); i++) { if (i) cout << ','; pr((T)v[i]); } cout << ']'; }
-static void pr(const vector<bool>& v) { cout << '['; for (size_t i = 0; i < v.size(); i++) { if (i) cout << ','; pr((bool)v[i]); } cout << ']'; }
-static void pr(TreeNode* root) {
+static string js(int x) { return to_string(x); }
+static string js(long long x) { return to_string(x); }
+static string js(double x) { if (std::isnan(x) || std::isinf(x)) return "null"; ostringstream o; o << fixed << setprecision(6) << x; return o.str(); }
+static string js(bool x) { return x ? "true" : "false"; }
+static string js(const string& s) { string o = "\""; for (unsigned char c : s) { if (c == '"' || c == '\\') { o += '\\'; o += (char)c; } else if (c == '\n') o += "\\n"; else if (c < 32) o += ' '; else o += (char)c; } return o + "\""; }
+static string js(char c) { return js(string(1, c)); }
+template <class T> static string js(const vector<T>& v) { string o = "["; for (size_t i = 0; i < v.size(); i++) { if (i) o += ','; o += js((T)v[i]); } return o + "]"; }
+static string js(const vector<bool>& v) { string o = "["; for (size_t i = 0; i < v.size(); i++) { if (i) o += ','; o += js((bool)v[i]); } return o + "]"; }
+static string js(TreeNode* root) {
   vector<string> out; queue<TreeNode*> q; q.push(root);
   while (!q.empty()) { TreeNode* c = q.front(); q.pop(); if (c) { out.push_back(to_string(c->val)); q.push(c->left); q.push(c->right); } else out.push_back("null"); }
   while (!out.empty() && out.back() == "null") out.pop_back();
-  cout << '['; for (size_t i = 0; i < out.size(); i++) { if (i) cout << ','; cout << out[i]; } cout << ']';
+  string o = "["; for (size_t i = 0; i < out.size(); i++) { if (i) o += ','; o += out[i]; } return o + "]";
 }
-static void pr(ListNode* h) { cout << '['; bool first = true; int guard = 0; while (h && guard++ < 200000) { if (!first) cout << ','; cout << h->val; first = false; h = h->next; } cout << ']'; }
+static string js(ListNode* h) { string o = "["; bool first = true; int guard = 0; while (h && guard++ < 200000) { if (!first) o += ','; o += to_string(h->val); first = false; h = h->next; } return o + "]"; }
+// Canonical text per compare mode (0 exact, 1 unordered, 2 unordered-nested, 3 float): order-free answers are sorted here
+static string joinSorted(vector<string> parts) { sort(parts.begin(), parts.end()); string o = "["; for (size_t i = 0; i < parts.size(); i++) { if (i) o += ','; o += parts[i]; } return o + "]"; }
+template <class U> static string innerCanon(const vector<U>& w) { vector<string> p; for (size_t i = 0; i < w.size(); i++) p.push_back(js((U)w[i])); return joinSorted(p); }
+template <class U> static string innerCanon(const U& x) { return js(x); }
+template <class T> static string canon(const T& x, int) { return js(x); }
+template <class T> static string canon(const vector<T>& v, int mode) {
+  if (mode != 1 && mode != 2) return js(v);
+  vector<string> p; for (size_t i = 0; i < v.size(); i++) p.push_back(mode == 2 ? innerCanon((T)v[i]) : js((T)v[i])); return joinSorted(p);
+}
+// Online judges cap total output (~32 KB), so long answers travel as a fingerprint: FNV-1a 64, length, prefix
+static void out(int t, const string& s) {
+  cout << "@@" << t << ' ';
+  if (s.size() <= 600) { cout << s; return; }
+  unsigned long long h = 14695981039346656037ULL; for (unsigned char c : s) { h ^= c; h *= 1099511628211ULL; }
+  cout << '#' << hex << h << dec << ' ' << s.size() << ' ' << s.substr(0, 120);
+}
 }
 `
 
 /** Full program: prelude + user code + runtime + main for this signature */
-export function buildProgram(userCode: string, sig: Signature): string {
+export function buildProgram(userCode: string, sig: Signature, compare: Compare = 'exact'): string {
+  const mode = { exact: 0, unordered: 1, 'unordered-nested': 2, float: 3 }[compare]
   const decls = sig.params.map((p, i) => `    ${p.type === 'void' ? 'int' : p.type} a${i}; vi_io::rd(a${i});`).join('\n')
   const args = sig.params.map((_, i) => `a${i}`).join(', ')
   const call =
     sig.ret === 'void'
-      ? `    sol.${sig.fn}(${args});\n    vi_io::pr(a${sig.mutates ?? 0});`
-      : `    auto res = sol.${sig.fn}(${args});\n    vi_io::pr(res);`
+      ? `    sol.${sig.fn}(${args});\n    vi_io::out(t, vi_io::canon(a${sig.mutates ?? 0}, ${mode}));`
+      : `    auto res = sol.${sig.fn}(${args});\n    vi_io::out(t, vi_io::canon(res, ${mode}));`
   return `${PRELUDE}
 #line 1 "solution.cpp"
 ${userCode}
@@ -135,7 +152,6 @@ int main() {
   for (int t = 0; t < T; t++) {
     Solution sol;
 ${decls}
-    cout << "@@" << t << ' ';
 ${call}
     cout << '\\n' << flush;
   }
@@ -195,17 +211,59 @@ function floatEq(a: Json, b: Json): boolean {
   return key(a) === key(b)
 }
 
-export function sameAnswer(got: Json, want: Json, mode: Compare): boolean {
+/** A long answer the program sent as a fingerprint instead of the full text */
+export interface Fingerprint {
+  hash: string
+  len: number
+  prefix: string
+}
+export type Got = Json | Fingerprint
+export const isFingerprint = (v: unknown): v is Fingerprint => !!v && typeof v === 'object' && !Array.isArray(v) && 'hash' in (v as object)
+
+/** Same text vi_io::js / canon produce in C++ (only used for long answers) */
+function cppText(v: Json, dbl: boolean): string {
+  if (v === null) return 'null'
+  if (typeof v === 'number') return dbl ? v.toFixed(6) : String(v)
+  if (typeof v === 'boolean') return v ? 'true' : 'false'
+  if (typeof v === 'string') {
+    let o = '"'
+    for (const ch of v) o += ch === '"' || ch === '\\' ? '\\' + ch : ch === '\n' ? '\\n' : ch.charCodeAt(0) < 32 ? ' ' : ch
+    return o + '"'
+  }
+  return '[' + v.map((x) => cppText(x, dbl)).join(',') + ']'
+}
+const byteSort = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+function canonText(v: Json, mode: Compare, dbl: boolean): string {
+  if (!Array.isArray(v) || (mode !== 'unordered' && mode !== 'unordered-nested')) return cppText(v, dbl)
+  const parts = v.map((x) => (mode === 'unordered-nested' && Array.isArray(x) ? '[' + x.map((y) => cppText(y, dbl)).sort(byteSort).join(',') + ']' : cppText(x, dbl)))
+  return '[' + parts.sort(byteSort).join(',') + ']'
+}
+function fnv1a(text: string): string {
+  let h = 0xcbf29ce484222325n
+  for (const b of new TextEncoder().encode(text)) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn
+  return h.toString(16)
+}
+
+export function sameAnswer(got: Got, want: Json, mode: Compare, dbl = false): boolean {
+  if (isFingerprint(got)) {
+    const text = canonText(want, mode, dbl)
+    return text.length === got.len && fnv1a(text) === got.hash
+  }
   if (mode === 'float') return floatEq(got, want)
   return key(normalise(got, mode)) === key(normalise(want, mode))
 }
 
 /** stdout → result per test (missing = crashed before printing) */
-export function parseOutput(stdout: string, count: number): (Json | undefined)[] {
-  const out: (Json | undefined)[] = Array(count).fill(undefined)
+export function parseOutput(stdout: string, count: number): (Got | undefined)[] {
+  const out: (Got | undefined)[] = Array(count).fill(undefined)
   for (const line of stdout.split('\n')) {
     const m = line.match(/^@@(\d+) (.*)$/)
     if (!m) continue
+    const fp = m[2].match(/^#([0-9a-f]+) (\d+) (.*)$/)
+    if (fp) {
+      out[Number(m[1])] = { hash: fp[1], len: Number(fp[2]), prefix: fp[3] }
+      continue
+    }
     try {
       out[Number(m[1])] = JSON.parse(m[2])
     } catch {
