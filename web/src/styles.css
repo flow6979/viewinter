@@ -944,3 +944,8 @@ a.tile:hover { transform: scale(1.35); border-color: var(--ink); position: relat
 .guide-sub { display: block; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .guide-tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; color: var(--muted); }
 @media (max-width: 900px) { .guide-flow { grid-template-columns: 1fr; gap: 8px; } .guide-flow li { flex-direction: row; gap: 12px; } .guide-cols { grid-template-columns: 1fr; } }
+/* To-do tiles need to read clearly on near-black */
+.tile { background: color-mix(in srgb, var(--ink) 14%, var(--bg)); border-color: color-mix(in srgb, var(--ink) 42%, var(--bg)); }
+.tile.half { background: linear-gradient(135deg, color-mix(in srgb, var(--ink) 70%, var(--bg)) 50%, color-mix(in srgb, var(--ink) 14%, var(--bg)) 50%); border-color: color-mix(in srgb, var(--ink) 70%, var(--bg)); }
+.tile.done { background: var(--ink); border-color: var(--ink); }
+.ring-track { stroke: color-mix(in srgb, var(--ink) 16%, var(--bg)); }
