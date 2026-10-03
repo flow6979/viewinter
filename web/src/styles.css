@@ -1300,3 +1300,7 @@ a.btn { text-decoration: none; }
 .saved-q-main { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; min-width: 0; }
 .saved-q-text { font-weight: 600; }
 .saved-q-answer { flex-basis: 100%; padding: 8px 12px 12px; border-left: 2px solid var(--line); margin: 0 0 8px 8px; }
+.explain-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--ink) 30%, var(--bg)); background: var(--bg); color: var(--ink); font: 600 0.82rem var(--f-body); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.explain-btn:hover { border-color: var(--ink); background: var(--surface-2); }
+.verdict-head { gap: 10px; flex-wrap: wrap; }
+.fail-case-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }

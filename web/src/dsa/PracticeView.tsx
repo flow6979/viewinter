@@ -189,6 +189,7 @@ export function ProblemView({ id }: { id: string }) {
   const [tab, setTab] = useState<'problem' | 'hints' | 'solution' | 'ai'>('problem')
   const [verdict, setVerdict] = useState<Verdict | null>(null)
   const [revealed, setRevealed] = useState(false)
+  const [aiAsk, setAiAsk] = useState<{ id: number; text: string } | null>(null)
   const abort = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -315,7 +316,7 @@ export function ProblemView({ id }: { id: string }) {
           </div>
         )}
 
-        {tab === 'ai' && <DsaAssistant problem={p} code={code} judge={judgeSummary(verdict, p)} />}
+        {tab === 'ai' && <DsaAssistant problem={p} code={code} judge={judgeSummary(verdict, p)} ask={aiAsk} />}
 
         {tab === 'hints' && (
           <ol className="hints">
@@ -371,7 +372,17 @@ export function ProblemView({ id }: { id: string }) {
             {busy && verdict?.what === 'submit' ? tr('Judge ho raha hai…', 'Judging…') : 'Submit'}
           </button>
         </div>
-        {verdict && <VerdictPanel verdict={verdict} problem={p} />}
+        {verdict && (
+          <VerdictPanel
+            verdict={verdict}
+            problem={p}
+            onExplain={(text) => {
+              setAiAsk({ id: Date.now(), text })
+              setTab('ai')
+              document.querySelector('.problem-left')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}
+          />
+        )}
       </section>
     </div>
   )
@@ -411,15 +422,27 @@ function Hint({ n, text }: { n: number; text: string }) {
   )
 }
 
-function VerdictPanel({ verdict, problem }: { verdict: Verdict; problem: Problem }) {
+function VerdictPanel({ verdict, problem, onExplain }: { verdict: Verdict; problem: Problem; onExplain: (prompt: string) => void }) {
   const tr = useTr()
+  const explain = (label: string, prompt: string) => (
+    <button type="button" className="explain-btn" onClick={() => onExplain(prompt)}>
+      <Icon name="sparkle" size={14} /> {label}
+    </button>
+  )
   if (verdict.kind === 'running')
     return <div className="verdict muted">{verdict.what === 'run' ? tr('Examples pe chala rahe hain…', 'Running the examples…') : tr(`${problem.tests.length} tests pe judge kar rahe hain…`, `Judging on ${problem.tests.length} tests…`)}</div>
   if (verdict.kind === 'error') return <div className="verdict bad">{verdict.message}</div>
+  const compileAsk = tr(
+    'Mera code compile nahi ho raha. Har error simple words me samjhao (kis line pe kya galat hai aur kyun), phir har line ka fix batao. Pura solution mat likho.',
+    'My code does not compile. Explain each error in simple words (which line, what is wrong and why), then show the fix for each line. Do not write the full solution.',
+  )
   if (verdict.kind === 'compile')
     return (
       <div className="verdict bad">
-        <b>Compile error</b>
+        <div className="verdict-head">
+          <b>Compile error</b>
+          {explain(tr('AI se error samjho', 'Explain the error with AI'), compileAsk)}
+        </div>
         <pre>{verdict.message}</pre>
       </div>
     )
@@ -458,9 +481,19 @@ function VerdictPanel({ verdict, problem }: { verdict: Verdict; problem: Problem
       </div>
       {failCase && (
         <div className="fail-case">
-          <span className="muted small">
-            {tr('Test', 'Test')} #{firstFail + 1}
-          </span>
+          <div className="fail-case-head">
+            <span className="muted small">
+              {tr('Test', 'Test')} #{firstFail + 1}
+            </span>
+            {explain(
+              title === 'Time Limit Exceeded' ? tr('AI se samjho: slow kyu hai?', 'Ask AI: why is it slow?') : title === 'Runtime Error' ? tr('AI se samjho: crash kyu hua?', 'Ask AI: why did it crash?') : tr('AI se samjho: fail kyu hua?', 'Ask AI: why did it fail?'),
+              title === 'Time Limit Exceeded'
+                ? tr('Mera code time limit exceed kar raha hai. Meri current complexity batao, bottleneck line dikhao, aur kaunsa better approach/pattern lagega, hint ke saath. Pura solution mat do.', 'My code exceeds the time limit. Tell me my current complexity, point to the bottleneck, and which better approach/pattern fits, as a hint. Do not give the full solution.')
+                : title === 'Runtime Error'
+                  ? tr('Mera code is test pe crash ho gaya. Kis line pe aur kyun (out of bounds, null, overflow, stack)? Is input pe dry run karke dikhao aur fix ka hint do.', 'My code crashed on this test. Which line and why (out of bounds, null, overflow, stack)? Dry run this input and hint at the fix.')
+                  : tr('Mera code is failing test pe galat answer de raha hai. Is input pe mera code step by step dry run karo, dikhao kahan expected se alag hota hai, aur fix ka hint do. Pura solution mat do.', 'My code gives a wrong answer on this failing test. Dry run my code step by step on this input, show where it diverges from the expected answer, and hint at the fix. Do not give the full solution.'),
+            )}
+          </div>
           <pre>
             <span className="muted">Input: </span>
             {problem.signature.params.map((prm, j) => `${prm.name} = ${show(failCase.args[j])}`).join(', ').slice(0, 1500)}

@@ -40,7 +40,7 @@ ${code}
 ${judge || 'They have not run the code yet.'}`
 }
 
-export function DsaAssistant({ problem, code, judge }: { problem: Problem; code: string; judge: JudgeSummary }) {
+export function DsaAssistant({ problem, code, judge, ask }: { problem: Problem; code: string; judge: JudgeSummary; ask?: { id: number; text: string } | null }) {
   const { lang } = useLang()
   const tr = useTr()
   const { settings } = useGemini()
@@ -55,7 +55,18 @@ export function DsaAssistant({ problem, code, judge }: { problem: Problem; code:
   const end = useRef<HTMLDivElement>(null)
 
   useEffect(() => () => abort.current?.abort(), [])
-  useEffect(() => end.current?.scrollIntoView({ block: 'nearest' }), [messages, streaming])
+  // "Explain with AI" from the result panel sends its question straight away
+  const lastAsk = useRef(0)
+  useEffect(() => {
+    if (ask && ask.id !== lastAsk.current && hasKey) {
+      lastAsk.current = ask.id
+      send(ask.text)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask?.id, hasKey])
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'nearest' })
+  }, [messages, streaming])
 
   const quick: [string, string][] = [
     [tr('Agla step batao', 'Next step'), tr('Mere current code ko dekh ke batao agla step kya hona chahiye. Pura solution mat do.', 'Look at my current code and tell me the next step. Do not give the full solution.')],
