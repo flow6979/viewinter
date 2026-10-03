@@ -14,7 +14,23 @@ import { DsaAssistant } from './DsaAssistant'
 const CodeEditor = lazy(() => import('./CodeEditor').then((m) => ({ default: m.CodeEditor })))
 
 const DIFF = { easy: { hi: 'Easy', en: 'Easy' }, medium: { hi: 'Medium', en: 'Medium' }, hard: { hi: 'Hard', en: 'Hard' } }
+const SHORT: Record<string, string> = {
+  '01-cpp-basics': 'C++ basics',
+  '05-arrays-hashing-prefix': 'Arrays & hashing',
+  '06-two-pointers-sliding-window': 'Two pointers',
+  '07-binary-search': 'Binary search',
+  '08-greedy-intervals': 'Greedy',
+  '09-stack-queue-monotonic': 'Stack & queue',
+  '10-recursion-backtracking': 'Backtracking',
+  '11-trees': 'Trees',
+  '12-heaps-priority-queue': 'Heaps',
+  '13-graphs': 'Graphs',
+  '14-dsu': 'DSU',
+  '15-dp': 'DP',
+  '16-dp-on-trees-graphs': 'DP on graphs',
+}
 const topicTitle = (slug: string, lang: 'hi' | 'en') => {
+  if (SHORT[slug]) return SHORT[slug]
   const p = pageBySlug.get(slug)
   return p ? shortTitle(localize(p, lang).title) : slug.replace(/^\d+-/, '').replace(/-/g, ' ')
 }

@@ -47,7 +47,8 @@ export function Dashboard() {
 
 
   const quick: [IconName, string, string, string][] = [
-    ['target', 'Quiz', tr('MCQ practice', 'MCQ practice'), href('quiz')],
+    ['code', tr('Practice DSA', 'Practice DSA'), tr('C++ judge + points', 'C++ judge + points'), href('practice')],
+    ['target', tr('MCQ Quiz', 'MCQ Quiz'), tr('Har subject ke MCQs', 'MCQs for every subject'), href('quiz')],
     ['plan', tr('Mera plan', 'My plan'), tr('Day-by-day', 'Day by day'), href('plan')],
     ['list', tr('Meri lists', 'My lists'), tr('Revise sets', 'Revise sets'), href('lists')],
     ['file', 'Resume', tr('Sawal + score', 'Questions + score'), href('resume')],

@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { allPages, behavioral, cs, dsa, rag, db, java, lld, lldProblems, localize, pageBySlug, quickLook, revisionBody, route, type Page } from '../content'
 import { ListPicker } from './ListPicker'
+import { readLocal, writeLocal } from '../store'
 import { TopicProblems } from '../dsa/PracticeView'
 import { useLang, useTr } from '../i18n'
 import { Markdown } from './Markdown'
@@ -48,6 +50,11 @@ export function PageView({
   const starFilter = tabbed && page.kind !== 'lldp'
   const quick = quickLook(page.slug, lang)
   const revision = mode === 'revision'
+  const modes: [ReadMode, IconName, string, string][] = [
+    ['full', 'book', tr('Poora page', 'Full page'), tr('Sab kuch, detail me', 'Everything, in detail')],
+    ['revision', 'star', 'Revision', starFilter ? tr('Sirf ★ wale important sections', 'Only the ★ key sections') : tr('Sirf recap aur interview lines', 'Only the recap and interview lines')],
+    ['quick', 'bolt', 'Quick look', tr('1 minute me key points', 'Key points in 1 minute')],
+  ]
   const body = revision ? revisionBody(page) : page.body
 
   const eyebrow = { topic: 'Topic', question: `HLD problem · Tier ${page.tier ?? 2}`, lld: 'LLD · Design patterns', lldp: 'LLD problem', java: 'Java', db: 'Databases', cs: 'CS fundamentals', beh: 'Behavioral', rag: 'RAG', dsa: 'DSA · C++', agent: 'Agentic AI' }[page.kind]
@@ -91,21 +98,15 @@ export function PageView({
           <ListPicker slug={page.slug} />
         </div>
       </div>
-      <div className="mode-switch" role="radiogroup" aria-label={tr('Kaise padhna hai', 'Reading mode')}>
-        {(
-          [
-            ['full', 'book', tr('Poora page', 'Full page'), tr('Sab kuch, detail me', 'Everything, in detail')],
-            ['revision', 'star', 'Revision', starFilter ? tr('Sirf important sections', 'Only key sections') : tr('Sirf recap aur interview lines', 'Only recap and interview lines')],
-            ['quick', 'bolt', 'Quick look', tr('1 minute me key points', 'Key points in 1 minute')],
-          ] as [ReadMode, IconName, string, string][]
-        ).map(([m, icon, label, hint]) => (
-          <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : ''} onClick={() => onMode(m)} disabled={m === 'quick' && !quick}>
-            <span className="mode-label">
-              <Icon name={icon} size={16} /> {label}
-            </span>
-            <span className="mode-hint">{hint}</span>
-          </button>
-        ))}
+      <div className="mode-row">
+        <div className="mode-seg" role="radiogroup" aria-label={tr('Kaise padhna hai', 'Reading mode')}>
+          {modes.map(([m, icon, label]) => (
+            <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : ''} onClick={() => onMode(m)} disabled={m === 'quick' && !quick}>
+              <Icon name={icon} size={15} /> {label}
+            </button>
+          ))}
+        </div>
+        <span className="mode-caption muted small">{modes.find(([m]) => m === mode)?.[3]}</span>
       </div>
       {page.patterns.length > 0 && mode !== 'quick' && (
         <div className="row wrap tags">
@@ -120,15 +121,7 @@ export function PageView({
         </div>
       )}
       {revision && <p className="revision-note small">{revisionNote}</p>}
-      {starFilter && mode !== 'quick' && (
-        <div className="jump row wrap">
-          {sections(body).map((t) => (
-            <button key={t} className={`chip ${t.startsWith('⭐') ? 'star' : ''}`} onClick={() => jumpTo(t)}>
-              {t.replace(/^⭐\s*/, '★ ')}
-            </button>
-          ))}
-        </div>
-      )}
+      {starFilter && mode !== 'quick' && <OnThisPage titles={sections(body)} />}
       {/* Java and DB pages are not paired Java/C++, so the language switch must not hide their code */}
       {mode === 'quick' && quick ? (
         <section className="quicklook">
@@ -156,6 +149,44 @@ export function PageView({
         </section>
       )}
     </article>
+  )
+}
+
+/** Collapsible table of contents for long multi-section pages */
+function OnThisPage({ titles }: { titles: string[] }) {
+  const tr = useTr()
+  const [open, setOpen] = useState<boolean>(() => readLocal('hld.toc.open', false))
+  const stars = titles.filter((t) => t.startsWith('⭐')).length
+  const toggle = () => {
+    setOpen(!open)
+    writeLocal('hld.toc.open', !open)
+  }
+  return (
+    <nav className={`toc ${open ? 'open' : ''}`} aria-label={tr('Is page par', 'On this page')}>
+      <button type="button" className="toc-head" aria-expanded={open} onClick={toggle}>
+        <span>
+          <b>{tr('Is page par', 'On this page')}</b>
+          <span className="muted small">
+            {' '}
+            · {titles.length} {tr('sections', 'sections')}
+            {stars ? ` · ${stars} ★` : ''}
+          </span>
+        </span>
+        <span className="muted small">{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <ol className="toc-list">
+          {titles.map((t) => (
+            <li key={t}>
+              <button type="button" className={t.startsWith('⭐') ? 'star' : ''} onClick={() => jumpTo(t)}>
+                <span className="toc-mark">{t.startsWith('⭐') ? '★' : ''}</span>
+                {t.replace(/^⭐\s*/, '')}
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </nav>
   )
 }
 

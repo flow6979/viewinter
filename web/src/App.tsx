@@ -253,9 +253,10 @@ export function App() {
         )}
       </div>
 
-      {page && !desktop && !panelOpen && (
-        <button className="fab" onClick={() => setPanelOpen(true)}>
-          Notes · AI
+      {page && !panelVisible && (
+        <button className="fab" onClick={togglePanel} aria-label={tr('Notes aur AI kholo', 'Open notes and AI')}>
+          <Icon name="sparkle" size={18} />
+          <span>Notes · AI</span>
         </button>
       )}
 

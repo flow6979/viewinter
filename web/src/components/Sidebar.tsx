@@ -167,11 +167,11 @@ export function Sidebar({ current, onNavigate }: { current: string; onNavigate: 
       </a>
       <a href={href('quiz')} className={`side-item home ${current === 'quiz' ? 'active' : ''}`}>
         <Icon name="quiz" size={17} />
-        Quiz
+        {tr('MCQ Quiz', 'MCQ Quiz')}
       </a>
       <a href={href('practice')} className={`side-item home ${current === 'practice' ? 'active' : ''}`}>
         <Icon name="code" size={17} />
-        {tr('Practice (DSA)', 'Practice (DSA)')}
+        {tr('Practice DSA', 'Practice DSA')}
       </a>
       <a href={href('lists')} className={`side-item home ${current === 'lists' ? 'active' : ''}`}>
         <Icon name="list" size={17} />
