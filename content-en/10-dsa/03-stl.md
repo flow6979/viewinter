@@ -30,9 +30,75 @@ The STL is why C++ is fast to write in coding rounds: a heap, a balanced BST and
 - Need **"smallest element ≥ x"** → `set`/`map` `lower_bound`, not `unordered_*`.
 - Need **count of frequencies** only → `unordered_map<int,int>` (or `vector<int>` if keys are small, e.g. 26 letters).
 
+```mermaid
+flowchart TD
+    A["What do you need?"] --> B{"Key lookup or membership?"}
+    B -- "Yes" --> C{"Sorted order, floor or ceil?"}
+    C -- "Yes" --> C1["set / map"]
+    C -- "Yes, with duplicates" --> C3["multiset / multimap"]
+    C -- "No" --> C2["unordered_set / unordered_map"]
+    B -- "No" --> D{"Repeated min or max?"}
+    D -- "Yes" --> D1["priority_queue"]
+    D -- "No" --> E{"Where do you add and remove?"}
+    E -- "Same end, LIFO" --> E1["stack"]
+    E -- "Opposite ends, FIFO" --> E2["queue"]
+    E -- "Both ends" --> E3["deque"]
+    E -- "Anywhere by index" --> E4["vector"]
+    class C1,C2,C3,D1,E1,E2,E3,E4 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: "which container?" in three questions: key lookup?, min/max?, which end do you add/remove?*
+
 ## ⭐ Core containers in one snippet
 
 **In one line:** learn the 10–12 calls you will use daily; everything else you can look up.
+
+```text
+vector push_back: when size == capacity, allocate 2x, copy, free old
+
+push 5   size 1  cap 1  [5]
+push 2   size 2  cap 2  [5 2]                 realloc, copy 1
+push 8   size 3  cap 4  [5 2 8 _]             realloc, copy 2
+push 1   size 4  cap 4  [5 2 8 1]             no realloc
+push 7   size 5  cap 8  [5 2 8 1 7 _ _ _]     realloc, copy 4
+
+copies for n pushes = 1 + 2 + 4 + ... < 2n   =>   push_back is O(1) amortised
+v.reserve(n) up front  =>  zero reallocations
+```
+
+*Above: capacity doubles, so an occasional expensive copy still averages out to O(1).*
+
+```text
+deque<int>: a map of pointers to fixed-size blocks
+
+map:      [ * ]      [ * ]      [ * ]
+            |          |          |
+            v          v          v
+        [_ _ 1 2]  [3 4 5 6]  [7 8 _ _]
+           ^                        ^
+   push_front fills here    push_back fills here
+
+growing at either end never moves old elements;  dq[i] = block + offset  ->  O(1)
+```
+
+*Above: a deque lives in small blocks, so push/pop at both ends is O(1).*
+
+```text
+stack (LIFO)        queue (FIFO)                      priority_queue (max)
+                                                       top -> largest
+  push/pop          push                   pop              9
+     |  ^             |                     ^             /   \
+     v  |             v                     |            1     5
+   +---+            +---+---+---+
+   | 3 | <- top     | 3 | 2 | 1 | --> front              array: [9, 1, 5]
+   | 2 |            +---+---+---+
+   | 1 |            back        front
+   +---+
+```
+
+*Above: a stack uses one end, a queue enters at one end and leaves at the other, a priority_queue always has the largest on top.*
 
 ```cpp
 #include <bits/stdc++.h>
@@ -69,9 +135,58 @@ int main() {
 }
 ```
 
+```mermaid
+flowchart TD
+    A["7"] --> B["4"]
+    A --> C["12"]
+    B --> D["1"]
+    B --> E["5"]
+    C --> F["9"]
+    C --> N1["∅"]:::dim
+    class A hot
+    class B,E dim
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: `set` {1, 4, 5, 7, 9, 12} is a balanced BST (red-black tree); `lower_bound(6)` walks 7 → 4 → 5 and returns 7. In-order = sorted.*
+
+```text
+unordered_map<int,int>:  bucket = hash(key) % bucket_count   (here 5 buckets)
+
+bucket 0:  -> (10, 1) -> (25, 2)     collision: both keys land here, kept in a chain
+bucket 1:  -> (6, 4)
+bucket 2:     empty
+bucket 3:  -> (3, 7)
+bucket 4:     empty
+
+find(25):  hash -> bucket 0 -> walk chain -> found      average O(1)
+all keys in one bucket (anti-hash test)   -> chain of n  worst O(n)
+load factor > 1  ->  rehash into ~2x buckets
+```
+
+*Above: a hash map spreads keys over buckets; collisions form chains, which is why the worst case is O(n).*
+
 ## priority_queue: max-heap vs min-heap
 
 **In one line:** default `priority_queue<int>` is a **max**-heap; for a min-heap pass `greater<int>`.
+
+```mermaid
+flowchart TD
+    subgraph MX["max-heap: priority_queue of int"]
+        M1["9"] --> M2["1"]
+        M1 --> M3["5"]
+    end
+    subgraph MN["min-heap: greater of int"]
+        N1["1"] --> N2["5"]
+        N1 --> N3["9"]
+    end
+    class M1,N1 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: both heaps after pushing 5, 1, 9; the default gives top 9, `greater<int>` gives top 1.*
 
 ```cpp
 void heaps() {
@@ -133,6 +248,28 @@ void algos() {
 }
 ```
 
+```text
+i:     0   1   2   3   4
+a:  [  1,  2,  2,  4,  9 ]
+           ^       ^
+          lb      ub
+lower_bound(2) = 1   first index with a[i] >= 2
+upper_bound(2) = 3   first index with a[i] >  2
+count of 2     = ub - lb = 2
+lower_bound(5) = 4   (points to 9);   lower_bound(10) = 5 = end()
+```
+
+*Above: on a sorted array `lower_bound` gives the first `>=`, `upper_bound` the first `>`.*
+
+```text
+sorted:            [ 1  2  2  4  9 ]
+unique(...):       [ 1  2  4  9 | ? ]     returns iterator to index 4
+                                ^ new logical end
+erase(it, end()):  [ 1  2  4  9 ]
+```
+
+*Above: `unique` only shifts adjacent duplicates forward; `erase` is what actually shrinks the size.*
+
 - `upper_bound - lower_bound` gives the count of a value in a sorted array.
 - On a `set`, use the member `se.lower_bound(x)` (O(log n)); `std::lower_bound(se.begin(), se.end(), x)` is O(n).
 - `next_permutation` needs the range sorted first to get all permutations.
@@ -148,6 +285,16 @@ void algos() {
 | `unordered_map` on Codeforces | Anti-hash tests → O(n) per op → TLE | Custom hash (splitmix64) or `map` |
 | `accumulate(..., 0)` on big values | Sum done in `int`, overflows | Pass `0LL` |
 | `pair` key in `unordered_map` | Compile error, no hash | Use `map` or encode `a*N+b` |
+
+```text
+vector<int> v = {1, 2, 3};   (capacity 3)        int &r = v[0];
+
+before:          v.data -> 0xA0 [1 2 3]              r -> 0xA0
+push_back(4):    full -> new block 0xC0 [1 2 3 4 _ _], copy, free 0xA0
+after:           v.data -> 0xC0                      r -> 0xA0   dangling!
+```
+
+*Above: after a reallocation, old references/iterators point at freed memory.*
 
 ```cpp
 struct SafeHash {                                     // anti-hack hash

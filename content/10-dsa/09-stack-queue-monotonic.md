@@ -31,6 +31,21 @@ Stack (LIFO) aur queue (FIFO) simple lagte hain, par **monotonic stack** aur **m
 
 **Ek line me:** opening bracket push karo; closing aaye to top match hona chahiye; end me stack khaali.
 
+```text
+s = "{[()]}"
+
+read '{'      read '['      read '('      read ')'      read ']'      read '}'
+                            |  (  |
+              |  [  |       |  [  |       |  [  |
+|  {  |       |  {  |       |  {  |       |  {  |       |  {  |
++-----+       +-----+       +-----+       +-----+       +-----+       +-----+
+push          push          push          pop '('       pop '['       pop '{'
+
+end: stack empty -> valid
+```
+
+*Upar: har closing bracket top se match hota hai; end me stack khaali to valid.*
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
@@ -68,6 +83,33 @@ bool isValid(const string& s) {
 >
 > Result: [5, 5, 6, 6, -1].
 
+```text
+a = [2, 1, 5, 3, 6], stack holds values (indices in code)
+
+i=1 (a=1)       i=2 (a=5)                                       i=3 (a=3)       i=4 (a=6)
+|  1  |                                                         |  3  |
+|  2  |         |  2  |                         |  5  |         |  5  |         |  6  |
++-----+         +-----+         +-----+         +-----+         +-----+         +-----+
+push 1          pop 1: ans=5    pop 2: ans=5    push 5          push 3          pop 3,5; push 6
+```
+
+*Upar: stack values hamesha decreasing; bada element aate hi chhote wale pop hote hain aur unka answer milta hai.*
+
+```mermaid
+flowchart LR
+    A["2"] -->|"next greater"| C["5"]
+    B["1"] --> C
+    D["3"] --> E["6"]
+    C --> E
+    E --> N["-1"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class C,E hot
+    class N dim
+```
+
+*Upar: har element ka arrow uske next greater pe; 6 ka koi nahi, isliye -1.*
+
 ```cpp
 vector<int> nextGreater(const vector<int>& a) {
     int n = a.size();
@@ -95,6 +137,26 @@ vector<int> nextGreater(const vector<int>& a) {
 
 **Ek line me:** har bar ke liye left aur right me pehla chhota bar = uski width ki boundary. Increasing stack se pop karte waqt dono boundaries mil jaati hain.
 
+```text
+h = [2, 1, 5, 6, 2, 3]
+
+          #
+       X  X
+       X  X
+       X  X     #
+ #     X  X  #  #
+ #  #  X  X  #  #
+ 2  1  5  6  2  3     <- height
+ 0  1  2  3  4  5     <- index
+
+At i=4 (h=2), stack = [1, 2, 3] (heights 1, 5, 6):
+  pop 3 (h=6): left = 2, width = 4 - 2 - 1 = 1, area 6
+  pop 2 (h=5): left = 1, width = 4 - 1 - 1 = 2, area 10  <- best (X)
+  h[1]=1 < 2, stop, push 4
+```
+
+*Upar: pop ke time bar ki height fix hai; current i right boundary, naya stack top left boundary.*
+
 ```cpp
 // LC 84
 int largestRectangleArea(vector<int>& h) {
@@ -120,6 +182,22 @@ int largestRectangleArea(vector<int>& h) {
 
 **Ek line me:** deque me indices, values decreasing; front = window ka max. Front window se bahar ho to pop_front, naya element bada ho to back se pop.
 
+```text
+a = [1, 3, -1, -3, 5, 3, 6, 7], k = 3      deque shows values, front on the left
+
+i   a[i]   action                          deque          max
+0   1      push                            [1]            -
+1   3      pop back 1                      [3]            -
+2   -1     push                            [3, -1]        3
+3   -3     push                            [3, -1, -3]    3
+4   5      pop front 3 (old), pop -3, -1   [5]            5
+5   3      push                            [5, 3]         5
+6   6      pop back 3, 5                   [6]            6
+7   7      pop back 6                      [7]            7
+```
+
+*Upar: deque decreasing rehta hai: front hamesha window ka max, bekaar elements back se nikal jaate hain.*
+
 ```cpp
 // LC 239
 vector<int> maxSlidingWindow(const vector<int>& a, int k) {
@@ -139,10 +217,59 @@ vector<int> maxSlidingWindow(const vector<int>& a, int k) {
 
 ## Queue aur BFS
 
+```text
+op        in (top ->)    out (top ->)    returns
+push 1    [1]            []
+push 2    [1, 2]         []
+push 3    [1, 2, 3]      []
+pop       []             [3, 2, 1]       out was empty: move all, pop -> 1
+pop       []             [3, 2]          pop -> 2
+push 4    [4]            [3]
+pop       [4]            []              pop -> 3 (out still had one)
+```
+
+*Upar: do stacks se queue: `in` ko `out` me tabhi ulto jab `out` khaali ho, isliye amortised O(1).*
+
 - `queue<T>`: push back, pop front. BFS = queue + visited; har level ek "step" ([Graphs](13-graphs.md)).
 - Stack se queue (LC 232): do stacks, `out` khaali ho tabhi `in` ko `out` me ulto → amortised O(1).
 
 ## Linked list basics
+
+```mermaid
+flowchart LR
+    P["prev = null"]
+    A["1"] --> B["2"] --> C["3"] --> N["null"]
+    H["cur = head"] -.-> A
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class A hot
+```
+
+*Upar: reverse se pehle: prev null, cur head pe.*
+
+```mermaid
+flowchart LR
+    B["2"] --> A["1"] --> N0["null"]
+    C["3"] --> N1["null"]
+    P["prev"] -.-> B
+    Q["cur"] -.-> C
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class B,C hot
+```
+
+*Upar: do iterations ke baad: 1 aur 2 ulte ho gaye, 3 abhi baaki; `nxt` save na karte to 3 kho jaata.*
+
+```mermaid
+flowchart LR
+    C["3"] --> B["2"] --> A["1"] --> N["null"]
+    H["return prev"] -.-> C
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class C hot
+```
+
+*Upar: reverse ke baad: cur null pe, prev naya head.*
 
 ```cpp
 struct ListNode { int val; ListNode* next; ListNode(int v) : val(v), next(nullptr) {} };
@@ -169,6 +296,16 @@ ListNode* mergeTwo(ListNode* a, ListNode* b) {        // LC 21
     return dummy.next;
 }
 ```
+
+```text
+a:  1 -> 3 -> 5
+b:  2 -> 4
+
+dummy -> 1 -> 2 -> 3 -> 4 -> 5
+         a    b    a    b    a (rest of a attached)
+```
+
+*Upar: merge: har step chhota node `t->next` pe lagao; dummy head ka special case hata deta hai.*
 
 - Cycle detect: Floyd fast/slow ([Two Pointers](06-two-pointers-sliding-window.md)). K-th from end: fast ko k aage bhejo.
 

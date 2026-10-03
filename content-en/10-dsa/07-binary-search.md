@@ -31,7 +31,47 @@ Binary search halves the search space every step: O(log n). Finding an element i
 
 **In one line:** find "the first index where `ok(i)` is true". `lo` always sits on the false side, `hi` on the true side; loop while `hi - lo > 1`.
 
+```text
+i:          -1    0    1    2    3    4    5
+a:               [1,   3,   3,   5,   8]
+a[i] >= 3:   F    F    T    T    T    T    T
+             lo                            hi     (-1 and n are virtual)
+                       ^
+                       answer = first T = index 1
+```
+
+*Above: the predicate F F F T T T is monotonic; `lo` always sits on F, `hi` always on T.*
+
 > **Example:** a = [1, 3, 3, 5, 8], first index with a[i] ≥ 3. lo=-1, hi=5. mid=2 (3 ≥ 3) → hi=2. mid=0 (1) → lo=0. mid=1 (3) → hi=1. Stop: answer 1.
+
+```text
+i:          -1    0    1    2    3    4    5
+a:               [1,   3,   3,   5,   8]
+
+Step 1:      lo             mid            hi     a[2]=3 >= 3  -> hi = 2
+Step 2:      lo   mid       hi                    a[0]=1 <  3  -> lo = 0
+Step 3:           lo   mid  hi                    a[1]=3 >= 3  -> hi = 1
+Step 4:           lo   hi                         hi - lo = 1  -> return 1
+```
+
+*Above: every step halves the range; once lo and hi are adjacent, hi is the answer.*
+
+```mermaid
+flowchart TD
+    S["lo = -1, hi = n"] --> C{"hi - lo > 1?"}
+    C -->|"yes"| M["mid = lo + (hi - lo) / 2"]
+    M --> P{"ok(mid)?"}
+    P -->|"true"| H["hi = mid"]
+    P -->|"false"| L["lo = mid"]
+    H --> C
+    L --> C
+    C -->|"no"| R["return hi"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class R hot
+```
+
+*Above: the template flow: one condition, two assignments, no +1/-1 anywhere.*
 
 ```cpp
 #include <bits/stdc++.h>
@@ -57,6 +97,19 @@ void stlDemo(vector<int>& a, int x) {
 }
 ```
 
+```text
+x = 3
+i:              0    1    2    3    4    5
+a:            [ 1,   3,   3,   3,   5,   8 ]
+                     ^              ^
+             lower_bound = 1    upper_bound = 4
+             (first >= 3)       (first > 3)
+
+count of 3 = 4 - 1 = 3
+```
+
+*Above: all copies of x sit between lower_bound and upper_bound.*
+
 - Complexity: O(log n) time, O(1) space.
 
 **Interview tip:** first state "what the predicate is and why it is monotonic, F F F T T T". After that the template is mechanical. Last index with a[i] ≤ x = `firstGT(x) - 1`.
@@ -66,6 +119,35 @@ void stlDemo(vector<int>& a, int x) {
 ## Rotated sorted array
 
 **In one line:** one side of mid is always sorted; check whether the target lies in that sorted half.
+
+```text
+i:      0   1   2   3   4   5   6
+a:    [ 4,  5,  6,  7,  0,  1,  2 ]       target = 0
+        |--sorted---|   |-sorted|
+
+Step 1: l           m           r   a[l]=4 <= a[m]=7: left sorted, 0 not in [4,7) -> l = 4
+Step 2:                 l   m   r   a[l]=0 <= a[m]=1: left sorted, 0 in [0,1)     -> r = 4
+Step 3:                 lmr         a[4] = 0 -> found at 4
+```
+
+*Above: a rotated array is two sorted runs; one half around mid is always sorted.*
+
+```mermaid
+flowchart TD
+    M{"a[m] == t?"} -->|"yes"| F["return m"]
+    M -->|"no"| S{"a[l] <= a[m]?"}
+    S -->|"yes: left half sorted"| L{"a[l] <= t < a[m]?"}
+    S -->|"no: right half sorted"| R{"a[m] < t <= a[r]?"}
+    L -->|"yes"| L1["r = m - 1"]
+    L -->|"no"| L2["l = m + 1"]
+    R -->|"yes"| R1["l = m + 1"]
+    R -->|"no"| R2["r = m - 1"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class F hot
+```
+
+*Above: first identify the sorted half, then check whether the target lies in its range.*
 
 ```cpp
 // LC 33: distinct values
@@ -94,6 +176,26 @@ int searchRotated(const vector<int>& a, int t) {
 **In one line:** take the answer range [lo, hi], write a monotonic `feasible(mid)` (always true after some point), then find the first true.
 
 > **Example (Koko, LC 875):** piles = [3, 6, 7, 11], h = 8. At speed k, hours = Σ ceil(p/k). k=4 → 1+2+2+3 = 8 ≤ 8 true. k=3 → 1+2+3+4 = 10 false. Answer 4.
+
+```text
+speed k:      1    2    3    4    5    6   ...   11
+hours:       27   15   10    8    8    6   ...    4
+hours <= 8?   F    F    F    T    T    T   ...    T
+                             ^
+                             answer = 4 (first T)
+```
+
+*Above: BS on answer: the answer space also looks like F F F T T T, so the same template works.*
+
+```text
+Step 1: lo=0   hi=11   mid=5   hours 8  <= 8  T  -> hi = 5
+Step 2: lo=0   hi=5    mid=2   hours 15 >  8  F  -> lo = 2
+Step 3: lo=2   hi=5    mid=3   hours 10 >  8  F  -> lo = 3
+Step 4: lo=3   hi=5    mid=4   hours 8  <= 8  T  -> hi = 4
+Stop:   lo=3   hi=4    hi - lo = 1               -> answer 4
+```
+
+*Above: Koko: only 4 feasible() calls out of 11 possible speeds.*
 
 ```cpp
 // LC 875 Koko Eating Bananas

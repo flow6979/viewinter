@@ -28,6 +28,19 @@ Most coding-round bugs are not algorithm bugs. They are `int` overflow, slow I/O
 
 **In one line:** know the ranges; `int` is ~±2.1e9, `long long` is ~±9.2e18, and the type of an expression is decided *before* it is assigned.
 
+```text
+int        (32 bit)  -2147483648 ........ 0 ........ 2147483647      (~±2.1e9)
+long long  (64 bit)  -9.2e18 ............ 0 ............ 9.2e18      (~±9.2e18)
+
+int a = 100000, b = 100000;
+Step 1:  a * b         int * int  -> computed in int -> 10000000000 does not fit
+                                                      -> wraps to 1410065408
+Step 2:  long long c = ...        -> stores 1410065408   (already wrong)
+Fix:     1LL * a * b   long long * int -> computed in long long -> 10000000000
+```
+
+*Above: the type is decided before assignment; the overflow already happened inside the `int` multiply.*
+
 | Type | Size | Range (approx) |
 |---|---|---|
 | `int` | 4 B | ±2.1 × 10^9 |
@@ -64,6 +77,22 @@ int main() {
 
 **In one line:** two lines at the top of `main` make `cin/cout` as fast as `scanf/printf`; use `"\n"` instead of `endl`.
 
+```text
+input:   5\nRiya Sharma\n
+
+Step 1:  cin >> n           reads "5", stops before '\n'
+         buffer:  \n R i y a   S h a r m a \n
+                  ^ cursor
+Step 2:  getline(cin, s)    reads up to the first '\n'  ->  s = ""   (empty!)
+
+Fix:     cin.ignore()       drops that '\n'
+         buffer:  R i y a   S h a r m a \n
+                  ^ cursor
+         getline(cin, s)    ->  s = "Riya Sharma"
+```
+
+*Above: `cin >>` leaves the newline in the buffer; `cin.ignore()` removes it so `getline` reads the full line.*
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
@@ -98,6 +127,22 @@ int main() {
 
 ## Conditionals, loops, functions
 
+```mermaid
+flowchart TD
+    A["init: int i = 0, runs once"] --> B{"check: i < n ?"}
+    B -- "true" --> C["loop body"]
+    C -- "normal end of body" --> D["update: i++"]
+    C -- "continue" --> D
+    C -- "break" --> E["exit loop"]
+    D --> B
+    B -- "false" --> E
+    class B hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: the flow of `for (init; check; update)`; `continue` jumps to the update, `break` leaves the loop.*
+
 ```cpp
 int sign(int x) { return x > 0 ? 1 : (x < 0 ? -1 : 0); }
 
@@ -112,9 +157,30 @@ void demo(int n) {
 - `for (size_t i = v.size() - 1; i >= 0; i--)` never ends: `size_t` is unsigned, `0 - 1` wraps to a huge number.
 - Prefer early `return` / `break` over deep nesting; it reads better in a live round.
 
+```text
+vector v of size 3, reverse loop
+
+size_t i:  2 -> 1 -> 0 -> 0 - 1 = 18446744073709551615 -> "i >= 0" still true -> v[huge] -> crash
+int    i:  2 -> 1 -> 0 -> -1                           -> "i >= 0" false      -> loop ends
+```
+
+*Above: unsigned `size_t` wraps below 0, so use `int` for reverse loops.*
+
 ## ⭐ Pass by value vs reference vs pointer
 
 **In one line:** by value copies; by reference (`&`) aliases the original; `const &` aliases without allowing changes; a pointer holds an address and can be null.
+
+```text
+int x = 10;     x  @0x10  [ 10 ]
+int &r = x;     r  ======> same box @0x10       (no new box, just a second name)
+int *p = &x;    p  @0x18  [ 0x10 ] ---> x       (new box that holds an address)
+
+r++;            x  @0x10  [ 11 ]
+*p = 20;        x  @0x10  [ 20 ]
+p = nullptr;    p  @0x18  [ 0 ]   ---> nothing  (a reference can never do this)
+```
+
+*Above: a reference is another name for the same memory box; a pointer is a separate box holding an address.*
 
 ```cpp
 void byValue(vector<int> v)        { v.push_back(1); }  // copy: O(n), caller unchanged
@@ -132,6 +198,23 @@ int main() {
     auto y = 3.5;                  // double
 }
 ```
+
+```text
+                 STACK FRAMES
+             +-------------------------------------+
+main         |  a  @0x1000   { 5 }                 | <------+ <------+
+             +-------------------------------------+        |        |
+byValue(v)   |  v  @0x2000   { 5 }  copy, O(n)     |        |        |
+             |     push_back changes only the copy |        |        |
+             +-------------------------------------+        |        |
+byRef(v)     |  v  = a  (alias, nothing copied) ---+--------+        |
+             +-------------------------------------+                 |
+byPtr(p)     |  p  @0x2010  holds 0x1000 ----------+-----------------+
+             |     may be nullptr, check first     |
+             +-------------------------------------+
+```
+
+*Above: by value makes a new copy; `&` and a pointer both reach the caller's `a`.*
 
 | | Copies? | Can modify caller? | Can be null? |
 |---|---|---|---|
@@ -164,7 +247,34 @@ void demo() {
 - `[&]` captures by reference, `[=]` by copy. Recursive lambdas need `function<>` (or pass the lambda to itself).
 - `for (auto x : v)` copies each element; use `auto &` to modify, `const auto &` for big objects.
 
+```text
+int calls = 0;
+
+[&]  lambda  ----ref---->  calls (main's variable)   calls++ changes main's calls
+[=]  lambda  [ calls' = 0 ]  own copy, made when the lambda is created
+             changes to main's calls later are NOT seen inside
+```
+
+*Above: `[&]` refers to the original variable, `[=]` keeps a copy taken at creation time.*
+
 ## Common compile / runtime errors
+
+```mermaid
+flowchart LR
+    S["Verdict"] --> W["WA only on big tests"]
+    W --> W1["int overflow"]
+    S --> T["TLE, right complexity"]
+    T --> T1["endl, no fast I/O, pass by value"]
+    S --> R["RE / segfault"]
+    R --> R1["out of bounds, v[0] on empty, deep recursion, big local array"]
+    S --> G["Different output locally vs judge"]
+    G --> G1["uninitialised variable, UB"]
+    class W1,T1,R1,G1 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: start from the verdict and go to the most common cause.*
 
 | Symptom | Likely cause |
 |---|---|
@@ -177,6 +287,14 @@ void demo() {
 | Different output locally vs judge | Reading uninitialised memory, undefined behaviour |
 
 **Common mistake:** declaring `int arr[1000000]` inside `main` (stack overflow). Make large arrays global or use `vector`.
+
+```text
+STACK            ~1-8 MB     int arr[1000000] inside main = 4 MB  -> may overflow, crash
+GLOBAL / STATIC  data seg    int arr[1000000]; outside main       -> fine, zero-initialised
+HEAP             up to RAM   vector<int> v(1000000);              -> fine
+```
+
+*Above: keep large arrays off the stack: make them global or use a heap-backed `vector`.*
 
 ## Standard questions
 

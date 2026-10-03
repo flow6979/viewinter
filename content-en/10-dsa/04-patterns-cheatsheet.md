@@ -12,6 +12,17 @@ Most interview problems are one of ~15 patterns in disguise. The fastest way to 
 
 **In one line:** a judge does roughly 1e8 simple operations per second; pick the complexity that fits n within ~1 second.
 
+```text
+n up to:     10-12      20-25     100-500     5000      1e5 - 1e6          1e9+
+             |          |         |           |         |                  |
+max cost:    n!         2^n       n^3         n^2       n log n  or  n     log n, sqrt n, 1
+
+n = 1e5:   n^2     = 1e10   100x over the ~1e8/sec budget  -> TLE
+           n log n ≈ 1.7e6  well inside                    -> OK
+```
+
+*Above: look at n, find its spot on the ladder, and target that complexity.*
+
 | n up to | Max complexity | Typical techniques |
 |---|---|---|
 | ≤ 10–12 | O(n!), O(n · n!) | Permutations, brute-force backtracking |
@@ -59,6 +70,121 @@ int main() {
 | "Prefix of words", autocomplete | Trie | – |
 | "Duplicate / seen before / frequency" | Hash map / set | [STL](03-stl.md) |
 | "XOR", "single number", subsets of small n | Bit manipulation | [STL](03-stl.md) |
+
+**Each pattern at a glance:**
+
+```text
+Two pointers (sorted, target = 10)
+i:     0  1  2  3  4  5
+a:   [ 1, 3, 4, 6, 8, 9 ]
+       L              R     1 + 9 = 10  found
+sum too small -> L++,  sum too big -> R--
+```
+
+*Above: two pointers: move in from both ends, one pointer per step.*
+
+```text
+Sliding window (longest window with sum <= 7)
+a:   [ 2, 1, 5, 1, 3, 2 ]
+       L--R                 sum 3   expand R
+       L-----R              sum 8   too big, shrink L
+          L--R              sum 6   expand R
+          L-----R           sum 7   best length 3
+```
+
+*Above: sliding window: grow with R, shrink with L when the condition breaks.*
+
+```text
+Prefix sums
+a:        [ 3, 1, 4, 1, 5 ]
+pre:   [ 0, 3, 4, 8, 9, 14 ]
+sum(a[1..3]) = pre[4] - pre[1] = 9 - 3 = 6
+```
+
+*Above: prefix sums: build once in O(n), then every range sum is O(1).*
+
+```text
+Binary search on answer (is speed k enough?)
+k:      1  2  3  4  5  6  7  8
+ok(k):  F  F  F  T  T  T  T  T
+                 ^ answer = first T
+```
+
+*Above: binary search on answer: the predicate is monotonic, find the first `T`.*
+
+```text
+Monotonic stack (next greater element)
+a:   [ 2, 1, 5, 3 ]
+see 2: stack [2]
+see 1: stack [2, 1]
+see 5: pop 1 (next greater = 5), pop 2 (next greater = 5), stack [5]
+see 3: stack [5, 3]           left over -> no next greater (-1)
+```
+
+*Above: monotonic stack: when a bigger element arrives, smaller ones pop and get their answer.*
+
+```mermaid
+flowchart LR
+    subgraph L0["Level 0"]
+        S["S"]
+    end
+    subgraph L1["Level 1"]
+        A["A"]
+        B["B"]
+    end
+    subgraph L2["Level 2"]
+        C["C"]
+        T["T"]
+    end
+    S --> A
+    S --> B
+    A --> C
+    B --> T
+    class T hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: BFS spreads level by level, so the first time it reaches `T` is the shortest distance (2).*
+
+```mermaid
+flowchart TD
+    R["{ }"] -- "take 1" --> A["{1}"]
+    R -- "skip 1" --> B["{ }"]
+    A -- "take 2" --> C["{1,2}"]
+    A -- "skip 2" --> D["{1}"]
+    B -- "take 2" --> E["{2}"]
+    B -- "skip 2" --> F["{ }"]
+    class C,D,E,F hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: backtracking: take/skip each element; the leaves are all subsets (2^n).*
+
+```mermaid
+flowchart LR
+    A["dp i-2"] --> C["dp i"]
+    B["dp i-1"] --> C
+    C --> D["dp i+1"]
+    class C hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: DP: each state is built from smaller states, e.g. `dp[i] = dp[i-1] + dp[i-2]`; each state is computed once.*
+
+```mermaid
+flowchart BT
+    B["2"] --> A["1"]
+    C["3"] --> A
+    E["5"] --> D["4"]
+    class A,D hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: DSU: each group is a tree whose root is the representative; here two groups {1,2,3} and {4,5}.*
 
 ## ⭐ Decision flow
 

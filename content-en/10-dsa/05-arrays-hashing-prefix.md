@@ -32,6 +32,30 @@ Roughly half of the easy/medium coding-round questions are on arrays, and the tr
 
 > **Example:** nums = [2, 7, 11, 15], target = 9. i=0: 7 is not in the map, map[2]=0. i=1: 9-7=2 is in the map → answer [0, 1].
 
+```text
+nums:  [  2,  7, 11, 15 ]        target = 9
+i:        0   1   2   3
+
+Step 1: i=0  x=2  need=9-2=7   seen = { }        7 missing -> seen[2] = 0
+Step 2: i=1  x=7  need=9-7=2   seen = { 2:0 }    2 FOUND   -> return [0, 1]
+```
+
+*Above: at every step look up `need` first, then insert the current value.*
+
+```mermaid
+flowchart LR
+    X["x = nums[i]"] --> N["need = target - x"]
+    N --> Q{"need in seen?"}
+    Q -->|"yes"| A["return seen[need], i"]
+    Q -->|"no"| S["seen[x] = i"]
+    S --> X
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class A hot
+```
+
+*Above: the two-sum loop: lookup first, insert after (no self-pair).*
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
@@ -66,6 +90,25 @@ bool isAnagram(const string& s, const string& t) {
 
 **In one line:** `pre[i] = a[0] + ... + a[i-1]`, then `sum(l..r) = pre[r+1] - pre[l]` in O(1).
 
+```text
+i:      0   1   2   3   4
+a:    [ 3,  1,  4,  1,  5 ]
+
+Step 1: pre[0] = 0
+Step 2: pre[1] = pre[0] + a[0] = 0 + 3 = 3
+Step 3: pre[2] = pre[1] + a[1] = 3 + 1 = 4
+Step 4: pre[3] = 8,  pre[4] = 9,  pre[5] = 14
+
+j:      0   1   2   3   4   5
+pre:  [ 0,  3,  4,  8,  9, 14 ]
+
+Query sum(1..3) = 1 + 4 + 1:
+a:    [ 3, |1,  4,  1|, 5 ]
+pre[4] - pre[1] = 9 - 3 = 6
+```
+
+*Above: the prefix array is built in one pass; any range sum is the difference of two prefixes.*
+
 Subarray sum = K: if `pre[j] - pre[i] = K` then `pre[i] = pre[j] - K`. At each j, ask how many earlier prefixes equalled `cur - K`.
 
 > **Example:** nums = [1, 2, 3], K = 3. Map starts {0:1}.
@@ -77,6 +120,31 @@ Subarray sum = K: if `pre[j] - pre[i] = K` then `pre[i] = pre[j] - K`. At each j
 > | 2 | 3 | 6 | 3 | 1 | {.., 6:1} |
 >
 > Answer 2: [1,2] and [3].
+
+```text
+index:               0    1    2
+nums:                1    2    3
+cur (prefix):   0    1    3    6
+
+pair 1:         0 ------> 3                 3 - 0 = K  ->  nums[0..1] = [1, 2]
+pair 2:                   3 -> 6            6 - 3 = K  ->  nums[2..2] = [3]
+```
+
+*Above: every subarray with sum K is a pair of prefixes where the later one is K more than the earlier one.*
+
+```mermaid
+flowchart LR
+    R["read x"] --> C["cur += x"]
+    C --> Q["ans += freq[cur - K]"]
+    Q --> U["freq[cur]++"]
+    U --> R
+    I["start: freq[0] = 1"] --> R
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class Q hot
+```
+
+*Above: order matters: count `cur - K` first, then add `cur` to the map.*
 
 ```cpp
 // Range sum queries
@@ -114,6 +182,22 @@ int subarraySum(vector<int>& nums, int k) {
 
 **In one line:** to add v to range [l, r] do `d[l] += v; d[r+1] -= v;`, then take a prefix sum at the end. Each update is O(1).
 
+```text
+n = 5, updates: [l=1, r=3, +2] and [l=2, r=4, +3]
+
+i:         0   1   2   3   4   5
+start:  [  0,  0,  0,  0,  0,  0 ]
+Step 1: [  0, +2,  0,  0, -2,  0 ]   d[1] += 2, d[4] -= 2
+Step 2: [  0, +2, +3,  0, -2, -3 ]   d[2] += 3, d[5] -= 3
+Step 3: running sum of d[0..4]
+a:      [  0,  2,  5,  5,  3 ]
+
++2 covers:     |-------|              i = 1..3
++3 covers:         |-------|          i = 2..4
+```
+
+*Above: each update touches only two cells; one final prefix sum rebuilds the whole array.*
+
 ```cpp
 vector<long long> applyUpdates(int n, const vector<array<int,3>>& ups) {
     vector<long long> d(n + 1, 0);
@@ -132,6 +216,29 @@ vector<long long> applyUpdates(int n, const vector<array<int,3>>& ups) {
 **In one line:** at each index decide: extend the previous subarray or start fresh here. `cur = max(x, cur + x)`.
 
 > **Example:** [-2, 1, -3, 4, -1, 2, 1, -5, 4] → cur: -2, 1, -2, 4, 3, 5, 6, 1, 5 → best = 6 ([4,-1,2,1]).
+
+| i | x | cur + x | start fresh at x? | cur | best |
+|---|---|---|---|---|---|
+| 0 | -2 | - | (init) | -2 | -2 |
+| 1 | 1 | -1 | yes | 1 | 1 |
+| 2 | -3 | -2 | no | -2 | 1 |
+| 3 | 4 | 2 | yes | 4 | 4 |
+| 4 | -1 | 3 | no | 3 | 4 |
+| 5 | 2 | 5 | no | 5 | 5 |
+| 6 | 1 | 6 | no | 6 | 6 |
+| 7 | -5 | 1 | no | 1 | 6 |
+| 8 | 4 | 5 | no | 5 | 6 |
+
+*Above: each Kadane step: `cur = max(x, cur + x)`; when the old sum is negative, restart.*
+
+```text
+i:     0   1   2   3   4   5   6   7   8
+a:   [-2,  1, -3,  4, -1,  2,  1, -5,  4 ]
+                   S-----------E
+                   4 + -1 + 2 + 1 = 6 = best
+```
+
+*Above: the best subarray is i = 3..6; cur restarted at index 3 because the previous cur was -2.*
 
 ```cpp
 long long maxSubArray(const vector<int>& a) {
@@ -156,6 +263,30 @@ long long maxSubArray(const vector<int>& a) {
 - **Prefix/suffix product:** Product Except Self (LC 238) without division: a left pass + a right pass.
 - **Boyer-Moore voting:** majority element > n/2 in O(1) space (LC 169).
 - **Longest consecutive:** build a set, count only from x where `x-1` is not in the set (O(n)).
+
+```text
+a:            [  1,  2,  3,  4 ]
+left  (->):   [  1,  1,  2,  6 ]   product of everything before i
+right (<-):   [ 24, 12,  4,  1 ]   product of everything after i
+answer:       [ 24, 12,  8,  6 ]   left[i] * right[i]
+```
+
+*Above: Product Except Self: multiply a left pass and a right pass, no division needed.*
+
+```mermaid
+flowchart LR
+    A["1: start, 0 not in set"] --> B["2"] --> C["3"] --> D["4"]
+    E["100: start"]
+    F["200: start"]
+    G["2: skip, 1 in set"]
+    H["3: skip, 2 in set"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class A,B,C,D hot
+    class G,H dim
+```
+
+*Above: nums = [100, 4, 200, 1, 3, 2]: counting starts only at a sequence start, the rest are skipped; answer 4.*
 
 ```cpp
 int longestConsecutive(vector<int>& nums) {

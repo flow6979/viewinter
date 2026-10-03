@@ -61,7 +61,7 @@ export async function testConnection(): Promise<ConnectionStatus> {
 }
 
 // Errors surface in the UI, so they follow the language switch
-const L = (hi: string, en: string) => (readLocal<string>('hld.lang', 'hi') === 'en' ? en : hi)
+const L = (hi: string, en: string) => (readLocal<string>('hld.lang', 'en') === 'en' ? en : hi)
 
 /** Text models this key can call, newest-looking first */
 export async function listModels(apiKey: string): Promise<string[]> {

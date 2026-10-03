@@ -7,10 +7,10 @@ export const LANGS: { id: Lang; label: string }[] = [
   { id: 'hi', label: 'Hinglish' },
 ]
 
-const Ctx = createContext<{ lang: Lang; setLang: (l: Lang) => void }>({ lang: 'hi', setLang: () => {} })
+const Ctx = createContext<{ lang: Lang; setLang: (l: Lang) => void }>({ lang: 'en', setLang: () => {} })
 
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(() => readLocal('hld.lang', 'hi'))
+  const [lang, setLangState] = useState<Lang>(() => readLocal('hld.lang', 'en'))
   const setLang = useCallback((l: Lang) => {
     setLangState(l)
     writeLocal('hld.lang', l)

@@ -26,6 +26,20 @@ You need OOP in C++ for three things in interviews: design-style questions (LRU 
 
 **In one line:** a class bundles data (members) with functions (methods); the constructor sets valid initial state, the destructor cleans up, and `this` points to the current object.
 
+```mermaid
+classDiagram
+    class BankAccount {
+        -string owner
+        -long balance
+        +BankAccount(string owner, long initial)
+        +withdraw(long amt) bool
+        +deposit(long amt) void
+        +getBalance() long
+    }
+```
+
+*Above: `-` is private data, `+` is public methods; outsiders can change state only through methods (encapsulation).*
+
 > **Example:** a `BankAccount` should never have a negative balance. Keep `balance` private and only allow changes through `deposit`/`withdraw`. That is **encapsulation**.
 
 ```cpp
@@ -56,6 +70,22 @@ int main() {
 }
 ```
 
+```text
+BankAccount acc("Riya", 1000);
+
+acc  (object on the stack)
++-------------------------------+
+| owner   : string    "Riya"    |   private
+| balance : long long  1000     |   private
++-------------------------------+
+Methods are NOT stored inside the object. One copy lives in code:
+
+acc.withdraw(300)   ==   BankAccount::withdraw(this = &acc, 300)
+                         this->balance: 1000 -> 700
+```
+
+*Above: an object holds only data; in a method call `this` is that object's address.*
+
 | Access specifier | Visible to |
 |---|---|
 | `private` | Only the class itself (default for `class`) |
@@ -70,6 +100,27 @@ int main() {
 ## Inheritance
 
 **In one line:** a derived class reuses and extends a base class ("is-a" relation).
+
+```mermaid
+classDiagram
+    class Vehicle {
+        #int wheels
+        +Vehicle(int w)
+        +getWheels() int
+    }
+    class Car {
+        -string brand
+        +Car(string b)
+        +info() string
+    }
+    class Engine {
+        +int hp
+    }
+    Vehicle <|-- Car : is-a
+    Car *-- Engine : has-a
+```
+
+*Above: the hollow triangle is inheritance ("is-a"); the diamond is composition ("has-a"). `#` is protected.*
 
 ```cpp
 class Vehicle {
@@ -91,9 +142,43 @@ public:
 - Construction order: base → derived. Destruction: derived → base.
 - Prefer composition ("has-a") when it is not truly "is-a": a `Car` has an `Engine`.
 
+```text
+Car c("Tata");
+
+object layout of c                     order
++----------------------------+         construct:  Vehicle(4)  ->  Car body
+| Vehicle part: wheels = 4   |  base               (base first)
+|----------------------------|         destroy:    ~Car()      ->  ~Vehicle()
+| Car part:     brand="Tata" |  derived            (derived first)
++----------------------------+
+```
+
+*Above: a derived object contains the base part first; build from the base, tear down from the derived.*
+
 ## ⭐ Virtual functions and runtime polymorphism
 
 **In one line:** mark a base method `virtual` so that a call through a base pointer/reference runs the derived version, decided at runtime via the vtable.
+
+```mermaid
+classDiagram
+    class Shape {
+        <<abstract>>
+        +area()* double
+    }
+    class Circle {
+        -double r
+        +area() double
+    }
+    class Rect {
+        -double w
+        -double h
+        +area() double
+    }
+    Shape <|-- Circle
+    Shape <|-- Rect
+```
+
+*Above: `Shape` is abstract (`area()*` is pure virtual); `Circle` and `Rect` override their own `area`.*
 
 ```cpp
 class Shape {                                   // abstract: has a pure virtual
@@ -131,8 +216,36 @@ double total(const vector<unique_ptr<Shape>> &shapes) {
 - **Virtual destructor:** if you `delete` a derived object through a base pointer without it, the derived destructor never runs (leak / UB).
 - `override` makes the compiler check that you really override something.
 
+```text
+Circle object               Circle's vtable (one per class)
++--------------+            +-----------------------------+
+| vptr --------+----------> | area   -> Circle::area      |
+| r = 2.0      |            | ~Shape -> Circle::~Circle   |
++--------------+            +-----------------------------+
+
+Rect object                 Rect's vtable
++--------------+            +-----------------------------+
+| vptr --------+----------> | area   -> Rect::area        |
+| w = 3, h = 4 |            | ~Shape -> Rect::~Rect       |
++--------------+            +-----------------------------+
+
+sh->area():  read sh->vptr  ->  slot "area"  ->  call that function
+```
+
+*Above: each object's hidden `vptr` points to its class's vtable; a virtual call looks up that slot.*
+
 **Interview tip:** explain vtable in one line: "each class with virtual functions has a table of function pointers; each object stores a hidden pointer (vptr) to its class's table; a virtual call looks it up."
 **Common mistake:** calling through an object, not a pointer/reference (`Shape s = circle;` slices off the derived part).
+
+```text
+Circle c(2);              Shape s = c;  (by value)       Shape &ref = c;
++------------+            +------------+                 ref ----> c  (whole object)
+| Shape part |  copies    | Shape part |                 ref.area()  ->  Circle::area
+| r = 2      |  only -->  +------------+
++------------+  this      r is sliced off, area() is Shape's
+```
+
+*Above: a by-value copy takes only the base part (slicing); a reference/pointer sees the whole object.*
 
 ## Operator overloading and static members
 
@@ -158,9 +271,28 @@ int Counter::created = 0;              // define outside the class
 - `static` member = class-level; a `static` method has no `this` and can only touch static members.
 - Overload `<<` as a free function: `ostream& operator<<(ostream&, const Point&)`.
 
+```text
+Counter a, b, c;
+
+a [ no copy of created ] --+
+b [ no copy of created ] --+--> Counter::created = 3   (one shared copy, lives outside objects)
+c [ no copy of created ] --+
+```
+
+*Above: a `static` member belongs to the class, not each object; all three objects share one counter.*
+
 ## ⭐ Comparators for sort and priority_queue
 
 **In one line:** `sort` wants "should a come before b?"; `priority_queue` puts on top the element that is *last* by the comparator, so a "greater" comparator gives a min-heap.
+
+```text
+cmp(a, b) = a.priority > b.priority
+
+sort:            cmp(a, b) true  =>  a goes BEFORE b         ->  3, 2, 1   (descending)
+priority_queue:  cmp(a, b) true  =>  a ranks LOWER than b    ->  top = 1   (min-heap)
+```
+
+*Above: the same comparator gives descending order in `sort` and a min-heap in `priority_queue`.*
 
 ```cpp
 struct Task { int priority; string name; };
@@ -181,6 +313,17 @@ void demo() {
     cout << pq.top().name << "\n";           // "a" (smallest priority)
 }
 ```
+
+```mermaid
+flowchart TD
+    A["1, a"] --> B["3, c"]
+    A --> C["2, b"]
+    class A hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: the heap with `ByPriorityMin`; the smallest priority `(1, a)` is on top.*
 
 - Comparator must be a **strict weak ordering**: use `<`, never `<=`. With `<=`, `sort` can crash.
 - `set<Task, ByPriorityMin>` treats "neither a<b nor b<a" as **equal** and drops duplicates.

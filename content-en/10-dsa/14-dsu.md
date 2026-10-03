@@ -31,6 +31,19 @@ DSU keeps track of elements split into groups and answers two questions almost i
 
 **In one line:** every set is a tree, the root is its representative; `find` walks to the root and flattens the path, `unite` hangs the smaller tree under the bigger one.
 
+```mermaid
+flowchart BT
+    N1["1"] --> N0["0"]
+    N2["2"] --> N0
+    N3["3"] --> N2
+    N5["5"] --> N4["4"]
+    class N0,N4 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: two sets = two trees. Each arrow goes from a child to its parent (the parent pointer); the bold node is the root / representative. find(3) = 0, find(5) = 4.*
+
 > **Example:** n = 5, unite(0,1), unite(2,3), unite(1,3), then find(0) == find(2)?
 >
 > | Step | parent[] | size of root | Components |
@@ -42,6 +55,72 @@ DSU keeps track of elements split into groups and answers two questions almost i
 > | find(3) | 0 0 0 0 4 | path compressed | 2 |
 >
 > find(0) = 0 and find(2) = 0, so yes, same set.
+
+```text
+i:                  0  1  2  3  4
+Step 0  start       parent: [0, 1, 2, 3, 4]   sz: [1, 1, 1, 1, 1]   comps = 5
+Step 1  unite(0,1)  roots 0, 1; sizes equal -> parent[1] = 0
+                    parent: [0, 0, 2, 3, 4]   sz: [2, 1, 1, 1, 1]   comps = 4
+Step 2  unite(2,3)  roots 2, 3; sizes equal -> parent[3] = 2
+                    parent: [0, 0, 2, 2, 4]   sz: [2, 1, 2, 1, 1]   comps = 3
+Step 3  unite(1,3)  find(1) = 0, find(3) = 2 -> link ROOTS: parent[2] = 0
+                    parent: [0, 0, 0, 2, 4]   sz: [4, 1, 2, 1, 1]   comps = 2
+Step 4  find(3)     3 -> 2 -> 0, compress on the way back: parent[3] = 0
+                    parent: [0, 0, 0, 0, 4]
+```
+
+*Above: how parent[] and sz[] change at every step. Only the root's sz matters.*
+
+```mermaid
+flowchart BT
+    subgraph S0["Step 0: start, 5 singletons"]
+        A0["0"]
+        A1["1"]
+        A2["2"]
+        A3["3"]
+        A4["4"]
+    end
+    subgraph S2["After Step 1 and Step 2"]
+        B1["1"] --> B0["0"]
+        B3["3"] --> B2["2"]
+        B4["4"]
+    end
+    class B0,B2,B4 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: at the start every node is its own root; after unite(0,1) and unite(2,3) three trees remain (bold = roots).*
+
+```mermaid
+flowchart BT
+    subgraph S3["Step 3: unite 1,3 links root 2 under root 0"]
+        C1["1"] --> C0["0"]
+        C3["3"] --> C2["2"]
+        C2 -->|"new link"| C0
+        C4["4"]
+    end
+    class C0,C4 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: unite(1,3) does not link nodes 1 and 3; it links their roots 0 and 2. Now 2 components.*
+
+```mermaid
+flowchart BT
+    subgraph S4["Step 4: after find 3, path compressed"]
+        D1["1"] --> D0["0"]
+        D2["2"] --> D0
+        D3["3"] -->|"was 3 to 2"| D0
+        D4["4"]
+    end
+    class D0,D3 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: after find(3), node 3 points straight at root 0, so the next lookup is one hop.*
 
 ```cpp
 struct DSU {
@@ -69,6 +148,71 @@ struct DSU {
 
 - Complexity: each operation is amortised O(α(n)), where α is the inverse Ackermann function (≤ 4 for any real n). Space O(n).
 - With only path compression or only union by size you get O(log n) amortised; use both.
+
+```mermaid
+flowchart BT
+    subgraph P1["Before find 4: a chain"]
+        A4["4"] --> A3["3"] --> A2["2"] --> A1["1"] --> A0["0"]
+    end
+    subgraph P2["After find 4: everyone points at root"]
+        B4["4"] --> B0["0"]
+        B3["3"] --> B0
+        B2["2"] --> B0
+        B1["1"] --> B0
+    end
+    class A0,B0 hot
+    class A4,B4 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: path compression before/after. find(4) walks 4 hops once, then every node on the path becomes a direct child of the root.*
+
+```text
+find(4): parent[4] = 3 -> find(3)
+  find(3): parent[3] = 2 -> find(2)
+    find(2): parent[2] = 1 -> find(1)
+      find(1): parent[1] = 0 -> find(0) = 0      (root, recursion turns back)
+      parent[1] = 0
+    parent[2] = 0
+  parent[3] = 0
+parent[4] = 0                                    next find(4) = 1 hop
+```
+
+*Above: on the way back the recursion sets every node's parent to the root; that is the `parent[x] = find(parent[x])` line.*
+
+```mermaid
+flowchart BT
+    subgraph G["Good: small root 5 goes under big root 0, height stays 2"]
+        G1["1"] --> G0["0"]
+        G2["2"] --> G0
+        G3["3"] --> G1
+        G6["6"] --> G5["5"]
+        G5 --> G0
+    end
+    subgraph H["Bad: big root 0 goes under small root 5, height becomes 3"]
+        H1["1"] --> H0["0"]
+        H2["2"] --> H0
+        H3["3"] --> H1
+        H6["6"] --> H5["5"]
+        H0 --> H5
+    end
+    class G0,H5 hot
+    class H3 dim
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: union by size. Hanging the size-4 tree under the size-2 tree pushes the deepest node (3) further down; always put the smaller one under the bigger one.*
+
+| Optimisation | `find` cost | Worst shape |
+|---|---|---|
+| None | O(n) | One long chain (0 ← 1 ← 2 ← … ← n-1) |
+| Only union by size / rank | O(log n) | Height ≤ log₂ n |
+| Only path compression | O(log n) amortised | Long the first time, then flat |
+| Both | O(α(n)) ≈ O(1) | Almost flat stars |
+
+*Above: what each optimisation buys you; in an interview use both.*
 
 **Interview tip:** make `unite` return `bool`. "It returned false" is exactly your cycle detection and your Kruskal "skip this edge" check.
 
@@ -100,6 +244,28 @@ flowchart TD
 
 **1. Redundant Connection (LC 684):** the first edge whose endpoints are already connected is the answer.
 
+```mermaid
+flowchart LR
+    A["1"] ---|"edge 1"| B["2"]
+    A ---|"edge 2"| C["3"]
+    B ---|"edge 3: closes cycle"| C
+    class B,C hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: edges = [[1,2],[1,3],[2,3]]. Before the third edge, 2 and 3 are already in the same set, so it is the redundant one.*
+
+```text
+edge     find(u)  find(v)  unite?        parent[1..3]
+start                                    [1, 2, 3]
+(1,2)    1        2        yes           [1, 1, 3]
+(1,3)    1        3        yes           [1, 1, 1]
+(2,3)    1        1        NO, same root -> return [2, 3]
+```
+
+*Above: the edge where unite returns false is the one that closes the cycle.*
+
 ```cpp
 vector<int> findRedundantConnection(vector<vector<int>>& edges) {
     DSU d(edges.size() + 1);                     // nodes are 1-indexed
@@ -110,6 +276,19 @@ vector<int> findRedundantConnection(vector<vector<int>>& edges) {
 ```
 
 **2. Number of Islands II (LC 305, online):** map cell (r, c) to id `r * cols + c`, add land, union with land neighbours, track a counter.
+
+```text
+m = n = 3, id = r * 3 + c        positions: (0,0) (0,1) (1,2) (2,1) (1,1)
+
+ ids        Step 1      Step 2      Step 3      Step 4      Step 5
+ 0 1 2      X . .       X X .       X X .       X X .       X X .
+ 3 4 5      . . .       . . .       . . X       . . X       . X X
+ 6 7 8      . . .       . . .       . . .       . X .       . X .
+            +1 = 1      +1 -1 = 1   +1 = 2      +1 = 3      +1 -3 = 1
+                        (joins 0)   (alone)     (alone)     (joins 1, 5, 7)
+```
+
+*Above: each new land cell is +1 island; each successful unite with a land neighbour is -1. In Step 5 cell 4 joins three islands into one.*
 
 ```cpp
 vector<int> numIslands2(int m, int n, vector<vector<int>>& pos) {
@@ -134,6 +313,31 @@ vector<int> numIslands2(int m, int n, vector<vector<int>>& pos) {
 
 **3. Kruskal's MST:** sort edges by weight, take an edge only if `unite` succeeds. O(E log E). See [Graphs](13-graphs.md).
 
+```mermaid
+flowchart LR
+    N0["0"] ---|"1 take"| N1["1"]
+    N1 ---|"2 take"| N2["2"]
+    N0 -.-|"3 skip: cycle"| N2
+    N2 ---|"4 take"| N3["3"]
+    N1 -.-|"5 skip: cycle"| N3
+    class N0,N1,N2,N3 hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: solid edges are in the MST (cost 1 + 2 + 4 = 7); dotted edges were skipped because both ends were already connected.*
+
+```text
+sorted edges {w, u, v}   find(u)  find(v)  action          cost  comps
+{1, 0, 1}                0        1        unite -> take   1     3
+{2, 1, 2}                0        2        unite -> take   3     2
+{3, 0, 2}                0        0        same -> skip    3     2
+{4, 2, 3}                0        3        unite -> take   7     1
+{5, 1, 3}                0        0        same -> skip    7     1
+```
+
+*Above: Kruskal step by step; once components hits 1 the MST is complete.*
+
 ```cpp
 long long kruskal(int n, vector<array<int,3>>& edges) { // {w, u, v}
     sort(edges.begin(), edges.end());
@@ -147,6 +351,18 @@ long long kruskal(int n, vector<array<int,3>>& edges) { // {w, u, v}
 **4. Accounts Merge (LC 721):** give every email an id, union all emails of one account, then group emails by root and sort.
 
 **5. Weighted DSU (Evaluate Division, LC 399):** store `w[x] = value(x) / value(parent[x])`; during path compression multiply weights. Query `a/b` = `w[a] / w[b]` when roots match.
+
+```mermaid
+flowchart BT
+    A["a"] -->|"w = 2, a = 2 x b"| B["b"]
+    B -->|"w = 3, b = 3 x c"| C["c root"]
+    D["d"] -->|"w = 0.5, d = 0.5 x c"| C
+    class C hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Above: weighted DSU. After compression w[a] = 2 × 3 = 6, so a / d = w[a] / w[d] = 6 / 0.5 = 12.*
 
 **6. String keys:** use `unordered_map<string,string> parent` with the same find/unite logic, or map strings to ints first (faster, cleaner).
 

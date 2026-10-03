@@ -29,6 +29,19 @@ A heap gives you the min (or max) element in O(1) and lets you insert or remove 
 
 **In one line:** `priority_queue<T>` is a **max**-heap; pass `greater<T>` for a min-heap; a custom comparator returns `true` when `a` should come **after** `b`.
 
+```text
+push 5, 1, 8, 3 into each:
+
+priority_queue<int>                         internal array [8, 3, 5, 1]   top() = 8   (max-heap)
+priority_queue<int, vector<int>, greater>   internal array [1, 3, 8, 5]   top() = 1   (min-heap)
+
+comparator cmp(a, b) == true  means  "a has LOWER priority, a sits below b"
+less    : a < b  → smaller sinks   → biggest on top
+greater : a > b  → bigger sinks    → smallest on top
+```
+
+*Above: the same input, two heaps. The comparator means "who sits lower", which is why `less` gives a max-heap and `greater` a min-heap.*
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
@@ -69,9 +82,111 @@ int main() {
 - Insert = append + **sift up**; pop = move last to root + **sift down**. Both O(log n).
 - Heapify a whole array bottom-up = O(n), not O(n log n). Heap sort = O(n log n), in place, not stable.
 
+```mermaid
+flowchart TD
+    I0["i0: 9"] --> I1["i1: 7"]
+    I0 --> I2["i2: 8"]
+    I1 --> I3["i3: 3"]
+    I1 --> I4["i4: 5"]
+    I2 --> I5["i5: 6"]
+    I2 --> I6["i6: 2"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class I0 hot
+```
+
+*Above: a max-heap drawn as a tree. Every parent is ≥ its children; the root (bold) is the max. Siblings have no order (7 and 8).*
+
+```text
+index:   0    1    2    3    4    5    6
+value: [ 9,   7,   8,   3,   5,   6,   2 ]
+
+i = 0 → children 2·0+1 = 1, 2·0+2 = 2      (9 → 7, 8)
+i = 1 → children 3, 4                      (7 → 3, 5)
+i = 2 → children 5, 6                      (8 → 6, 2)
+parent(i) = (i - 1) / 2     e.g. parent(5) = 4/2 = 2,  parent(4) = 3/2 = 1
+level k occupies indices 2^k - 1 … 2^(k+1) - 2  → no pointers needed
+```
+
+*Above: the same heap as an array. The tree is laid out level by level, left to right, so `2i+1`, `2i+2` and `(i-1)/2` are all the navigation you need.*
+
+```text
+push 10 (sift up)
+Step 1  append at i=7        [9, 7, 8, 3, 5, 6, 2, 10]     parent(7) = 3 → 3 < 10, swap
+Step 2  now at i=3           [9, 7, 8, 10, 5, 6, 2, 3]     parent(3) = 1 → 7 < 10, swap
+Step 3  now at i=1           [9, 10, 8, 7, 5, 6, 2, 3]     parent(1) = 0 → 9 < 10, swap
+Step 4  now at i=0 (root)    [10, 9, 8, 7, 5, 6, 2, 3]     stop: 3 swaps = height = O(log n)
+```
+
+*Above: push = append at the end, then swap upward while the parent is smaller (sift up).*
+
+```mermaid
+flowchart TD
+    A0["i0: 10"] --> A1["i1: 9"]
+    A0 --> A2["i2: 8"]
+    A1 --> A3["i3: 7"]
+    A1 --> A4["i4: 5"]
+    A2 --> A5["i5: 6"]
+    A2 --> A6["i6: 2"]
+    A3 --> A7["i7: 3"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class A0,A1,A3,A7 hot
+```
+
+*Above: the heap after pushing 10. The bold path i7 → i3 → i1 → i0 is the route 10 climbed while the old values slid one level down.*
+
+```text
+pop (sift down) from [10, 9, 8, 7, 5, 6, 2, 3]
+Step 1  take top 10, move last (3) to root     [3, 9, 8, 7, 5, 6, 2]
+Step 2  i=0: children 9, 8 → bigger is 9       swap → [9, 3, 8, 7, 5, 6, 2]
+Step 3  i=1: children 7, 5 → bigger is 7       swap → [9, 7, 8, 3, 5, 6, 2]
+Step 4  i=3: children 7, 8 out of range        stop  (popped 10)
+```
+
+*Above: pop = take the root, put the last element there, then keep swapping down with the bigger child (sift down). In a max-heap always swap with the **bigger** child.*
+
+```text
+bottom-up heapify: call siftDown(i) for i = n/2 - 1 down to 0
+
+nodes at this height     how many     max swaps each
+leaves (height 0)        n/2          0      ← half the array does no work
+height 1                 n/4          1
+height 2                 n/8          2
+height h                 n/2^(h+1)    h
+
+total ≤ n · (1/4 + 2/8 + 3/16 + …) = n · 1  →  O(n)
+```
+
+*Above: why heapify is O(n): most nodes live near the bottom and need few swaps; only a handful travel the full O(log n).*
+
 ## ⭐ Top-K pattern
 
 > **Example:** K = 2 largest of `[3, 1, 5, 12, 2]` with a min-heap of size 2: push 3 → {3}; push 1 → {1,3}; push 5 → {1,3,5} pop 1 → {3,5}; push 12 → pop 3 → {5,12}; push 2 → pop 2 → {5,12}. Answer: top of heap = 5 is the 2nd largest.
+
+| Step | Read | Min-heap after push | Size > K=2? | Heap after |
+|---|---|---|---|---|
+| 1 | 3 | {3} | no | {3} |
+| 2 | 1 | {1, 3} | no | {1, 3} |
+| 3 | 5 | {1, 3, 5} | yes, pop 1 | {3, 5} |
+| 4 | 12 | {3, 5, 12} | yes, pop 3 | {5, 12} |
+| 5 | 2 | {2, 5, 12} | yes, pop 2 | **{5, 12}**, top = 5 |
+
+*Above: the top-K steps as a table. The heap always holds the K largest seen so far, and its top (the smallest of them) is the K-th largest.*
+
+```mermaid
+flowchart LR
+    S["stream: 3, 1, 5, 12, 2"] --> H["min-heap, size K = 2"]
+    H -->|"pop smallest when size > K"| D["dropped: 1, 3, 2"]
+    H --> T["top = 5 = 2nd largest"]
+    T --- K1["kept: 5, 12"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class T hot
+    class D dim
+```
+
+*Above: a size-K min-heap acts like a filter: small values fall out, the K biggest stay in.*
 
 ```cpp
 int findKthLargest(vector<int>& nums, int k) {            // LC 215
@@ -93,6 +208,25 @@ int findKthLargest(vector<int>& nums, int k) {            // LC 215
 
 **In one line:** keep the smaller half in a max-heap `lo` and the larger half in a min-heap `hi`, sizes differ by at most 1.
 
+```mermaid
+flowchart LR
+    subgraph LO["lo: max-heap, smaller half"]
+        L1["1"]
+        L3["3"]
+        L5["top 5"]
+    end
+    subgraph HI["hi: min-heap, larger half"]
+        H8["top 8"]
+        H15["15"]
+    end
+    L5 ---|"median = lo.top = 5"| H8
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class L5,H8 hot
+```
+
+*Above: the median sits between two heaps. The top of `lo` is the largest of the small half, the top of `hi` the smallest of the large half; the two tops meet in the middle.*
+
 ```cpp
 class MedianFinder {                                     // LC 295
     priority_queue<int> lo;                              // max-heap
@@ -109,6 +243,16 @@ public:
     }
 };
 ```
+
+| Add | lo (max-heap) | hi (min-heap) | Sizes | Median |
+|---|---|---|---|---|
+| 5 | {5} | { } | 1 / 0 | 5 |
+| 15 | {5} | {15} | 1 / 1 | (5 + 15) / 2 = 10 |
+| 1 | {5, 1} | {15} | 2 / 1 | 5 |
+| 3 | {3, 1} | {5, 15} | 2 / 2 | (3 + 5) / 2 = 4 |
+| 8 | {5, 3, 1} | {8, 15} | 3 / 2 | 5 |
+
+*Above: `addNum` on the stream 5, 15, 1, 3, 8. Each add goes into `lo`, then `lo`'s top moves to `hi`, and if `hi` grows bigger one moves back to `lo`. `lo` is never more than 1 larger than `hi`.*
 
 Same idea: sliding window median (LC 480), IPO (LC 502: max-heap of profits unlocked by capital).
 
@@ -133,12 +277,45 @@ vector<int> mergeK(vector<vector<int>>& a) {
 
 O(N log K) for N total elements across K lists. Same pattern: Kth smallest in sorted matrix (LC 378), smallest range covering K lists (LC 632).
 
+```text
+lists:  a = [1, 4, 7]    b = [2, 5]    c = [3, 6, 9]
+
+Step  heap (value list)        pop     push next from same list    out
+1     {1a, 2b, 3c}             1a      4a                          1
+2     {2b, 3c, 4a}             2b      5b                          1 2
+3     {3c, 4a, 5b}             3c      6c                          1 2 3
+4     {4a, 5b, 6c}             4a      7a                          1 2 3 4
+5     {5b, 6c, 7a}             5b      (b empty)                   1 2 3 4 5
+6     {6c, 7a}                 6c      9c                          1 2 3 4 5 6
+7     {7a, 9c}                 7a      (a empty)                   … 7
+8     {9c}                     9c      (c empty)                   … 7 9
+heap never holds more than K = 3 entries → O(N log K)
+```
+
+*Above: K-way merge. The heap holds just one current head per list; whatever pops is replaced by the next element of the same list.*
+
 ## Scheduling with heaps
 
 - **Meeting Rooms II (LC 253):** sort by start; min-heap of end times; if earliest end ≤ new start, pop. Heap size = rooms.
 - **Task Scheduler (LC 621):** max-heap of remaining counts, process in cycles of `n + 1` (or the formula `(maxCnt-1)*(n+1) + countOfMax`).
 - **Reorganize String (LC 767):** max-heap by frequency, place the top two different chars each step.
 - **Last Stone Weight (LC 1046), Min Cost to Connect Ropes:** always combine the top one or two.
+
+```text
+Meeting Rooms II: [0,30) [5,10) [15,20)  (sorted by start)
+
+time   0    5    10   15   20   25   30
+A      [-----------------------------)
+B           [----)
+C                     [----)
+
+Step 1  A starts 0                       heap of ends {30}        rooms 1
+Step 2  B starts 5,  earliest end 30 > 5 push 10 → {10, 30}      rooms 2
+Step 3  C starts 15, earliest end 10 ≤ 15 pop 10, push 20 → {20, 30}  rooms 2 (room reused)
+answer = max heap size = 2
+```
+
+*Above: the timeline and the min-heap of end times. The heap's top is the room that frees up first; if it is free before the new meeting starts, that room is reused.*
 
 ## Standard questions
 

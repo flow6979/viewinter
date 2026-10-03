@@ -38,11 +38,53 @@ Greedy means take the best choice right now at every step and never go back. The
 - Sorting by **start** fails for activity selection: [1,10], [2,3], [4,5] → start-sort takes [1,10] (1 meeting), end-sort gives 2 meetings.
 - Interviews do not need a formal proof; a one-line exchange argument plus a quick counter-example check is enough.
 
+```text
+time:     1   2   3   4   5   6   7   8   9   10
+[1,10]    [-----------------------------------)
+[2,3]         [---)
+[4,5]                 [---)
+
+sort by start: picks [1,10]          -> 1 meeting
+sort by end:   picks [2,3], [4,5]    -> 2 meetings
+```
+
+*Above: sorting by start lets one long meeting block everything; sorting by end is correct.*
+
 ## ⭐ Interval scheduling and merging
 
 **In one line:** "how many can you keep" → sort by end; "join/union" → sort by start.
 
 > **Example (merge):** [[1,3],[2,6],[8,10],[15,18]] → sort by start → [1,3]+[2,6] overlap (2 ≤ 3) → [1,6]; [8,10] separate; [15,18] separate → [[1,6],[8,10],[15,18]].
+
+```text
+time:     1     3        6     8     10             15       18
+[1,3]     [-----)
+[2,6]        [-----------)
+[8,10]                         [-----)
+[15,18]                                             [--------)
+merged    [--------------)     [-----)              [--------)
+
+Step 1: res = [1,3]
+Step 2: [2,6]   2 <= 3 overlap  -> res.back = [1, max(3,6)] = [1,6]
+Step 3: [8,10]  8 >  6 gap      -> push        res = [1,6] [8,10]
+Step 4: [15,18] 15 > 10 gap     -> push        res = [1,6] [8,10] [15,18]
+```
+
+*Above: merge: sort by start, then each interval either extends the last one or starts a new one.*
+
+```mermaid
+flowchart TD
+    C["cur = next interval by start"] --> Q{"res empty or res.back.end < cur.start?"}
+    Q -->|"yes: gap"| P["push cur"]
+    Q -->|"no: overlap"| E["res.back.end = max of both ends"]
+    P --> C
+    E --> C
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class E hot
+```
+
+*Above: the merge decision: on a gap push, on an overlap extend the end with max.*
 
 ```cpp
 #include <bits/stdc++.h>
@@ -70,6 +112,21 @@ int eraseOverlapIntervals(vector<vector<int>>& iv) {
 }
 ```
 
+```text
+sorted by end:
+time:     1  2  3  4  5  6  7  8  9  10
+[1,3]     [-----)                        pick   lastEnd = 3
+[2,5]        [--------)                  skip   2 < 3
+[4,6]              [-----)               pick   lastEnd = 6
+[6,8]                    [-----)         pick   lastEnd = 8
+[5,9]                 [-----------)      skip   5 < 8
+[8,10]                         [-----)   pick   lastEnd = 10
+
+kept 4, removed 2
+```
+
+*Above: activity selection: sort by end, pick whatever starts at or after lastEnd.*
+
 - Complexity: O(n log n) sort + O(n) pass.
 
 **Interview tip:** ask "do [1,2] and [2,3] overlap?". The rule for touching endpoints depends on the problem (`<` vs `<=`).
@@ -77,6 +134,21 @@ int eraseOverlapIntervals(vector<vector<int>>& iv) {
 **Common mistake:** writing `res.back()[1] = cur[1]` instead of `max` in merge; when [2,3] sits inside [1,10] the end shrinks.
 
 ## Meeting rooms (sweep line)
+
+```text
+time:   0    5    10   15   20        30
+A       [-----------------------------)
+B            [----)
+C                      [----)
+
+starts = [0, 5, 15]   ends = [10, 20, 30]
+s=0:  no end <= 0             rooms 1   best 1
+s=5:  10 > 5, none free       rooms 2   best 2
+s=15: 10 <= 15, free one      rooms 1 -> 2   best 2
+answer = 2
+```
+
+*Above: sweep line: the most meetings running at once at any time is the number of rooms.*
 
 ```cpp
 // LC 253: minimum rooms = max overlapping meetings at any time
@@ -97,6 +169,57 @@ int minMeetingRooms(vector<vector<int>>& iv) {
 - Alternative: sort by start, keep end times in a min-heap; pop while the top ≤ start. Heap size = rooms ([Heaps](12-heaps-priority-queue.md)).
 
 ## Jump Game and Gas Station
+
+```text
+a = [2, 3, 1, 1, 4]          a = [3, 2, 1, 0, 4]
+i   a[i]   reach              i   a[i]   reach
+0   2      2                  0   3      3
+1   3      4  >= 4 -> true    1   2      3
+                              2   1      3
+                              3   0      3
+                              4   -     i=4 > reach 3 -> false
+```
+
+*Above: Jump Game: `reach` is the farthest index; if i goes past reach we are stuck.*
+
+```mermaid
+flowchart LR
+    subgraph L0["Level 0"]
+        I0["i=0, a=2"]
+    end
+    subgraph L1["Level 1: 1 jump"]
+        I1["i=1, a=3"]
+        I2["i=2, a=1"]
+    end
+    subgraph L2["Level 2: 2 jumps"]
+        I3["i=3"]
+        I4["i=4 last"]
+    end
+    I0 --> I1
+    I0 --> I2
+    I1 --> I3
+    I1 --> I4
+    I2 --> I3
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class I4 hot
+```
+
+*Above: Jump Game II works like BFS levels: in a = [2, 3, 1, 1, 4] the last index is on level 2, so 2 jumps.*
+
+```text
+gas  = [ 1,  2,  3,  4,  5 ]
+cost = [ 3,  4,  5,  1,  2 ]
+diff = [-2, -2, -2,  3,  3 ]     total = 0 >= 0, answer exists
+
+i=0: tank -2 < 0  -> start = 1, tank = 0
+i=1: tank -2 < 0  -> start = 2, tank = 0
+i=2: tank -2 < 0  -> start = 3, tank = 0
+i=3: tank  3
+i=4: tank  6      -> answer start = 3
+```
+
+*Above: Gas Station: when the tank goes negative no start in that range works, so restart from the next index.*
 
 ```cpp
 // LC 55: can we reach the last index?
@@ -125,6 +248,21 @@ int canCompleteCircuit(vector<int>& gas, vector<int>& cost) {
 
 ## Heap-based greedy (Huffman-like)
 
+```mermaid
+flowchart TD
+    R["15"] --> A["6"]
+    R --> B["9"]
+    B --> C["4"]
+    B --> D["5"]
+    D --> E["2"]
+    D --> F["3"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class R hot
+```
+
+*Above: ropes [4, 3, 2, 6]: first 2+3=5, then 4+5=9, then 6+9=15; cost 5 + 9 + 15 = 29.*
+
 ```cpp
 // Connect ropes: always combine the two cheapest
 long long connectRopes(vector<int>& r) {
@@ -141,6 +279,15 @@ long long connectRopes(vector<int>& r) {
 ```
 
 ## When greedy fails → DP
+
+```text
+amount 6, coins {1, 3, 4}
+
+greedy:   6 --4--> 2 --1--> 1 --1--> 0      3 coins
+optimal:  6 --3--> 3 --3--> 0               2 coins
+```
+
+*Above: a counter-example for greedy coin change: taking the biggest coin first is not always best.*
 
 - **Coin change**, coins = {1, 3, 4}, amount 6: greedy 4+1+1 = 3 coins; optimal 3+3 = 2 coins. Greedy works for "canonical" systems like Indian currency, not arbitrary ones → [DP](15-dp.md).
 - **0/1 knapsack**: value/weight ratio greedy fails; for fractional knapsack greedy is correct.

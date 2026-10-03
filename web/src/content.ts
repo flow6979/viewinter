@@ -56,7 +56,7 @@ const ragFiles = import.meta.glob('../../content/09-rag/*.md', { query: '?raw', 
 const dsaFiles = import.meta.glob('../../content/10-dsa/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 // English mirrors live in content-en/ with the same paths; missing files fall back to Hinglish
-const enFiles = import.meta.glob('../../content-en/0*/*.md', {
+const enFiles = import.meta.glob(['../../content-en/0*/*.md', '../../content-en/1*/*.md'], {
   query: '?raw',
   import: 'default',
   eager: true,

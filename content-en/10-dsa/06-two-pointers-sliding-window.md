@@ -46,6 +46,33 @@ flowchart TD
 
 > **Example:** [1, 2, 4, 7, 11], target 9. (1+11=12 > 9) r--. (1+7=8 < 9) l++. (2+7=9) found.
 
+```text
+i:        0   1   2   3   4
+a:      [ 1,  2,  4,  7, 11 ]        target = 9
+
+Step 1:   L               R          1 + 11 = 12 > 9   -> R--
+Step 2:   L           R              1 + 7  = 8  < 9   -> L++
+Step 3:       L       R              2 + 7  = 9        -> found
+```
+
+*Above: each step moves one pointer inward; neither ever moves back.*
+
+```mermaid
+flowchart TD
+    S["s = a[l] + a[r]"] --> C{"compare s with target"}
+    C -->|"s < target"| L["l++ : need bigger"]
+    C -->|"s > target"| R["r-- : need smaller"]
+    C -->|"s == target"| F["record, skip duplicates, l++ r--"]
+    L --> S
+    R --> S
+    F --> S
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class F hot
+```
+
+*Above: the opposite-ends decision: sum too small moves left forward, too big moves right back.*
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
@@ -93,6 +120,46 @@ vector<vector<int>> threeSum(vector<int>& a) {
 > | 4 | b | l → 2 | "cab" | 3 |
 > | 7 | b | l → 7 | "b" | 3 |
 
+```text
+i:        0   1   2   3   4   5
+a:      [ 2,  1,  5,  1,  3,  2 ]        k = 3
+
+Step 1:   L-------R                      sum = 2+1+5 = 8    best 8
+Step 2:       L-------R                  8 - 2 + 1   = 7    best 8
+Step 3:           L-------R              7 - 1 + 3   = 9    best 9
+Step 4:               L-------R          9 - 5 + 2   = 6    best 9
+```
+
+*Above: fixed window: one element enters, one leaves; the sum updates in O(1).*
+
+```text
+i:        0  1  2  3  4  5  6  7
+s:        a  b  c  a  b  c  b  b
+
+r=2:      L-----R                  "abc"   valid       best 3
+r=3:      x  L-----R               'a' repeat -> drop s[0], "bca"
+r=5:            x  L-----R         'c' repeat -> drop s[2], "abc"
+r=6:               x  x  L--R      'b' repeat -> drop s[3], s[4], "cb"
+r=7:                     x  x  LR  'b' repeat -> drop s[5], s[6], "b"
+```
+
+*Above: variable window: R always advances, L advances until the window is valid again (x = dropped).*
+
+```mermaid
+flowchart TD
+    E["1. expand: add s[r]"] --> V{"window valid?"}
+    V -->|"no"| S["2. shrink: remove s[l], l++"]
+    S --> V
+    V -->|"yes"| U["3. update best"]
+    U --> N["r++"]
+    N --> E
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class U hot
+```
+
+*Above: the sliding window template: expand, shrink while invalid, update.*
+
 ```cpp
 // Fixed window: max sum of any subarray of size k
 long long maxSumK(const vector<int>& a, int k) {
@@ -129,6 +196,21 @@ int lengthOfLongestSubstring(const string& s) {
 
 **In one line:** counting "exactly K" directly with a window is hard; use `exactly(K) = atMost(K) - atMost(K-1)`. In `atMost`, each r adds `r - l + 1` subarrays.
 
+```text
+atMost(2) on a = [1, 2, 1, 2, 3]
+
+r   a[r]   window after shrink   l   r-l+1   running total
+0   1      [1]                   0   1       1
+1   2      [1,2]                 0   2       3
+2   1      [1,2,1]               0   3       6
+3   2      [1,2,1,2]             0   4       10
+4   3      [2,3]                 3   2       12
+
+atMost(1) = 5   ->   exactly(2) = 12 - 5 = 7
+```
+
+*Above: at each r, `r - l + 1` new subarrays (those ending at r) are counted.*
+
 ```cpp
 // LC 992: subarrays with exactly k distinct integers
 int atMost(vector<int>& a, int k) {
@@ -152,6 +234,33 @@ int subarraysWithKDistinct(vector<int>& a, int k) {
 ## Fast/slow pointers
 
 **In one line:** slow moves 1 step, fast moves 2. If there is a cycle they meet; when fast reaches the end, slow is at the middle.
+
+```mermaid
+flowchart LR
+    A["1"] --> B["2"] --> C["3"] --> D["4"] --> E["5"]
+    E --> C
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class C hot
+```
+
+*Above: a list with a cycle: 5 points back to 3; 3 is where the cycle starts.*
+
+```text
+step   slow   fast
+0      1      1
+1      2      3
+2      3      5
+3      4      4      <- meet at 4, so a cycle exists
+
+find start: p = head, q = meeting node, both 1 step
+       p      q
+0      1      4
+1      2      5
+2      3      3      <- meet at 3 = cycle start
+```
+
+*Above: Floyd: first find the meeting point, then step once each from head and the meeting point to reach the cycle start.*
 
 ```cpp
 struct ListNode { int val; ListNode* next; };

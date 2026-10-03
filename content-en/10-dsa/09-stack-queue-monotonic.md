@@ -31,6 +31,21 @@ Stacks (LIFO) and queues (FIFO) look simple, but a **monotonic stack** and a **m
 
 **In one line:** push opening brackets; on a closing bracket the top must match; the stack must be empty at the end.
 
+```text
+s = "{[()]}"
+
+read '{'      read '['      read '('      read ')'      read ']'      read '}'
+                            |  (  |
+              |  [  |       |  [  |       |  [  |
+|  {  |       |  {  |       |  {  |       |  {  |       |  {  |
++-----+       +-----+       +-----+       +-----+       +-----+       +-----+
+push          push          push          pop '('       pop '['       pop '{'
+
+end: stack empty -> valid
+```
+
+*Above: every closing bracket matches the top; an empty stack at the end means valid.*
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
@@ -68,6 +83,33 @@ bool isValid(const string& s) {
 >
 > Result: [5, 5, 6, 6, -1].
 
+```text
+a = [2, 1, 5, 3, 6], stack holds values (indices in code)
+
+i=1 (a=1)       i=2 (a=5)                                       i=3 (a=3)       i=4 (a=6)
+|  1  |                                                         |  3  |
+|  2  |         |  2  |                         |  5  |         |  5  |         |  6  |
++-----+         +-----+         +-----+         +-----+         +-----+         +-----+
+push 1          pop 1: ans=5    pop 2: ans=5    push 5          push 3          pop 3,5; push 6
+```
+
+*Above: stack values stay decreasing; a bigger element pops the smaller ones and becomes their answer.*
+
+```mermaid
+flowchart LR
+    A["2"] -->|"next greater"| C["5"]
+    B["1"] --> C
+    D["3"] --> E["6"]
+    C --> E
+    E --> N["-1"]
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class C,E hot
+    class N dim
+```
+
+*Above: each element points to its next greater; 6 has none, so -1.*
+
 ```cpp
 vector<int> nextGreater(const vector<int>& a) {
     int n = a.size();
@@ -95,6 +137,26 @@ vector<int> nextGreater(const vector<int>& a) {
 
 **In one line:** for each bar, the first smaller bar on the left and on the right bound its width. Popping from an increasing stack gives both boundaries.
 
+```text
+h = [2, 1, 5, 6, 2, 3]
+
+          #
+       X  X
+       X  X
+       X  X     #
+ #     X  X  #  #
+ #  #  X  X  #  #
+ 2  1  5  6  2  3     <- height
+ 0  1  2  3  4  5     <- index
+
+At i=4 (h=2), stack = [1, 2, 3] (heights 1, 5, 6):
+  pop 3 (h=6): left = 2, width = 4 - 2 - 1 = 1, area 6
+  pop 2 (h=5): left = 1, width = 4 - 1 - 1 = 2, area 10  <- best (X)
+  h[1]=1 < 2, stop, push 4
+```
+
+*Above: when a bar is popped its height is fixed; current i is the right boundary and the new stack top is the left.*
+
 ```cpp
 // LC 84
 int largestRectangleArea(vector<int>& h) {
@@ -120,6 +182,22 @@ int largestRectangleArea(vector<int>& h) {
 
 **In one line:** the deque holds indices with decreasing values; the front is the window max. Pop the front when it leaves the window, pop from the back while the new element is bigger.
 
+```text
+a = [1, 3, -1, -3, 5, 3, 6, 7], k = 3      deque shows values, front on the left
+
+i   a[i]   action                          deque          max
+0   1      push                            [1]            -
+1   3      pop back 1                      [3]            -
+2   -1     push                            [3, -1]        3
+3   -3     push                            [3, -1, -3]    3
+4   5      pop front 3 (old), pop -3, -1   [5]            5
+5   3      push                            [5, 3]         5
+6   6      pop back 3, 5                   [6]            6
+7   7      pop back 6                      [7]            7
+```
+
+*Above: the deque stays decreasing: the front is always the window max, useless elements leave from the back.*
+
 ```cpp
 // LC 239
 vector<int> maxSlidingWindow(const vector<int>& a, int k) {
@@ -139,10 +217,59 @@ vector<int> maxSlidingWindow(const vector<int>& a, int k) {
 
 ## Queue and BFS
 
+```text
+op        in (top ->)    out (top ->)    returns
+push 1    [1]            []
+push 2    [1, 2]         []
+push 3    [1, 2, 3]      []
+pop       []             [3, 2, 1]       out was empty: move all, pop -> 1
+pop       []             [3, 2]          pop -> 2
+push 4    [4]            [3]
+pop       [4]            []              pop -> 3 (out still had one)
+```
+
+*Above: queue from two stacks: pour `in` into `out` only when `out` is empty, so amortised O(1).*
+
 - `queue<T>`: push at back, pop from front. BFS = queue + visited; each level is one "step" ([Graphs](13-graphs.md)).
 - Queue from stacks (LC 232): two stacks; move `in` into `out` only when `out` is empty → amortised O(1).
 
 ## Linked list basics
+
+```mermaid
+flowchart LR
+    P["prev = null"]
+    A["1"] --> B["2"] --> C["3"] --> N["null"]
+    H["cur = head"] -.-> A
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class A hot
+```
+
+*Above: before reverse: prev is null, cur is at head.*
+
+```mermaid
+flowchart LR
+    B["2"] --> A["1"] --> N0["null"]
+    C["3"] --> N1["null"]
+    P["prev"] -.-> B
+    Q["cur"] -.-> C
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class B,C hot
+```
+
+*Above: after two iterations: 1 and 2 are reversed, 3 is still pending; without saving `nxt` we would lose 3.*
+
+```mermaid
+flowchart LR
+    C["3"] --> B["2"] --> A["1"] --> N["null"]
+    H["return prev"] -.-> C
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+    class C hot
+```
+
+*Above: after reverse: cur is null and prev is the new head.*
 
 ```cpp
 struct ListNode { int val; ListNode* next; ListNode(int v) : val(v), next(nullptr) {} };
@@ -169,6 +296,16 @@ ListNode* mergeTwo(ListNode* a, ListNode* b) {        // LC 21
     return dummy.next;
 }
 ```
+
+```text
+a:  1 -> 3 -> 5
+b:  2 -> 4
+
+dummy -> 1 -> 2 -> 3 -> 4 -> 5
+         a    b    a    b    a (rest of a attached)
+```
+
+*Above: merge: at each step attach the smaller node to `t->next`; the dummy removes the head special case.*
 
 - Cycle detection: Floyd fast/slow ([Two Pointers](06-two-pointers-sliding-window.md)). K-th from end: send fast k steps ahead.
 

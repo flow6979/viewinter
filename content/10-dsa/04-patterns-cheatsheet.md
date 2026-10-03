@@ -12,6 +12,17 @@ Zyaada tar interview problems ~15 patterns me se kisi ek ka bhes badla hua roop 
 
 **Ek line me:** judge lagbhag 1e8 simple operations per second karta hai; wo complexity chuno jisme n ~1 second me fit ho.
 
+```text
+n up to:     10-12      20-25     100-500     5000      1e5 - 1e6          1e9+
+             |          |         |           |         |                  |
+max cost:    n!         2^n       n^3         n^2       n log n  or  n     log n, sqrt n, 1
+
+n = 1e5:   n^2     = 1e10   100x over the ~1e8/sec budget  -> TLE
+           n log n ≈ 1.7e6  well inside                    -> OK
+```
+
+*Upar: n dekho, ladder pe jagah dhoondo, wahi complexity target karo.*
+
 | n kitna tak | Max complexity | Typical techniques |
 |---|---|---|
 | ≤ 10–12 | O(n!), O(n · n!) | Permutations, brute-force backtracking |
@@ -59,6 +70,121 @@ int main() {
 | "Prefix of words", autocomplete | Trie | – |
 | "Duplicate / pehle dekha / frequency" | Hash map / set | [STL](03-stl.md) |
 | "XOR", "single number", chhote n ke subsets | Bit manipulation | [STL](03-stl.md) |
+
+**Har pattern ek nazar me:**
+
+```text
+Two pointers (sorted, target = 10)
+i:     0  1  2  3  4  5
+a:   [ 1, 3, 4, 6, 8, 9 ]
+       L              R     1 + 9 = 10  found
+sum too small -> L++,  sum too big -> R--
+```
+
+*Upar: two pointers: dono ends se andar aao, har step pe ek pointer hilao.*
+
+```text
+Sliding window (longest window with sum <= 7)
+a:   [ 2, 1, 5, 1, 3, 2 ]
+       L--R                 sum 3   expand R
+       L-----R              sum 8   too big, shrink L
+          L--R              sum 6   expand R
+          L-----R           sum 7   best length 3
+```
+
+*Upar: sliding window: R se badhao, condition toote to L se chhota karo.*
+
+```text
+Prefix sums
+a:        [ 3, 1, 4, 1, 5 ]
+pre:   [ 0, 3, 4, 8, 9, 14 ]
+sum(a[1..3]) = pre[4] - pre[1] = 9 - 3 = 6
+```
+
+*Upar: prefix sums: ek baar O(n) build, phir har range sum O(1).*
+
+```text
+Binary search on answer (is speed k enough?)
+k:      1  2  3  4  5  6  7  8
+ok(k):  F  F  F  T  T  T  T  T
+                 ^ answer = first T
+```
+
+*Upar: binary search on answer: predicate monotonic hai, pehla `T` dhoondo.*
+
+```text
+Monotonic stack (next greater element)
+a:   [ 2, 1, 5, 3 ]
+see 2: stack [2]
+see 1: stack [2, 1]
+see 5: pop 1 (next greater = 5), pop 2 (next greater = 5), stack [5]
+see 3: stack [5, 3]           left over -> no next greater (-1)
+```
+
+*Upar: monotonic stack: bada element aate hi chhote waale pop hote hain aur unka answer mil jaata hai.*
+
+```mermaid
+flowchart LR
+    subgraph L0["Level 0"]
+        S["S"]
+    end
+    subgraph L1["Level 1"]
+        A["A"]
+        B["B"]
+    end
+    subgraph L2["Level 2"]
+        C["C"]
+        T["T"]
+    end
+    S --> A
+    S --> B
+    A --> C
+    B --> T
+    class T hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Upar: BFS level by level phailta hai, isliye unweighted graph me pehli baar `T` mile wahi shortest distance (2) hai.*
+
+```mermaid
+flowchart TD
+    R["{ }"] -- "take 1" --> A["{1}"]
+    R -- "skip 1" --> B["{ }"]
+    A -- "take 2" --> C["{1,2}"]
+    A -- "skip 2" --> D["{1}"]
+    B -- "take 2" --> E["{2}"]
+    B -- "skip 2" --> F["{ }"]
+    class C,D,E,F hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Upar: backtracking: har element pe take/skip; leaves saare subsets hain (2^n).*
+
+```mermaid
+flowchart LR
+    A["dp i-2"] --> C["dp i"]
+    B["dp i-1"] --> C
+    C --> D["dp i+1"]
+    class C hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Upar: DP: har state chhote states se banti hai, jaise `dp[i] = dp[i-1] + dp[i-2]`; har state ek hi baar compute hoti hai.*
+
+```mermaid
+flowchart BT
+    B["2"] --> A["1"]
+    C["3"] --> A
+    E["5"] --> D["4"]
+    class A,D hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Upar: DSU: har group ek tree hai jiska root representative hai; yahan do groups {1,2,3} aur {4,5}.*
 
 ## ⭐ Decision flow
 

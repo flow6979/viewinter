@@ -26,6 +26,20 @@ Interview me C++ OOP teen jagah chahiye: design-style questions (LRU Cache, Min 
 
 **Ek line me:** class data (members) aur functions (methods) ko ek saath bundle karti hai; constructor valid initial state set karta hai, destructor cleanup karta hai, aur `this` current object ko point karta hai.
 
+```mermaid
+classDiagram
+    class BankAccount {
+        -string owner
+        -long balance
+        +BankAccount(string owner, long initial)
+        +withdraw(long amt) bool
+        +deposit(long amt) void
+        +getBalance() long
+    }
+```
+
+*Upar: `-` private data hai, `+` public methods hain; bahar wale sirf methods se state badal sakte hain (encapsulation).*
+
 > **Example:** `BankAccount` ka balance kabhi negative nahi hona chahiye. `balance` ko private rakho aur sirf `deposit`/`withdraw` se change hone do. Yahi **encapsulation** hai.
 
 ```cpp
@@ -56,6 +70,22 @@ int main() {
 }
 ```
 
+```text
+BankAccount acc("Riya", 1000);
+
+acc  (object on the stack)
++-------------------------------+
+| owner   : string    "Riya"    |   private
+| balance : long long  1000     |   private
++-------------------------------+
+Methods are NOT stored inside the object. One copy lives in code:
+
+acc.withdraw(300)   ==   BankAccount::withdraw(this = &acc, 300)
+                         this->balance: 1000 -> 700
+```
+
+*Upar: object me sirf data hota hai; method call me `this` us object ka address hota hai.*
+
 | Access specifier | Kisko dikhta hai |
 |---|---|
 | `private` | Sirf class khud (`class` ka default) |
@@ -70,6 +100,27 @@ int main() {
 ## Inheritance
 
 **Ek line me:** derived class base class ko reuse aur extend karti hai ("is-a" relation).
+
+```mermaid
+classDiagram
+    class Vehicle {
+        #int wheels
+        +Vehicle(int w)
+        +getWheels() int
+    }
+    class Car {
+        -string brand
+        +Car(string b)
+        +info() string
+    }
+    class Engine {
+        +int hp
+    }
+    Vehicle <|-- Car : is-a
+    Car *-- Engine : has-a
+```
+
+*Upar: khali triangle arrow inheritance ("is-a") hai; diamond composition ("has-a") hai. `#` protected hai.*
 
 ```cpp
 class Vehicle {
@@ -91,9 +142,43 @@ public:
 - Construction order: base → derived. Destruction: derived → base.
 - Jab sach me "is-a" na ho to composition ("has-a") lo: `Car` ke paas `Engine` hai.
 
+```text
+Car c("Tata");
+
+object layout of c                     order
++----------------------------+         construct:  Vehicle(4)  ->  Car body
+| Vehicle part: wheels = 4   |  base               (base first)
+|----------------------------|         destroy:    ~Car()      ->  ~Vehicle()
+| Car part:     brand="Tata" |  derived            (derived first)
++----------------------------+
+```
+
+*Upar: derived object ke andar pehle base part hota hai; banana base se, todna derived se.*
+
 ## ⭐ Virtual functions aur runtime polymorphism
 
 **Ek line me:** base method ko `virtual` mark karo taaki base pointer/reference se call karne pe derived version chale, runtime pe vtable se decide hota hai.
+
+```mermaid
+classDiagram
+    class Shape {
+        <<abstract>>
+        +area()* double
+    }
+    class Circle {
+        -double r
+        +area() double
+    }
+    class Rect {
+        -double w
+        -double h
+        +area() double
+    }
+    Shape <|-- Circle
+    Shape <|-- Rect
+```
+
+*Upar: `Shape` abstract hai (`area()*` pure virtual); `Circle` aur `Rect` apna `area` override karte hain.*
 
 ```cpp
 class Shape {                                   // abstract: has a pure virtual
@@ -131,8 +216,36 @@ double total(const vector<unique_ptr<Shape>> &shapes) {
 - **Virtual destructor:** iske bina base pointer se derived object `delete` karoge to derived destructor chalega hi nahi (leak / UB).
 - `override` likhne se compiler check karta hai ki tum sach me kuch override kar rahe ho.
 
+```text
+Circle object               Circle's vtable (one per class)
++--------------+            +-----------------------------+
+| vptr --------+----------> | area   -> Circle::area      |
+| r = 2.0      |            | ~Shape -> Circle::~Circle   |
++--------------+            +-----------------------------+
+
+Rect object                 Rect's vtable
++--------------+            +-----------------------------+
+| vptr --------+----------> | area   -> Rect::area        |
+| w = 3, h = 4 |            | ~Shape -> Rect::~Rect       |
++--------------+            +-----------------------------+
+
+sh->area():  read sh->vptr  ->  slot "area"  ->  call that function
+```
+
+*Upar: har object ka hidden `vptr` uski class ki vtable ko point karta hai; virtual call wahi slot dekh ke chalta hai.*
+
 **Interview tip:** vtable ek line me: "jis class me virtual functions hain uski function pointers ki ek table hoti hai; har object me ek hidden pointer (vptr) us table ko point karta hai; virtual call wahan se lookup hota hai."
 **Common galti:** pointer/reference ki jagah object se call karna (`Shape s = circle;` derived part ko slice kar deta hai).
+
+```text
+Circle c(2);              Shape s = c;  (by value)       Shape &ref = c;
++------------+            +------------+                 ref ----> c  (whole object)
+| Shape part |  copies    | Shape part |                 ref.area()  ->  Circle::area
+| r = 2      |  only -->  +------------+
++------------+  this      r is sliced off, area() is Shape's
+```
+
+*Upar: by value copy sirf base part le jaati hai (slicing); reference/pointer poore object ko dekhta hai.*
 
 ## Operator overloading aur static members
 
@@ -158,9 +271,28 @@ int Counter::created = 0;              // define outside the class
 - `static` member = class-level; `static` method me `this` nahi hota aur wo sirf static members chhoo sakta hai.
 - `<<` ko free function ki tarah overload karo: `ostream& operator<<(ostream&, const Point&)`.
 
+```text
+Counter a, b, c;
+
+a [ no copy of created ] --+
+b [ no copy of created ] --+--> Counter::created = 3   (one shared copy, lives outside objects)
+c [ no copy of created ] --+
+```
+
+*Upar: `static` member class ka hota hai, har object ka nahi; teeno objects ek hi counter share karte hain.*
+
 ## ⭐ sort aur priority_queue ke comparators
 
 **Ek line me:** `sort` poochta hai "kya a, b se pehle aana chahiye?"; `priority_queue` top pe wo rakhta hai jo comparator ke hisaab se *last* hai, isliye "greater" comparator se min-heap banta hai.
+
+```text
+cmp(a, b) = a.priority > b.priority
+
+sort:            cmp(a, b) true  =>  a goes BEFORE b         ->  3, 2, 1   (descending)
+priority_queue:  cmp(a, b) true  =>  a ranks LOWER than b    ->  top = 1   (min-heap)
+```
+
+*Upar: wahi comparator `sort` me descending aur `priority_queue` me min-heap deta hai.*
 
 ```cpp
 struct Task { int priority; string name; };
@@ -181,6 +313,17 @@ void demo() {
     cout << pq.top().name << "\n";           // "a" (smallest priority)
 }
 ```
+
+```mermaid
+flowchart TD
+    A["1, a"] --> B["3, c"]
+    A --> C["2, b"]
+    class A hot
+    classDef hot fill:#ffffff,stroke:#ffffff,color:#000000,font-weight:bold
+    classDef dim fill:none,stroke-dasharray:4 3,opacity:0.6
+```
+
+*Upar: `ByPriorityMin` ke saath heap; top pe sabse chhoti priority `(1, a)`.*
 
 - Comparator **strict weak ordering** hona chahiye: `<` use karo, kabhi `<=` nahi. `<=` se `sort` crash kar sakta hai.
 - `set<Task, ByPriorityMin>` "na a<b na b<a" ko **equal** maanta hai aur duplicates drop kar deta hai.
