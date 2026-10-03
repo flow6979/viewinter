@@ -269,7 +269,7 @@ export function ProblemView({ id }: { id: string }) {
               ['problem', tr('Problem', 'Problem')],
               ['hints', tr('Hints', 'Hints')],
               ['solution', tr('Solution', 'Solution')],
-              ['ai', 'Ask AI'],
+              ['ai', '✦ Ask AI'],
             ] as const
           ).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
@@ -362,7 +362,7 @@ export function ProblemView({ id }: { id: string }) {
         </div>
         <div className="run-bar">
           <span className="muted small">{tr('Ctrl/⌘ + Enter = Run', 'Ctrl/⌘ + Enter = Run')}</span>
-          <button className="ghost-btn" onClick={() => setTab('ai')}>
+          <button className="ghost-btn ai-link" onClick={() => setTab('ai')}>
             <Icon name="sparkle" size={14} /> {tr('Atke ho? AI se poochho', 'Stuck? Ask AI')}
           </button>
           <button className="btn" onClick={() => judge('run')} disabled={busy}>

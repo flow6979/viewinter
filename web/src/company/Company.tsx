@@ -270,7 +270,7 @@ function CompanyCard({ q, report, prep, known }: { q: CompanyQuestion; report: C
         {q.lc ? <span className="mono muted small"> · LeetCode #{q.lc}</span> : null}
       </p>
       <div className="q-actions">
-        <button className={`q-btn ${panel === 'ai' ? 'on' : ''}`} onClick={() => (panel === 'ai' ? setPanel('') : aiAnswer())}>
+        <button className={`q-btn ai-btn ${panel === 'ai' ? 'on' : ''}`} onClick={() => (panel === 'ai' ? setPanel('') : aiAnswer())}>
           <Icon name="sparkle" size={15} /> {ai ? tr('AI answer', 'AI answer') : tr('AI answer banao', 'Get AI answer')}
         </button>
         <button className={`q-btn primary ${panel === 'mine' ? 'on' : ''}`} onClick={() => setPanel(panel === 'mine' ? '' : 'mine')}>
@@ -294,7 +294,7 @@ function CompanyCard({ q, report, prep, known }: { q: CompanyQuestion; report: C
       {importer.error && <p className="error small">{importer.error}</p>}
 
       {panel === 'ai' && (
-        <div className="q-panel">
+        <div className="q-panel ai-panel">
           {ai || streaming ? <Markdown text={ai || streaming} showAllCode /> : busy ? <p className="muted small">{tr('Likh raha hai…', 'Writing…')}</p> : null}
           {error && <p className="error small">{error}</p>}
           {ai && !busy && (

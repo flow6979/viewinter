@@ -1,7 +1,8 @@
 // Practice problems: the problem index, lazy problem files, points for solved problems and code drafts.
 // Solved problems live in users/{uid}.dsa.solved when logged in, in this browser otherwise (moved in on login).
 import { useCallback, useEffect, useState } from 'react'
-import { collection, doc, getDoc, getDocs, onSnapshot, setDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore'
+import { syncCollection } from '../firestoreCache'
 import { db } from '../firebase'
 import { readLocal, useStore, writeLocal } from '../store'
 import type { Compare, Json, Signature } from './harness'
@@ -82,9 +83,9 @@ export function useProblemIndex(): ProblemMeta[] {
   useEffect(() => {
     const local = Object.values(readLocal<Record<string, Problem>>(LOCAL_GEN, {})).map(metaOf)
     if (!db) return setExtra(local)
-    getDocs(collection(db, 'dsaIndex'))
-      .then((snap) => {
-        const shared = snap.docs.map((d) => ({ ...(d.data() as ProblemMeta), id: d.id, ai: true }))
+    syncCollection('dsaIndex', 'number')
+      .then((docs) => {
+        const shared = docs.map((d) => ({ ...(d.data as ProblemMeta), id: d.id, ai: true }))
         const ids = new Set(shared.map((m) => m.id))
         setExtra([...shared, ...local.filter((m) => !ids.has(m.id))])
       })

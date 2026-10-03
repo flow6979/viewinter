@@ -238,8 +238,8 @@ export function App() {
             {desktop && <Resizer side="left" width={panelW} {...PANEL} onChange={setPanelW} label={tr('Panel ki width', 'Panel width')} />}
             <div className="tabs" role="tablist">
               {(['notes', 'ask', ...(page.kind === 'question' ? ['mock'] : [])] as Tab[]).map((t) => (
-                <button key={t} role="tab" aria-selected={effectiveTab === t} className={effectiveTab === t ? 'on' : ''} onClick={() => setTab(t)}>
-                  {{ notes: 'Notes', ask: 'Ask AI', mock: 'Mock' }[t]}
+                <button key={t} role="tab" aria-selected={effectiveTab === t} className={`tab-${t} ${effectiveTab === t ? 'on' : ''}`} onClick={() => setTab(t)}>
+                  {{ notes: 'Notes', ask: '✦ Ask AI', mock: 'Mock' }[t]}
                 </button>
               ))}
               <button

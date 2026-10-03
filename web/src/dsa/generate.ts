@@ -40,7 +40,7 @@ export type Step = 'search' | 'spec' | 'reference' | 'crosscheck' | 'repair' | '
 export async function findTopProblems(opts: { topic?: string; company?: string; count: number }, signal?: AbortSignal): Promise<{ items: Candidate[]; sources: Source[] }> {
   const what = [opts.company && `asked at ${opts.company}`, opts.topic && `on the topic "${opts.topic}"`].filter(Boolean).join(' ')
   const prompt = `Search the web (LeetCode company tags and discuss, interview experiences on LeetCode/GeeksforGeeks/Glassdoor/AmbitionBox, NeetCode/Striver lists) for the ${opts.count} most frequently asked coding interview problems ${what || 'in software engineering interviews'} in the last 2 years.
-Only include problems solvable as a single C++ function (no "design a class" problems, no interactive problems, no SQL/shell).
+Skip interactive problems, concurrency problems and SQL/shell; design-class and custom-node problems are fine.
 Return ONLY a JSON array, most frequent first: [{"title": "LeetCode title", "lc": <LeetCode number or null>, "url": "https://leetcode.com/problems/<slug>/", "difficulty": "easy|medium|hard", "topic": one of ${JSON.stringify(TOPICS)}, "why": "one short line: where it was reported / why it matters"}]`
   const { data, sources } = await groundedJson<Candidate[]>(prompt, signal)
   const items = (Array.isArray(data) ? data : []).filter((c) => c && typeof c.title === 'string').slice(0, opts.count)
@@ -84,7 +84,11 @@ interface Spec {
 
 const SPEC_RULES = `Our judge wraps a LeetCode-style \`class Solution\` in a main() that reads test arguments and prints the return value.
 Supported C++ types (params and return): int, long long, double, bool, char, string, vector<int>, vector<long long>, vector<double>, vector<bool>, vector<char>, vector<string>, vector<vector<int>>, vector<vector<char>>, vector<vector<string>>, TreeNode* (LeetCode TreeNode, given as level-order array with null), ListNode* (given as array), and void (only as return, then set "mutates" to the index of the argument whose final value is the answer).
-If the original uses another type (design classes, Node* graphs, vector<ListNode*>), ADAPT it to these types (e.g. a graph as int n + vector<vector<int>> edges) and say so in the statement. If impossible, return {"unsupported": "reason"}.
+If the original uses other types you MUST ADAPT it (never refuse for this reason) and explain the format in the statement:
+- Custom node structures (Quad-Tree Node, N-ary Node, Node with random pointer, graph Node, vector<ListNode*>): use LeetCode's own serialized form for input and output. Examples: Construct Quad Tree → \`vector<vector<int>> construct(vector<vector<int>>& grid)\` returning the level-order list of [isLeaf, val] pairs with [-1, -1] where LeetCode prints null; Clone Graph → \`vector<vector<int>> cloneGraph(vector<vector<int>>& adjList)\`; Copy List with Random Pointer → \`vector<vector<int>> copyRandomList(vector<vector<int>>& nodes)\` with [val, randomIndex or -1]; Merge k Sorted Lists → \`vector<int> mergeKLists(vector<vector<int>>& lists)\`. The candidate may define their own struct inside \`class Solution\` and convert; the reference solution must do exactly that.
+- Design problems (LRU Cache, Min Stack, Trie, LFU…): \`vector<string> simulate(vector<string>& ops, vector<vector<int>>& args)\` (or vector<vector<string>> args when arguments are strings) that replays LeetCode's operation list and returns every operation's output as a string, "null" for void operations — exactly like LeetCode's example output. The reference solution defines the real class inside \`class Solution\` (as a nested class) and drives it.
+- Graphs as int n + vector<vector<int>> edges.
+Only return {"unsupported": "reason"} for interactive problems (guess API, ArrayReader…), concurrency/threads problems, or SQL/shell.
 The answer must be unique for every test input; if the original allows "any order" use compare "unordered" (list of items in any order) or "unordered-nested" (also inner order free); if it allows any valid answer, change the statement so it is unique (e.g. "return the lexicographically smallest"). Use "float" for double answers.
 Tests: exactly 35 test inputs as argument arrays, varied: edge cases (min sizes, duplicates, negatives, all equal, sorted, empty where allowed) and random-looking medium cases. Keep every test small enough to type: arrays ≤ 300 elements, strings ≤ 300 chars, grids ≤ 20×20, trees ≤ 100 nodes, graphs ≤ 100 nodes. Values must fit their C++ types. Do NOT include expected outputs (we compute them).
 reference_cpp: a correct, efficient, complete \`class Solution { public: ... };\` with exactly the signature (C++17, <bits/stdc++.h> and using namespace std are already included; TreeNode/ListNode are defined).
@@ -132,16 +136,16 @@ export async function generateProblem(source: { url?: string; title?: string; lc
   const slug = source.url ? leetcodeSlug(source.url) : null
   const ask = slug ? `the LeetCode problem at https://leetcode.com/problems/${slug}/` : `the LeetCode problem "${source.title}"${source.lc ? ` (#${source.lc})` : ''}`
   const { data: facts, sources } = await groundedJson<Facts>(
-    `Look up ${ask} on the web. Return ONLY JSON: {"title": "...", "lc": <number or null>, "difficulty": "easy|medium|hard", "statement": "the full problem statement in your own words, precise", "constraints": ["..."], "examples": ["Input: ... Output: ... Explanation: ..."]}. If it is not a single-function coding problem (design class, interactive, SQL, shell) add "unsupported": "reason".`,
+    `Look up ${ask} on the web. Return ONLY JSON: {"title": "...", "lc": <number or null>, "difficulty": "easy|medium|hard", "statement": "the full problem statement in your own words, precise", "constraints": ["..."], "examples": ["Input: ... Output: ... Explanation: ..."]}. Note in "statement" whether it uses a custom node class or a design-class API (we will adapt it). If it is interactive, about threads, or SQL/shell, add "unsupported": "reason".`,
     signal,
   )
-  if (facts.unsupported) throw new Error(`Not supported by the judge: ${facts.unsupported}`)
+  // "Unsupported" from the lookup step is only a hint: the spec step adapts node/design problems itself
 
   // 2. Spec with tests and two independent solutions
   onStep('spec')
   let spec = await longJson<Spec>(`You are preparing a coding problem for an online judge.\n\nProblem facts:\n${JSON.stringify(facts)}\n\n${SPEC_RULES}\n\n${SPEC_SHAPE}`, signal)
   const bad = checkSpec(spec)
-  if (bad) throw new Error(`Could not turn this into a judge problem: ${bad}`)
+  if (bad) throw new Error(`This one cannot run on our judge (${bad}). Try another problem.`)
 
   const verify = async () => {
     const examples = spec.examples.filter((e) => argsOk(spec.signature, e.args))
@@ -183,7 +187,7 @@ export async function generateProblem(source: { url?: string; title?: string; lc
       signal,
     )
     const bad2 = checkSpec(spec)
-    if (bad2) throw new Error(`Could not turn this into a judge problem: ${bad2}`)
+    if (bad2) throw new Error(`This one cannot run on our judge (${bad2}). Try another problem.`)
     result = await verify()
     if (!result.ok) throw new Error(`Verification failed: ${result.why.split('\n')[0]}`)
   }

@@ -160,7 +160,7 @@ export function Quiz({ hasKey, onOpenSettings }: { hasKey: boolean; onOpenSettin
           <div className="quiz-meta">
             <span className="muted small">
               {page ? shortTitle(localize(page, lang).title) : current.topic} · {current.level}
-              {current.ai ? ' · AI' : ''}
+              {current.ai && <span className="ai-tag">AI</span>}
             </span>
             <button
               className={`quiz-star ${starred ? 'on' : ''}`}

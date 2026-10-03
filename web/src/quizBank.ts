@@ -3,7 +3,8 @@
 //   central  = Firestore `quiz` collection: questions Gemini wrote for anyone, saved once and reused
 //              by everybody, so the same topic is never generated twice
 //   local    = same as central, for people who are not logged in (stays in this browser)
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore'
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { syncCollection } from './firestoreCache'
 import { db } from './firebase'
 import { allPages, pageBySlug, type Page } from './content'
 import { generateJson } from './gemini'
@@ -77,8 +78,9 @@ export async function loadBank(): Promise<QuizQuestion[]> {
   let central: QuizQuestion[] = []
   if (db) {
     try {
-      const snap = await getDocs(query(collection(db, 'quiz'), where('v', '==', 1)))
-      central = snap.docs.map((d) => ({ ...(d.data() as QuizQuestion), id: d.id, ai: true })).filter(valid)
+      // Cached in the browser; only questions added since the last visit are read from Firestore
+      const docs = await syncCollection('quiz', 'timestamp')
+      central = docs.filter((d) => d.data.v === 1).map((d) => ({ ...(d.data as QuizQuestion), id: d.id, ai: true })).filter(valid)
     } catch {
       /* offline or rules: seed + local still work */
     }
