@@ -949,3 +949,19 @@ a.tile:hover { transform: scale(1.35); border-color: var(--ink); position: relat
 .tile.half { background: linear-gradient(135deg, color-mix(in srgb, var(--ink) 70%, var(--bg)) 50%, color-mix(in srgb, var(--ink) 14%, var(--bg)) 50%); border-color: color-mix(in srgb, var(--ink) 70%, var(--bg)); }
 .tile.done { background: var(--ink); border-color: var(--ink); }
 .ring-track { stroke: color-mix(in srgb, var(--ink) 16%, var(--bg)); }
+
+/* Plan card on the dashboard */
+.plan-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; padding: 22px 24px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(160deg, var(--surface-2), var(--surface) 60%); }
+.plan-card-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.plan-card-top { display: flex; justify-content: space-between; gap: 12px; }
+.plan-card h2 { margin: 0; font-size: clamp(1.3rem, 2.6vw, 1.7rem); letter-spacing: -0.03em; }
+.plan-card p { margin: 0; max-width: 60ch; }
+.plan-progress { height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 14%, var(--bg)); overflow: hidden; margin-top: 4px; }
+.plan-progress i { display: block; height: 100%; min-width: 6px; border-radius: 99px; background: var(--ink); transition: width 0.6s ease; }
+.plan-card-stats { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); }
+.plan-card-stats span:first-child { color: var(--ink); }
+.plan-card-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.plan-card-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; padding: 10px 16px; }
+.plan-card.empty { align-items: center; }
+@media (max-width: 760px) { .plan-card { grid-template-columns: 1fr; } .plan-card-actions .btn { max-width: none; } }
+a.btn { text-decoration: none; }

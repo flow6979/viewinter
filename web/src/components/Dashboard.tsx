@@ -44,10 +44,6 @@ export function Dashboard() {
   const all = groupStats(everything, progress)
   const started = everything.filter((p) => pageStats(p, progress).done > 0).length
 
-  // Today's slice of the personal plan (defaults until the user sets one in the Plan tab)
-  const input: PlanInput = profile.plan ?? { tracks: ['hld'], hours: 2, level: 'mid', days: 14 }
-  const plan = buildPlan(withListPages(input, profile.lists ?? []), (daysLeft ?? input.days ?? 14) + 1, (p) => pageStats(p, progress).complete)
-  const today = plan.days[0]
 
   const quick: [IconName, string, string, string][] = [
     ['target', 'Quiz', tr('MCQ practice', 'MCQ practice'), href('quiz')],
@@ -83,37 +79,7 @@ export function Dashboard() {
         ))}
       </nav>
 
-      <section className="dash-section">
-        <div className="dash-head">
-          <span className="eyebrow">{tr('Aaj', 'Today')}</span>
-          <a href={href('plan')} className="dash-link">
-            {profile.plan ? tr('Poora plan', 'Full plan') : tr('Plan banao', 'Make your plan')} <Icon name="arrow" size={14} />
-          </a>
-        </div>
-        {today?.revision ? (
-          <p className="muted">{tr('Revision day: Quick look, starred quiz aur ek mock interview.', 'Revision day: Quick look, starred quiz and one mock interview.')}</p>
-        ) : today && today.items.length ? (
-          <ol className="today-list">
-            {today.items.map((it, i) => {
-              const s = pageStats(it.page, progress)
-              return (
-                <li key={it.page.slug}>
-                  <a href={route(it.page)} className="today-row">
-                    <span className="today-n mono">{String(i + 1).padStart(2, '0')}</span>
-                    <span className="today-title">{shortTitle(localize(it.page, lang).title)}</span>
-                    <span className="today-meta mono">
-                      {it.track.toUpperCase()} · {s.done > 0 ? `${s.done}/${s.total}` : `${it.minutes}m`}
-                    </span>
-                    <Icon name="arrow" size={14} />
-                  </a>
-                </li>
-              )
-            })}
-          </ol>
-        ) : (
-          <p className="muted">{tr('Plan ke saare pages ho gaye. Quiz se revise karo.', 'Everything in your plan is done. Revise with the quiz.')}</p>
-        )}
-      </section>
+      <PlanCard />
 
       <section className="dash-section" aria-label="Progress">
         <div className="dash-head">
@@ -176,5 +142,89 @@ export function Dashboard() {
 
       <Guide />
     </div>
+  )
+}
+
+const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`)
+
+/** The plan at a glance: make one, or follow it (progress, today's load, next page) */
+function PlanCard() {
+  const { progress, profile } = useStore()
+  const { lang } = useLang()
+  const tr = useTr()
+
+  if (!profile.plan) {
+    return (
+      <section className="plan-card empty">
+        <div className="plan-card-main">
+          <span className="eyebrow">{tr('Study plan', 'Study plan')}</span>
+          <h2>{tr('30 second me apna plan banao', 'Make your plan in 30 seconds')}</h2>
+          <p className="muted">
+            {tr(
+              'Kitne din baaki aur roz kitne ghante, bas. Hum day-by-day plan bana denge, must-do topics pehle, aur roz tumhari progress se update hoga.',
+              'Days left and hours a day, that is it. You get a day-by-day plan with must-do topics first, updated every day from your progress.',
+            )}
+          </p>
+        </div>
+        <div className="plan-card-actions">
+          <a className="btn primary" href={href('plan')}>
+            {tr('Plan banao', 'Make plan')} <Icon name="arrow" size={15} />
+          </a>
+        </div>
+      </section>
+    )
+  }
+
+  const daysLeft = daysUntil(profile.interviewDate)
+  const input: PlanInput = profile.plan
+  const plan = buildPlan(withListPages(input, profile.lists ?? []), (daysLeft ?? input.days ?? 14) + 1, (p) => pageStats(p, progress).complete)
+  const today = plan.days[0]
+  const remaining = plan.days.reduce((n, d) => n + d.items.length, 0) + plan.later.length
+  const total = remaining + plan.doneCount
+  const pct = total ? Math.round((plan.doneCount / total) * 100) : 0
+  const next = today?.items.find((it) => !pageStats(it.page, progress).complete) ?? plan.days.find((d) => d.items.length)?.items[0]
+  const todayMin = today?.items.reduce((n, it) => n + it.minutes, 0) ?? 0
+  const list = input.list ? profile.lists?.find((l) => l.id === input.list) : undefined
+
+  return (
+    <section className="plan-card">
+      <div className="plan-card-main">
+        <div className="plan-card-top">
+          <span className="eyebrow">{list ? `${tr('Plan', 'Plan')} · ${list.name}` : tr('Tumhara plan', 'Your plan')}</span>
+        </div>
+        <h2>
+          {today?.revision
+            ? tr('Aaj revision day hai', 'Today is revision day')
+            : remaining === 0
+              ? tr('Plan poora ho gaya', 'Plan complete')
+              : tr(`Aaj: ${today?.items.length ?? 0} pages · ${fmtMin(todayMin)}`, `Today: ${today?.items.length ?? 0} pages · ${fmtMin(todayMin)}`)}
+        </h2>
+        <div className="plan-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={tr('Plan progress', 'Plan progress')}>
+          <i style={{ width: `${pct}%` }} />
+        </div>
+        <p className="plan-card-stats mono small">
+          <span>{pct}%</span>
+          <span>
+            {plan.doneCount}/{total} {tr('pages', 'pages')}
+          </span>
+          {plan.mustDoMissing > 0 && <span>{tr(`${plan.mustDoMissing} must-do fit nahi hue`, `${plan.mustDoMissing} must-do do not fit`)}</span>}
+        </p>
+      </div>
+      <div className="plan-card-actions">
+        {next && !today?.revision && (
+          <a className="btn primary" href={route(next.page)}>
+            {tr('Continue', 'Continue')}: {shortTitle(localize(next.page, lang).title)} <Icon name="arrow" size={15} />
+          </a>
+        )}
+        {today?.revision && (
+          <a className="btn primary" href={href('quiz')}>
+            {tr('Starred quiz', 'Starred quiz')} <Icon name="arrow" size={15} />
+          </a>
+        )}
+        <a className="btn" href={href('plan')}>
+          {tr('Plan dekho / badlo', 'View / edit plan')}
+        </a>
+      </div>
+    </section>
   )
 }
