@@ -1,5 +1,6 @@
-import { allPages, behavioral, cs, rag, db, java, lld, lldProblems, localize, pageBySlug, quickLook, revisionBody, route, type Page } from '../content'
+import { allPages, behavioral, cs, dsa, rag, db, java, lld, lldProblems, localize, pageBySlug, quickLook, revisionBody, route, type Page } from '../content'
 import { ListPicker } from './ListPicker'
+import { TopicProblems } from '../dsa/PracticeView'
 import { useLang, useTr } from '../i18n'
 import { Markdown } from './Markdown'
 import { Icon, type IconName } from './Icon'
@@ -40,7 +41,7 @@ export function PageView({
   const related = page.related.map((s) => pageBySlug.get(s)).filter((p): p is Page => !!p)
   const isLld = page.kind === 'lld'
   // LLD and Java are multi-page sections shown with sub-tabs, a star filter and a jump list
-  const TABS: Partial<Record<Page['kind'], Page[]>> = { lld, lldp: lldProblems, java, db, cs, beh: behavioral, rag }
+  const TABS: Partial<Record<Page['kind'], Page[]>> = { lld, lldp: lldProblems, java, db, cs, beh: behavioral, rag, dsa }
   const tabs = TABS[page.kind] ?? []
   const tabbed = tabs.length > 0
   // ⭐ filter for star-based sections; problems keep the regular revision mode
@@ -49,7 +50,7 @@ export function PageView({
   const revision = mode === 'revision'
   const body = revision ? revisionBody(page) : page.body
 
-  const eyebrow = { topic: 'Topic', question: `HLD problem · Tier ${page.tier ?? 2}`, lld: 'LLD · Design patterns', lldp: 'LLD problem', java: 'Java', db: 'Databases', cs: 'CS fundamentals', beh: 'Behavioral', rag: 'RAG', agent: 'Agentic AI' }[page.kind]
+  const eyebrow = { topic: 'Topic', question: `HLD problem · Tier ${page.tier ?? 2}`, lld: 'LLD · Design patterns', lldp: 'LLD problem', java: 'Java', db: 'Databases', cs: 'CS fundamentals', beh: 'Behavioral', rag: 'RAG', dsa: 'DSA · C++', agent: 'Agentic AI' }[page.kind]
   const revisionNote = {
     question: tr(
       'Revision mode: sirf clarifying sawal, decision table aur 2-minute recap dikh rahe hain.',
@@ -64,6 +65,7 @@ export function PageView({
     db: tr('Sirf ★ wale (sabse zyada pooche jaane wale) sections dikh rahe hain.', 'Showing only ★ sections (the most asked ones).'),
     cs: tr('Sirf ★ wale (sabse zyada pooche jaane wale) sections dikh rahe hain.', 'Showing only ★ sections (the most asked ones).'),
     beh: tr('Sirf ★ wale (must-prepare) sections dikh rahe hain.', 'Showing only ★ sections (must-prepare).'),
+    dsa: tr('Sirf ★ wale (sabse zyada pooche jaane wale) sections dikh rahe hain.', 'Showing only ★ sections (the most asked ones).'),
     rag: tr('Sirf ★ wale (sabse zyada pooche jaane wale) sections dikh rahe hain.', 'Showing only ★ sections (the most asked ones).'),
     lldp: tr('Revision mode: sirf requirements, patterns aur 2-minute recap dikh rahe hain.', 'Revision mode: showing only requirements, patterns and the 2-minute recap.'),
     agent: '',
@@ -138,6 +140,7 @@ export function PageView({
       ) : (
         <Markdown text={body} showAllCode={page.kind !== 'lld'} />
       )}
+      {page.kind === 'dsa' && <TopicProblems topic={page.slug} />}
       <Checklist page={page} />
       <PrevNext page={page} />
       {related.length > 0 && (

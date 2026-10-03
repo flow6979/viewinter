@@ -9,7 +9,7 @@ import { allPages, pageBySlug, type Page } from './content'
 import { generateJson } from './gemini'
 import { readLocal, writeLocal } from './store'
 
-export type Section = 'hld' | 'lld' | 'java' | 'db' | 'cs' | 'rag' | 'agents'
+export type Section = 'hld' | 'lld' | 'java' | 'db' | 'cs' | 'rag' | 'dsa' | 'agents'
 type T2 = { hi: string; en: string }
 
 export interface QuizQuestion {
@@ -24,7 +24,7 @@ export interface QuizQuestion {
   ai?: boolean
 }
 
-export const SECTIONS: Section[] = ['hld', 'lld', 'java', 'db', 'cs', 'rag', 'agents']
+export const SECTIONS: Section[] = ['hld', 'lld', 'java', 'db', 'cs', 'dsa', 'rag', 'agents']
 
 const seedFiles = import.meta.glob('../../content/quiz/*.json', { eager: true, import: 'default' }) as Record<string, unknown>
 export const SEED: QuizQuestion[] = Object.values(seedFiles).flatMap((v) => (Array.isArray(v) ? (v as QuizQuestion[]) : []))
@@ -38,6 +38,7 @@ const SECTION_OF: Record<Page['kind'], Section | null> = {
   db: 'db',
   cs: 'cs',
   rag: 'rag',
+  dsa: 'dsa',
   agent: 'agents',
   // Behavioral answers are personal stories, not right/wrong options, so no MCQ quiz
   beh: null,

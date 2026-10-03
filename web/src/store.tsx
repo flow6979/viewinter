@@ -24,7 +24,7 @@ export interface Profile {
   /** personal study plan inputs (Plan tab) */
   /** the user's own topic lists, revised again and again */
   lists?: TopicList[]
-  plan?: { list?: string; tracks: ('hld' | 'lld' | 'java' | 'db' | 'cs' | 'beh' | 'rag' | 'agents')[]; hours: number; level: 'junior' | 'mid' | 'senior'; days?: number }
+  plan?: { list?: string; tracks: ('hld' | 'lld' | 'java' | 'db' | 'cs' | 'beh' | 'rag' | 'dsa' | 'agents')[]; hours: number; level: 'junior' | 'mid' | 'senior'; days?: number }
 }
 
 interface Store {

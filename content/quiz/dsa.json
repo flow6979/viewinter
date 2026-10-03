@@ -1,0 +1,2786 @@
+[
+ {
+  "id": "dsa-01-cpp-basics-01",
+  "section": "dsa",
+  "topic": "01-cpp-basics",
+  "level": "easy",
+  "q": {
+   "hi": "`int a = 100000, b = 100000; long long c = a * b;` ke baad `c` me kya hoga?",
+   "en": "After `int a = 100000, b = 100000; long long c = a * b;`, what is in `c`?"
+  },
+  "options": {
+   "hi": [
+    "10000000000",
+    "Overflow wala galat value (UB)",
+    "Compile error",
+    "0"
+   ],
+   "en": [
+    "10000000000",
+    "A wrong value from overflow (UB)",
+    "Compile error",
+    "0"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "`a * b` `int` me compute hota hai aur overflow hota hai, assignment baad me. Fix: `1LL * a * b`.",
+   "en": "`a * b` is computed as `int` and overflows before the assignment. Fix: `1LL * a * b`."
+  }
+ },
+ {
+  "id": "dsa-01-cpp-basics-02",
+  "section": "dsa",
+  "topic": "01-cpp-basics",
+  "level": "easy",
+  "q": {
+   "hi": "1e5 lines print karte waqt TLE aa raha hai. Sabse likely wajah?",
+   "en": "Printing 1e5 lines gives TLE. Most likely cause?"
+  },
+  "options": {
+   "hi": [
+    "`vector` use karna",
+    "`\"\\n\"` use karna",
+    "Har line pe `endl` (har baar flush)",
+    "`long long` use karna"
+   ],
+   "en": [
+    "Using `vector`",
+    "Using `\"\\n\"`",
+    "`endl` on every line (flushes each time)",
+    "Using `long long`"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "`endl` har baar output flush karta hai; `\"\\n\"` aur fast I/O lagao.",
+   "en": "`endl` flushes output each time; use `\"\\n\"` plus fast I/O."
+  }
+ },
+ {
+  "id": "dsa-01-cpp-basics-03",
+  "section": "dsa",
+  "topic": "01-cpp-basics",
+  "level": "medium",
+  "q": {
+   "hi": "`cin >> n;` ke turant baad `getline(cin, s);` empty string kyun deta hai?",
+   "en": "Why does `getline(cin, s);` right after `cin >> n;` return an empty string?"
+  },
+  "options": {
+   "hi": [
+    "n negative hai",
+    "getline spaces skip karta hai",
+    "Buffer me bacha `'\\n'` padh leta hai",
+    "`sync_with_stdio(false)` ki wajah se"
+   ],
+   "en": [
+    "n is negative",
+    "getline skips spaces",
+    "It reads the leftover `'\\n'` in the buffer",
+    "Because of `sync_with_stdio(false)`"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "`cin >>` newline buffer me chhod deta hai; pehle `cin.ignore()` call karo.",
+   "en": "`cin >>` leaves the newline in the buffer; call `cin.ignore()` first."
+  }
+ },
+ {
+  "id": "dsa-01-cpp-basics-04",
+  "section": "dsa",
+  "topic": "01-cpp-basics",
+  "level": "medium",
+  "q": {
+   "hi": "Grid DFS me `void dfs(vector<vector<int>> g, int r, int c)` likha. Kya problem hogi?",
+   "en": "A grid DFS is written as `void dfs(vector<vector<int>> g, int r, int c)`. What goes wrong?"
+  },
+  "options": {
+   "hi": [
+    "Compile error",
+    "Stack kam use hoga",
+    "Kuch nahi, ye fastest hai",
+    "Har call pe poora grid copy, TLE/MLE aur visited marks lost"
+   ],
+   "en": [
+    "Compile error",
+    "It uses less stack",
+    "Nothing, this is fastest",
+    "The whole grid is copied every call: TLE/MLE and visited marks are lost"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "By value pass har call pe copy banata hai; `vector<vector<int>>&` use karo.",
+   "en": "Pass by value copies on every call; use `vector<vector<int>>&`."
+  }
+ },
+ {
+  "id": "dsa-01-cpp-basics-05",
+  "section": "dsa",
+  "topic": "01-cpp-basics",
+  "level": "medium",
+  "q": {
+   "hi": "`vector<int> v;` (empty) pe `for (size_t i = v.size() - 1; i >= 0; i--)` kya karega?",
+   "en": "On an empty `vector<int> v;`, what does `for (size_t i = v.size() - 1; i >= 0; i--)` do?"
+  },
+  "options": {
+   "hi": [
+    "Compile error",
+    "Loop nahi chalega",
+    "Ek baar chalega",
+    "`i` bahut bada number banta hai aur loop out-of-bounds/infinite chalta hai"
+   ],
+   "en": [
+    "Compile error",
+    "The loop doesn't run",
+    "It runs once",
+    "`i` wraps to a huge number and the loop runs out of bounds / forever"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "`size_t` unsigned hai: 0 - 1 wrap hota hai aur `i >= 0` hamesha true. `int` use karo.",
+   "en": "`size_t` is unsigned: 0 - 1 wraps and `i >= 0` is always true. Use `int`."
+  }
+ },
+ {
+  "id": "dsa-01-cpp-basics-06",
+  "section": "dsa",
+  "topic": "01-cpp-basics",
+  "level": "hard",
+  "q": {
+   "hi": "`int x = 5; int &r = x; int *p = &x; r = 7; *p += 1;` ke baad `x` kitna hai?",
+   "en": "After `int x = 5; int &r = x; int *p = &x; r = 7; *p += 1;`, what is `x`?"
+  },
+  "options": {
+   "hi": [
+    "5",
+    "7",
+    "8",
+    "6"
+   ],
+   "en": [
+    "5",
+    "7",
+    "8",
+    "6"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "`r` aur `*p` dono `x` hi hain: pehle 7, phir +1 = 8.",
+   "en": "Both `r` and `*p` refer to `x`: it becomes 7, then +1 = 8."
+  }
+ },
+ {
+  "id": "dsa-02-cpp-oop-01",
+  "section": "dsa",
+  "topic": "02-cpp-oop",
+  "level": "easy",
+  "q": {
+   "hi": "C++ me `struct` aur `class` ka asli fark kya hai?",
+   "en": "What is the real difference between `struct` and `class` in C++?"
+  },
+  "options": {
+   "hi": [
+    "struct inherit nahi ho sakta",
+    "class heap pe banti hai",
+    "struct me methods nahi ho sakte",
+    "Default access: struct public, class private"
+   ],
+   "en": [
+    "A struct cannot be inherited",
+    "A class is always on the heap",
+    "A struct cannot have methods",
+    "Default access: struct is public, class is private"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Baaki sab same hai; sirf default member/inheritance access alag hai.",
+   "en": "Everything else is the same; only default member/inheritance access differs."
+  }
+ },
+ {
+  "id": "dsa-02-cpp-oop-02",
+  "section": "dsa",
+  "topic": "02-cpp-oop",
+  "level": "medium",
+  "q": {
+   "hi": "`Shape *s = new Circle(2); s->area();` me Circle ka area chale, iske liye kya zaroori hai?",
+   "en": "For `Shape *s = new Circle(2); s->area();` to call Circle's area, what is required?"
+  },
+  "options": {
+   "hi": [
+    "`area` static ho",
+    "Base me `area` virtual ho",
+    "Circle struct ho",
+    "`area` private ho"
+   ],
+   "en": [
+    "`area` is static",
+    "`area` is virtual in the base",
+    "Circle is a struct",
+    "`area` is private"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Virtual function runtime pe vtable se derived version choose karta hai.",
+   "en": "A virtual function picks the derived version at runtime via the vtable."
+  }
+ },
+ {
+  "id": "dsa-02-cpp-oop-03",
+  "section": "dsa",
+  "topic": "02-cpp-oop",
+  "level": "medium",
+  "q": {
+   "hi": "`priority_queue<Task, vector<Task>, Cmp>` me `Cmp` `return a.p > b.p;` karta hai. Top pe kya hoga?",
+   "en": "In `priority_queue<Task, vector<Task>, Cmp>`, `Cmp` returns `a.p > b.p`. What is on top?"
+  },
+  "options": {
+   "hi": [
+    "Random",
+    "Sabse bada p",
+    "Sabse chhota p",
+    "Pehla insert hua"
+   ],
+   "en": [
+    "Random",
+    "Largest p",
+    "Smallest p",
+    "The first inserted"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "PQ top pe comparator ke hisaab se 'last' element rakhta hai; `>` se min-heap banta hai.",
+   "en": "The PQ keeps the comparator's 'last' element on top; `>` gives a min-heap."
+  }
+ },
+ {
+  "id": "dsa-02-cpp-oop-04",
+  "section": "dsa",
+  "topic": "02-cpp-oop",
+  "level": "hard",
+  "q": {
+   "hi": "Base class ka destructor virtual nahi hai aur `Base *b = new Derived; delete b;` kiya. Kya hoga?",
+   "en": "The base destructor is not virtual and you do `Base *b = new Derived; delete b;`. What happens?"
+  },
+  "options": {
+   "hi": [
+    "Compile error",
+    "Sirf Derived destructor chalta hai",
+    "Dono destructors chalte hain",
+    "Sirf Base destructor chalta hai (UB / leak)"
+   ],
+   "en": [
+    "Compile error",
+    "Only Derived's destructor runs",
+    "Both destructors run",
+    "Only Base's destructor runs (UB / leak)"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Bina virtual destructor ke derived cleanup skip hota hai; ye undefined behaviour hai.",
+   "en": "Without a virtual destructor the derived cleanup is skipped; it is undefined behaviour."
+  }
+ },
+ {
+  "id": "dsa-02-cpp-oop-05",
+  "section": "dsa",
+  "topic": "02-cpp-oop",
+  "level": "medium",
+  "q": {
+   "hi": "`sort` ke comparator me `return a <= b;` likhne se kya risk hai?",
+   "en": "What is the risk of `return a <= b;` in a `sort` comparator?"
+  },
+  "options": {
+   "hi": [
+    "Koi risk nahi",
+    "Strict weak ordering toot-ti hai; crash ya galat order",
+    "Sort descending ho jaata hai",
+    "Sirf slow hota hai"
+   ],
+   "en": [
+    "No risk",
+    "It breaks strict weak ordering; crash or wrong order",
+    "It sorts descending",
+    "It is only slower"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Comparator equal elements pe false dena chahiye; `<=` true deta hai.",
+   "en": "A comparator must return false for equal elements; `<=` returns true."
+  }
+ },
+ {
+  "id": "dsa-02-cpp-oop-06",
+  "section": "dsa",
+  "topic": "02-cpp-oop",
+  "level": "easy",
+  "q": {
+   "hi": "LRU Cache (LC 146) jaise 'class implement karo' problem me state kahan rakhoge?",
+   "en": "In an 'implement this class' problem like LRU Cache (LC 146), where do you keep state?"
+  },
+  "options": {
+   "hi": [
+    "Class ke private members me, constructor me initialise",
+    "Har method ke local variables me",
+    "Static locals me",
+    "Global variables me"
+   ],
+   "en": [
+    "In private class members, initialised in the constructor",
+    "In each method's local variables",
+    "In static locals",
+    "In global variables"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Encapsulation: state private, constructor capacity set karta hai, methods use update karte hain.",
+   "en": "Encapsulation: state is private, the constructor sets capacity, methods update it."
+  }
+ },
+ {
+  "id": "dsa-03-stl-01",
+  "section": "dsa",
+  "topic": "03-stl",
+  "level": "easy",
+  "q": {
+   "hi": "`priority_queue<int> pq;` me 3, 1, 5 push kiye. `pq.top()`?",
+   "en": "Push 3, 1, 5 into `priority_queue<int> pq;`. What is `pq.top()`?"
+  },
+  "options": {
+   "hi": [
+    "5",
+    "Error",
+    "1",
+    "3"
+   ],
+   "en": [
+    "5",
+    "Error",
+    "1",
+    "3"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Default priority_queue max-heap hai.",
+   "en": "Default priority_queue is a max-heap."
+  }
+ },
+ {
+  "id": "dsa-03-stl-02",
+  "section": "dsa",
+  "topic": "03-stl",
+  "level": "medium",
+  "q": {
+   "hi": "Inserts ke saath 'x se bada ya barabar sabse chhota element' O(log n) me chahiye. Kaunsa container?",
+   "en": "You need 'smallest element ≥ x' with inserts, in O(log n). Which container?"
+  },
+  "options": {
+   "hi": [
+    "set + lower_bound",
+    "vector + linear scan",
+    "stack",
+    "unordered_set"
+   ],
+   "en": [
+    "set + lower_bound",
+    "vector + linear scan",
+    "stack",
+    "unordered_set"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "`set` sorted hai aur member `lower_bound` O(log n) deta hai; unordered order nahi rakhta.",
+   "en": "`set` is sorted and its member `lower_bound` is O(log n); unordered keeps no order."
+  }
+ },
+ {
+  "id": "dsa-03-stl-03",
+  "section": "dsa",
+  "topic": "03-stl",
+  "level": "medium",
+  "q": {
+   "hi": "Sorted `a = {1,2,2,2,5}` pe `upper_bound(a.begin(),a.end(),2) - lower_bound(a.begin(),a.end(),2)`?",
+   "en": "On sorted `a = {1,2,2,2,5}`, what is `upper_bound(a.begin(),a.end(),2) - lower_bound(a.begin(),a.end(),2)`?"
+  },
+  "options": {
+   "hi": [
+    "2",
+    "3",
+    "4",
+    "1"
+   ],
+   "en": [
+    "2",
+    "3",
+    "4",
+    "1"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "lower_bound index 1 (pehla ≥2), upper_bound index 4 (pehla >2); fark = count = 3.",
+   "en": "lower_bound is index 1 (first ≥2), upper_bound is index 4 (first >2); difference = count = 3."
+  }
+ },
+ {
+  "id": "dsa-03-stl-04",
+  "section": "dsa",
+  "topic": "03-stl",
+  "level": "medium",
+  "q": {
+   "hi": "`if (m[key] > 0)` sirf check ke liye likhne ka side effect?",
+   "en": "Side effect of writing `if (m[key] > 0)` just to check a map?"
+  },
+  "options": {
+   "hi": [
+    "Exception throw hota hai",
+    "Map clear ho jaata hai",
+    "Koi nahi",
+    "Missing key 0 value ke saath insert ho jaati hai"
+   ],
+   "en": [
+    "It throws an exception",
+    "The map is cleared",
+    "None",
+    "A missing key gets inserted with value 0"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "`operator[]` missing key default value ke saath bana deta hai; `count`/`find` use karo.",
+   "en": "`operator[]` creates a missing key with a default value; use `count`/`find`."
+  }
+ },
+ {
+  "id": "dsa-03-stl-05",
+  "section": "dsa",
+  "topic": "03-stl",
+  "level": "hard",
+  "q": {
+   "hi": "Codeforces pe `unordered_map` wala O(n) solution TLE de raha hai. Sabse likely wajah?",
+   "en": "An O(n) `unordered_map` solution TLEs on Codeforces. Most likely reason?"
+  },
+  "options": {
+   "hi": [
+    "Fast I/O on hai",
+    "`reserve` call kiya",
+    "unordered_map hamesha O(log n) hai",
+    "Anti-hash tests collisions karke ops ko O(n) bana dete hain"
+   ],
+   "en": [
+    "Fast I/O is on",
+    "`reserve` was called",
+    "unordered_map is always O(log n)",
+    "Anti-hash tests force collisions, making ops O(n)"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Known hash ko target karke collisions banaye jaate hain; custom (splitmix64) hash ya `map` lo.",
+   "en": "Tests target the known hash to force collisions; use a custom (splitmix64) hash or `map`."
+  }
+ },
+ {
+  "id": "dsa-03-stl-06",
+  "section": "dsa",
+  "topic": "03-stl",
+  "level": "easy",
+  "q": {
+   "hi": "Duplicates hatane ka sahi idiom kaunsa hai?",
+   "en": "Which is the correct idiom to remove duplicates from a vector?"
+  },
+  "options": {
+   "hi": [
+    "`unique(v.begin(), v.end());` bas",
+    "`sort` phir `v.erase(unique(v.begin(), v.end()), v.end());`",
+    "`reverse` phir `unique`",
+    "`v.clear()`"
+   ],
+   "en": [
+    "Just `unique(v.begin(), v.end());`",
+    "`sort` then `v.erase(unique(v.begin(), v.end()), v.end());`",
+    "`reverse` then `unique`",
+    "`v.clear()`"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "`unique` sirf adjacent duplicates aage shift karta hai aur size nahi ghatata; pehle sort, phir erase.",
+   "en": "`unique` only moves adjacent duplicates and doesn't shrink; sort first, then erase."
+  }
+ },
+ {
+  "id": "dsa-04-patterns-cheatsheet-01",
+  "section": "dsa",
+  "topic": "04-patterns-cheatsheet",
+  "level": "easy",
+  "q": {
+   "hi": "n ≤ 20 hai aur saare subsets check karne hain. Kaunsi complexity theek hai?",
+   "en": "n ≤ 20 and you must consider all subsets. Which complexity is acceptable?"
+  },
+  "options": {
+   "hi": [
+    "Sirf O(n)",
+    "O(n!)",
+    "O(2^n · n)",
+    "O(n^n)"
+   ],
+   "en": [
+    "Only O(n)",
+    "O(n!)",
+    "O(2^n · n)",
+    "O(n^n)"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "2^20 · 20 ≈ 2e7, aaram se pass; bitmask / backtracking.",
+   "en": "2^20 · 20 ≈ 2e7, easily passes; bitmask / backtracking."
+  }
+ },
+ {
+  "id": "dsa-04-patterns-cheatsheet-02",
+  "section": "dsa",
+  "topic": "04-patterns-cheatsheet",
+  "level": "easy",
+  "q": {
+   "hi": "n ≤ 1e5 hai. Kaunsi complexity target karoge?",
+   "en": "n ≤ 1e5. Which complexity do you target?"
+  },
+  "options": {
+   "hi": [
+    "O(n^2)",
+    "O(n log n) ya O(n)",
+    "O(2^n)",
+    "O(n^3)"
+   ],
+   "en": [
+    "O(n^2)",
+    "O(n log n) or O(n)",
+    "O(2^n)",
+    "O(n^3)"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "n^2 = 1e10, TLE; ~1e8 ops/sec ke hisaab se O(n log n) chahiye.",
+   "en": "n^2 = 1e10 TLEs; at ~1e8 ops/sec you need O(n log n)."
+  }
+ },
+ {
+  "id": "dsa-04-patterns-cheatsheet-03",
+  "section": "dsa",
+  "topic": "04-patterns-cheatsheet",
+  "level": "medium",
+  "q": {
+   "hi": "\"Har din ke liye agla garam din kitne din baad\" (Daily Temperatures). Pattern?",
+   "en": "\"For each day, how many days until a warmer day\" (Daily Temperatures). Pattern?"
+  },
+  "options": {
+   "hi": [
+    "Monotonic stack",
+    "DSU",
+    "Bitmask DP",
+    "Sliding window"
+   ],
+   "en": [
+    "Monotonic stack",
+    "DSU",
+    "Bitmask DP",
+    "Sliding window"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "'Next greater element' ka classic signal monotonic stack hai.",
+   "en": "'Next greater element' is the classic monotonic stack signal."
+  }
+ },
+ {
+  "id": "dsa-04-patterns-cheatsheet-04",
+  "section": "dsa",
+  "topic": "04-patterns-cheatsheet",
+  "level": "medium",
+  "q": {
+   "hi": "\"Minimum speed jisse H ghante me saare bananas kha sako\" (Koko). Pattern?",
+   "en": "\"Minimum speed to eat all bananas within H hours\" (Koko). Pattern?"
+  },
+  "options": {
+   "hi": [
+    "Binary search on answer",
+    "BFS",
+    "Heap",
+    "Backtracking"
+   ],
+   "en": [
+    "Binary search on answer",
+    "BFS",
+    "Heap",
+    "Backtracking"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "'Minimum X such that' + monotonic feasibility = answer pe binary search.",
+   "en": "'Minimum X such that' + monotonic feasibility = binary search on the answer."
+  }
+ },
+ {
+  "id": "dsa-04-patterns-cheatsheet-05",
+  "section": "dsa",
+  "topic": "04-patterns-cheatsheet",
+  "level": "medium",
+  "q": {
+   "hi": "Unweighted grid me start se end tak minimum steps. Kya use karoge?",
+   "en": "Minimum steps from start to end in an unweighted grid. What do you use?"
+  },
+  "options": {
+   "hi": [
+    "BFS",
+    "Dijkstra with heap zaroori",
+    "Kadane",
+    "DFS"
+   ],
+   "en": [
+    "BFS",
+    "Dijkstra with a heap is required",
+    "Kadane",
+    "DFS"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Unweighted shortest path = BFS; pehli baar pahunchna hi shortest hai.",
+   "en": "Unweighted shortest path = BFS; the first time you reach a cell is the shortest."
+  }
+ },
+ {
+  "id": "dsa-04-patterns-cheatsheet-06",
+  "section": "dsa",
+  "topic": "04-patterns-cheatsheet",
+  "level": "hard",
+  "q": {
+   "hi": "\"Count subarrays with sum exactly K\", array me negatives bhi hain. Kya chalega?",
+   "en": "\"Count subarrays with sum exactly K\" and the array has negatives. What works?"
+  },
+  "options": {
+   "hi": [
+    "Monotonic stack",
+    "Sliding window",
+    "Prefix sum + hashmap",
+    "Two pointers on sorted array"
+   ],
+   "en": [
+    "Monotonic stack",
+    "Sliding window",
+    "Prefix sum + hashmap",
+    "Two pointers on a sorted array"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Negatives se window shrink ka monotonic logic toot jaata hai; prefix[i]-K ka count hashmap me dekho.",
+   "en": "Negatives break the window's monotonic shrink logic; look up count of prefix[i]-K in a hashmap."
+  }
+ },
+ {
+  "id": "dsa-05-arrays-hashing-prefix-01",
+  "section": "dsa",
+  "topic": "05-arrays-hashing-prefix",
+  "level": "easy",
+  "q": {
+   "hi": "Unsorted array me do numbers dhoondhne hain jinka sum target ho, O(n) me. Kya use karoge?",
+   "en": "Find two numbers in an unsorted array that add up to a target, in O(n). What do you use?"
+  },
+  "options": {
+   "hi": [
+    "Hash map: value → index",
+    "Nested loops",
+    "Sort + binary search",
+    "Stack"
+   ],
+   "en": [
+    "Hash map: value → index",
+    "Nested loops",
+    "Sort + binary search",
+    "Stack"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Har element pe `target - x` hash map me O(1) average me check hota hai, total O(n). Sort karne se O(n log n) lagta hai aur original indices bhi kho jaate hain.",
+   "en": "For each element you check `target - x` in the hash map in O(1) average, O(n) total. Sorting costs O(n log n) and loses the original indices."
+  }
+ },
+ {
+  "id": "dsa-05-arrays-hashing-prefix-02",
+  "section": "dsa",
+  "topic": "05-arrays-hashing-prefix",
+  "level": "medium",
+  "q": {
+   "hi": "Array me negative numbers bhi hain. 'Count subarrays with sum = K' ke liye best approach?",
+   "en": "The array has negative numbers. Best approach for 'count subarrays with sum = K'?"
+  },
+  "options": {
+   "hi": [
+    "Variable sliding window",
+    "Prefix sum + hash map of counts",
+    "Kadane",
+    "Sort + two pointers"
+   ],
+   "en": [
+    "Variable sliding window",
+    "Prefix sum + hash map of counts",
+    "Kadane",
+    "Sort + two pointers"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Negatives ke saath window badhane pe sum hamesha nahi badhta, to window ki validity monotonic nahi rehti. Har position pe dekho ki pehle kitne prefix `cur - K` the; ye O(n) hai.",
+   "en": "With negatives, growing the window does not always increase the sum, so window validity is not monotonic. Counting earlier prefixes equal to `cur - K` gives O(n)."
+  }
+ },
+ {
+  "id": "dsa-05-arrays-hashing-prefix-03",
+  "section": "dsa",
+  "topic": "05-arrays-hashing-prefix",
+  "level": "medium",
+  "q": {
+   "hi": "`subarraySum` me `freq[0] = 1` kyun set karte hain?",
+   "en": "Why do we set `freq[0] = 1` in `subarraySum`?"
+  },
+  "options": {
+   "hi": [
+    "Division by zero se bachne ke liye",
+    "Map ko initialise karna zaroori hai",
+    "Index 0 se shuru hone wale subarrays count karne ke liye (empty prefix)",
+    "Negative K handle karne ke liye"
+   ],
+   "en": [
+    "To avoid division by zero",
+    "Maps must be initialised",
+    "To count subarrays that start at index 0 (the empty prefix)",
+    "To handle negative K"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Agar `cur == K` hai to matching prefix empty prefix hai, jiska sum 0 hai. `freq[0] = 1` ke bina wo subarrays miss ho jaate hain.",
+   "en": "When `cur == K`, the matching prefix is the empty prefix with sum 0. Without `freq[0] = 1` those subarrays are missed."
+  }
+ },
+ {
+  "id": "dsa-05-arrays-hashing-prefix-04",
+  "section": "dsa",
+  "topic": "05-arrays-hashing-prefix",
+  "level": "easy",
+  "q": {
+   "hi": "Kadane ka output kya hoga: `a = {-3, -1, -2}`, code `cur = best = a[0]; for i>=1: cur = max(a[i], cur + a[i]); best = max(best, cur);`",
+   "en": "What does Kadane output for `a = {-3, -1, -2}` with `cur = best = a[0]; for i>=1: cur = max(a[i], cur + a[i]); best = max(best, cur);`?"
+  },
+  "options": {
+   "hi": [
+    "0",
+    "-6",
+    "-3",
+    "-1"
+   ],
+   "en": [
+    "0",
+    "-6",
+    "-3",
+    "-1"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Sab negative hain, to best subarray sirf `[-1]` hai. `best` ko a[0] se shuru kiya hai, isliye 0 nahi aata; 0 tab aata jab `best = 0` se shuru karte.",
+   "en": "All values are negative, so the best subarray is just `[-1]`. Starting `best` at a[0] avoids returning 0, which you would get by starting at `best = 0`."
+  }
+ },
+ {
+  "id": "dsa-05-arrays-hashing-prefix-05",
+  "section": "dsa",
+  "topic": "05-arrays-hashing-prefix",
+  "level": "medium",
+  "q": {
+   "hi": "1e5 range updates ('[l, r] me +v karo') aur end me final array chahiye. Efficient technique?",
+   "en": "1e5 range updates ('add v to [l, r]') and you need the final array at the end. Efficient technique?"
+  },
+  "options": {
+   "hi": [
+    "Difference array + ek prefix pass",
+    "Har update pe loop",
+    "Segment tree har haal me zaroori",
+    "Hash map of ranges"
+   ],
+   "en": [
+    "Difference array + one prefix pass",
+    "Loop over the range for each update",
+    "A segment tree is always required",
+    "Hash map of ranges"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Har update ke liye `d[l] += v; d[r+1] -= v;` O(1) hai, aur end me ek prefix sum se final array mil jaata hai: O(n + q). Segment tree tab chahiye jab updates ke beech me queries bhi aayein.",
+   "en": "Each update is O(1) with `d[l] += v; d[r+1] -= v;`, and one prefix sum at the end gives the final array: O(n + q). A segment tree is needed only when queries come between updates."
+  }
+ },
+ {
+  "id": "dsa-05-arrays-hashing-prefix-06",
+  "section": "dsa",
+  "topic": "05-arrays-hashing-prefix",
+  "level": "hard",
+  "q": {
+   "hi": "Two Sum me `if (seen[need]) return {seen[need], i};` likha. Kya bug hai?",
+   "en": "Two Sum uses `if (seen[need]) return {seen[need], i};`. What is the bug?"
+  },
+  "options": {
+   "hi": [
+    "Koi bug nahi",
+    "`operator[]` missing key insert karta hai aur index 0 wala match miss ho jaata hai",
+    "unordered_map sorted nahi hai",
+    "Ye O(n²) ho jaata hai"
+   ],
+   "en": [
+    "No bug",
+    "`operator[]` inserts missing keys and a match at index 0 is missed",
+    "unordered_map is not sorted",
+    "It becomes O(n²)"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Missing key pe `seen[need]` value 0 ke saath insert hota hai. Aur agar match sach me index 0 pe hai to condition false ho jaati hai. Existence check ke liye `count`/`find` use karo.",
+   "en": "`seen[need]` inserts a missing key with value 0, and a real match stored at index 0 also tests false. Use `count`/`find` to check existence."
+  }
+ },
+ {
+  "id": "dsa-06-two-pointers-sliding-window-01",
+  "section": "dsa",
+  "topic": "06-two-pointers-sliding-window",
+  "level": "easy",
+  "q": {
+   "hi": "'Longest substring without repeating characters' kis pattern ka hai?",
+   "en": "'Longest substring without repeating characters' is which pattern?"
+  },
+  "options": {
+   "hi": [
+    "Binary search",
+    "Monotonic stack",
+    "Variable sliding window",
+    "DP on intervals"
+   ],
+   "en": [
+    "Binary search",
+    "Monotonic stack",
+    "Variable sliding window",
+    "DP on intervals"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Contiguous substring + condition + longest → window expand karo aur repeat aate hi shrink karo. Har char ek baar andar aata hai aur ek baar bahar jaata hai, to O(n).",
+   "en": "Contiguous substring + condition + longest → expand the window and shrink it on a repeat. Each char enters once and leaves once, so O(n)."
+  }
+ },
+ {
+  "id": "dsa-06-two-pointers-sliding-window-02",
+  "section": "dsa",
+  "topic": "06-two-pointers-sliding-window",
+  "level": "medium",
+  "q": {
+   "hi": "'Subarrays with exactly K distinct integers' ko window se kaise count karte hain?",
+   "en": "How do you count 'subarrays with exactly K distinct integers' with a window?"
+  },
+  "options": {
+   "hi": [
+    "Ek hi window jo exactly K pe ruke",
+    "Window nahi chalega, sirf brute force",
+    "atLeast(K) + atMost(K)",
+    "atMost(K) - atMost(K-1)"
+   ],
+   "en": [
+    "A single window that stops at exactly K",
+    "Windows do not work, only brute force",
+    "atLeast(K) + atMost(K)",
+    "atMost(K) - atMost(K-1)"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Exactly K wale subarrays window me monotonic nahi hote. Lekin 'at most K' monotonic hai, aur `exactly(K) = atMost(K) - atMost(K-1)`.",
+   "en": "Exactly-K subarrays are not monotonic for a window, but 'at most K' is, and `exactly(K) = atMost(K) - atMost(K-1)`."
+  }
+ },
+ {
+  "id": "dsa-06-two-pointers-sliding-window-03",
+  "section": "dsa",
+  "topic": "06-two-pointers-sliding-window",
+  "level": "medium",
+  "q": {
+   "hi": "Container With Most Water me kaunsa pointer move karte hain aur kyun?",
+   "en": "In Container With Most Water, which pointer do you move and why?"
+  },
+  "options": {
+   "hi": [
+    "Chhoti height wala, kyunki badi side move karne se area kabhi nahi badhega",
+    "Badi height wala, kyunki area badhega",
+    "Hamesha left",
+    "Random"
+   ],
+   "en": [
+    "The shorter one, because moving the taller side can never increase the area",
+    "The taller one, because the area grows",
+    "Always the left",
+    "Random"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Area = width × min(height). Badi side move karne pe width ghatti hai aur height chhoti side se capped rehti hai, to area kabhi nahi badhta. Isliye chhoti side hi move karo.",
+   "en": "Area = width × min(height). Moving the taller side shrinks the width while the height stays capped by the shorter side, so the area can never grow. Move the shorter side."
+  }
+ },
+ {
+  "id": "dsa-06-two-pointers-sliding-window-04",
+  "section": "dsa",
+  "topic": "06-two-pointers-sliding-window",
+  "level": "easy",
+  "q": {
+   "hi": "Ye code kya return karega? `a={1,4,2,10,2,3}, k=2`; fixed window max sum: add `a[r]`, `r>=k` pe `a[r-k]` hatao, `r>=k-1` pe best update.",
+   "en": "What does this return? `a={1,4,2,10,2,3}, k=2`; fixed-window max sum: add `a[r]`, remove `a[r-k]` when `r>=k`, update best when `r>=k-1`."
+  },
+  "options": {
+   "hi": [
+    "14",
+    "12",
+    "13",
+    "10"
+   ],
+   "en": [
+    "14",
+    "12",
+    "13",
+    "10"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Size 2 ke window sums: 5, 6, 12, 12, 5. Maximum 12 hai ([2,10] ya [10,2]).",
+   "en": "Size-2 window sums are 5, 6, 12, 12, 5. The maximum is 12 ([2,10] or [10,2])."
+  }
+ },
+ {
+  "id": "dsa-06-two-pointers-sliding-window-05",
+  "section": "dsa",
+  "topic": "06-two-pointers-sliding-window",
+  "level": "medium",
+  "q": {
+   "hi": "Linked list me cycle detect karni hai, O(1) extra space me. Kaunsa approach?",
+   "en": "Detect a cycle in a linked list in O(1) extra space. Which approach?"
+  },
+  "options": {
+   "hi": [
+    "Visited nodes ka hash set",
+    "List sort karo",
+    "Floyd fast/slow pointers",
+    "Recursion"
+   ],
+   "en": [
+    "Hash set of visited nodes",
+    "Sort the list",
+    "Floyd fast/slow pointers",
+    "Recursion"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Fast pointer 2 step aur slow 1 step chalta hai. Cycle ho to fast slow ko pakad leta hai, aur sirf do pointers lagte hain. Hash set bhi kaam karta hai par O(n) space leta hai.",
+   "en": "Fast moves 2 steps and slow moves 1. If there is a cycle, fast catches slow, using only two pointers. A hash set works but takes O(n) space."
+  }
+ },
+ {
+  "id": "dsa-06-two-pointers-sliding-window-06",
+  "section": "dsa",
+  "topic": "06-two-pointers-sliding-window",
+  "level": "hard",
+  "q": {
+   "hi": "'Minimum Window Substring' (shortest window) me answer kab update karna chahiye?",
+   "en": "In 'Minimum Window Substring' (shortest window), when should you update the answer?"
+  },
+  "options": {
+   "hi": [
+    "Shrink loop ke baad, window invalid hone pe",
+    "Har expand pe, bina validity check ke",
+    "Sirf end me ek baar",
+    "Shrink loop ke andar, jab tak window valid hai"
+   ],
+   "en": [
+    "After the shrink loop, once the window is invalid",
+    "On every expand, without a validity check",
+    "Only once at the end",
+    "Inside the shrink loop, while the window is still valid"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Shortest ke liye window valid rehte hue shrink karte ho, aur har valid state ek candidate answer hai. Isliye update loop ke andar hota hai. Longest wale problems me update shrink ke baad hota hai.",
+   "en": "For shortest, you shrink while the window stays valid, and every valid state is a candidate, so the update goes inside the loop. For longest problems you update after shrinking."
+  }
+ },
+ {
+  "id": "dsa-07-binary-search-01",
+  "section": "dsa",
+  "topic": "07-binary-search",
+  "level": "easy",
+  "q": {
+   "hi": "Sorted vector `a = {1,3,3,5,8}`, `x = 3`. `upper_bound(...) - lower_bound(...)` kya dega?",
+   "en": "Sorted vector `a = {1,3,3,5,8}`, `x = 3`. What is `upper_bound(...) - lower_bound(...)`?"
+  },
+  "options": {
+   "hi": [
+    "2",
+    "1",
+    "3",
+    "0"
+   ],
+   "en": [
+    "2",
+    "1",
+    "3",
+    "0"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "`lower_bound` pehla index ≥ 3 deta hai (1), aur `upper_bound` pehla index > 3 deta hai (3). Difference 2 hai, yaani 3 ki occurrences.",
+   "en": "`lower_bound` gives the first index ≥ 3 (1) and `upper_bound` the first index > 3 (3). The difference, 2, is the count of 3s."
+  }
+ },
+ {
+  "id": "dsa-07-binary-search-02",
+  "section": "dsa",
+  "topic": "07-binary-search",
+  "level": "medium",
+  "q": {
+   "hi": "'Least capacity to ship all packages within D days' kaunsa pattern hai?",
+   "en": "'Least capacity to ship all packages within D days' is which pattern?"
+  },
+  "options": {
+   "hi": [
+    "Sliding window",
+    "Binary search on answer + greedy feasibility",
+    "Monotonic stack",
+    "Kadane"
+   ],
+   "en": [
+    "Sliding window",
+    "Binary search on answer + greedy feasibility",
+    "Monotonic stack",
+    "Kadane"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Capacity badhane se lagne wale din kabhi nahi badhte, to predicate monotonic hai. Range [max, sum] pe BS karo aur har mid ko O(n) greedy se check karo.",
+   "en": "A larger capacity never needs more days, so the predicate is monotonic. Binary search on [max, sum] and check each mid with an O(n) greedy."
+  }
+ },
+ {
+  "id": "dsa-07-binary-search-03",
+  "section": "dsa",
+  "topic": "07-binary-search",
+  "level": "medium",
+  "q": {
+   "hi": "`while (lo < hi) { mid = (lo+hi)/2; if (ok(mid)) hi = mid; else lo = mid; }` me kya problem hai?",
+   "en": "What is wrong with `while (lo < hi) { mid = (lo+hi)/2; if (ok(mid)) hi = mid; else lo = mid; }`?"
+  },
+  "options": {
+   "hi": [
+    "Kuch nahi",
+    "Ye O(n) hai",
+    "`lo + 1 == hi` pe mid = lo, aur `lo = mid` se infinite loop",
+    "Ye sirf descending arrays pe chalta hai"
+   ],
+   "en": [
+    "Nothing",
+    "It is O(n)",
+    "When `lo + 1 == hi`, mid = lo and `lo = mid` loops forever",
+    "It only works on descending arrays"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Integer division neeche round karti hai, to mid = lo aata hai aur `ok` false hone pe range kabhi chhoti nahi hoti. Ya to `lo = mid + 1` likho, ya `hi - lo > 1` wala invariant template use karo.",
+   "en": "Integer division rounds down, so mid = lo, and when `ok` is false the range never shrinks. Use `lo = mid + 1` or the `hi - lo > 1` invariant template."
+  }
+ },
+ {
+  "id": "dsa-07-binary-search-04",
+  "section": "dsa",
+  "topic": "07-binary-search",
+  "level": "easy",
+  "q": {
+   "hi": "Koko: piles = {3,6,7,11}, h = 8. Minimum speed?",
+   "en": "Koko: piles = {3,6,7,11}, h = 8. Minimum speed?"
+  },
+  "options": {
+   "hi": [
+    "3",
+    "6",
+    "5",
+    "4"
+   ],
+   "en": [
+    "3",
+    "6",
+    "5",
+    "4"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Speed 4 pe 1+2+2+3 = 8 hours lagte hain (≤ 8, chalega). Speed 3 pe 1+2+3+4 = 10 hours lagte hain (> 8, nahi chalega). Isliye answer 4.",
+   "en": "At speed 4: 1+2+2+3 = 8 hours (≤ 8, fine). At speed 3: 1+2+3+4 = 10 hours (> 8). So the answer is 4."
+  }
+ },
+ {
+  "id": "dsa-07-binary-search-05",
+  "section": "dsa",
+  "topic": "07-binary-search",
+  "level": "medium",
+  "q": {
+   "hi": "Rotated sorted array (distinct) me target search karte waqt har step pe kya check karte ho?",
+   "en": "Searching a target in a rotated sorted array (distinct values), what do you check at each step?"
+  },
+  "options": {
+   "hi": [
+    "Kaunsa half (l..m ya m..r) sorted hai, aur target us range me hai ya nahi",
+    "Mid even hai ya odd",
+    "Array ka sum",
+    "Pehle poora array sort karo"
+   ],
+   "en": [
+    "Which half (l..m or m..r) is sorted, and whether the target lies in that range",
+    "Whether mid is even or odd",
+    "The array sum",
+    "Sort the whole array first"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Rotated array me mid ke ek taraf ka half hamesha sorted hota hai. Target agar us sorted half ki range me hai to wahan jao, warna doosre half me. Ye O(log n) hai.",
+   "en": "One side of mid is always sorted. If the target falls in that sorted half's range go there, otherwise go to the other half. This is O(log n)."
+  }
+ },
+ {
+  "id": "dsa-07-binary-search-06",
+  "section": "dsa",
+  "topic": "07-binary-search",
+  "level": "hard",
+  "q": {
+   "hi": "Problem: 'Place C cows in stalls to maximise the minimum distance.' Answer pe BS karte waqt predicate ka shape kya hai?",
+   "en": "Problem: 'Place C cows in stalls to maximise the minimum distance.' When you binary search on the answer, what shape does the predicate have?"
+  },
+  "options": {
+   "hi": [
+    "F F F T T T (pehla true chahiye)",
+    "T T T F F F (aakhri true chahiye)",
+    "Random",
+    "Unimodal (peak)"
+   ],
+   "en": [
+    "F F F T T T (want the first true)",
+    "T T T F F F (want the last true)",
+    "Random",
+    "Unimodal (peak)"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Chhoti distance d pe cows rakhna aasaan hai (true), aur d badhne pe ek point ke baad false ho jaata hai. Maximise karna hai, to aakhri true dhoondho, yaani lo true side pe aur hi false side pe.",
+   "en": "Placing cows with a small distance d is easy (true), and beyond some d it fails. To maximise, find the last true: keep lo on the true side and hi on the false side."
+  }
+ },
+ {
+  "id": "dsa-08-greedy-intervals-01",
+  "section": "dsa",
+  "topic": "08-greedy-intervals",
+  "level": "easy",
+  "q": {
+   "hi": "Maximum number of non-overlapping meetings chunne ke liye intervals ko kis basis pe sort karoge?",
+   "en": "To choose the maximum number of non-overlapping meetings, sort intervals by what?"
+  },
+  "options": {
+   "hi": [
+    "Start time",
+    "Length",
+    "End time",
+    "Sort nahi karna"
+   ],
+   "en": [
+    "Start time",
+    "Length",
+    "End time",
+    "No sorting"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Jo meeting sabse pehle khatam hoti hai wo baaki meetings ke liye sabse zyada time chhodti hai (exchange argument). Start time se sort fail hota hai: [1,10], [2,3], [4,5].",
+   "en": "The meeting that ends earliest leaves the most room for the rest (exchange argument). Sorting by start fails on [1,10], [2,3], [4,5]."
+  }
+ },
+ {
+  "id": "dsa-08-greedy-intervals-02",
+  "section": "dsa",
+  "topic": "08-greedy-intervals",
+  "level": "medium",
+  "q": {
+   "hi": "Coins = {1, 3, 4}, amount = 6. Greedy (sabse bada coin pehle) kitne coins dega, aur optimal kitne?",
+   "en": "Coins = {1, 3, 4}, amount = 6. How many coins does greedy (largest first) use, and what is optimal?"
+  },
+  "options": {
+   "hi": [
+    "Greedy 2, optimal 2",
+    "Greedy 2, optimal 3",
+    "Greedy 3, optimal 3",
+    "Greedy 3, optimal 2"
+   ],
+   "en": [
+    "Greedy 2, optimal 2",
+    "Greedy 2, optimal 3",
+    "Greedy 3, optimal 3",
+    "Greedy 3, optimal 2"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Greedy 4+1+1 leta hai, yaani 3 coins, jabki 3+3 sirf 2 coins hai. Is tarah ke arbitrary coin system me greedy fail hota hai, isliye DP chahiye.",
+   "en": "Greedy takes 4+1+1 = 3 coins while 3+3 uses 2. Greedy fails for arbitrary coin systems like this, so you need DP."
+  }
+ },
+ {
+  "id": "dsa-08-greedy-intervals-03",
+  "section": "dsa",
+  "topic": "08-greedy-intervals",
+  "level": "medium",
+  "q": {
+   "hi": "Merge Intervals me `res.back()[1] = cur[1]` likha (max nahi). Input [[1,10],[2,3]] pe output?",
+   "en": "Merge Intervals uses `res.back()[1] = cur[1]` (no max). Output for [[1,10],[2,3]]?"
+  },
+  "options": {
+   "hi": [
+    "[[1,3]]",
+    "[[1,10]]",
+    "[[1,10],[2,3]]",
+    "[[2,3]]"
+   ],
+   "en": [
+    "[[1,3]]",
+    "[[1,10]]",
+    "[[1,10],[2,3]]",
+    "[[2,3]]"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "[2,3] overlap karta hai, to end ko 3 se overwrite kar diya gaya aur [1,10] shrink hoke [1,3] ban gaya. Sahi code `max(res.back()[1], cur[1])` hai.",
+   "en": "[2,3] overlaps, so the end is overwritten with 3 and [1,10] shrinks to [1,3]. The correct code is `max(res.back()[1], cur[1])`."
+  }
+ },
+ {
+  "id": "dsa-08-greedy-intervals-04",
+  "section": "dsa",
+  "topic": "08-greedy-intervals",
+  "level": "easy",
+  "q": {
+   "hi": "Jump Game: `a = {3,2,1,0,4}`. Farthest-reach greedy kya return karega?",
+   "en": "Jump Game: `a = {3,2,1,0,4}`. What does the farthest-reach greedy return?"
+  },
+  "options": {
+   "hi": [
+    "true",
+    "false",
+    "Infinite loop",
+    "Exception"
+   ],
+   "en": [
+    "true",
+    "false",
+    "Infinite loop",
+    "Exception"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Index 0 se 3 tak ki saari positions sirf index 3 tak le jaati hain, aur a[3] = 0 hai. Isliye i = 4 > reach = 3 hota hai aur answer false.",
+   "en": "Every position from 0 to 3 reaches at most index 3, and a[3] = 0. So i = 4 > reach = 3, giving false."
+  }
+ },
+ {
+  "id": "dsa-08-greedy-intervals-05",
+  "section": "dsa",
+  "topic": "08-greedy-intervals",
+  "level": "medium",
+  "q": {
+   "hi": "Minimum meeting rooms (LC 253) ke liye efficient approach?",
+   "en": "Efficient approach for minimum meeting rooms (LC 253)?"
+  },
+  "options": {
+   "hi": [
+    "Sort by length",
+    "Hash map of start times",
+    "Starts aur ends alag sort karke sweep, ya end times ka min-heap",
+    "Binary search on rooms is the only way"
+   ],
+   "en": [
+    "Sort by length",
+    "Hash map of start times",
+    "Sort starts and ends separately and sweep, or a min-heap of end times",
+    "Binary search on rooms is the only way"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Answer kisi bhi waqt ek saath chal rahi meetings ki max count hai. Sweep line ya end times ka min-heap ise O(n log n) me nikaal deta hai.",
+   "en": "The answer is the maximum number of meetings overlapping at any time. A sweep line or a min-heap of end times finds it in O(n log n)."
+  }
+ },
+ {
+  "id": "dsa-08-greedy-intervals-06",
+  "section": "dsa",
+  "topic": "08-greedy-intervals",
+  "level": "hard",
+  "q": {
+   "hi": "Gas Station: i pe tank negative ho gaya, start ko seedha i+1 pe kyun le jaate hain?",
+   "en": "Gas Station: the tank goes negative at i. Why jump start straight to i+1?"
+  },
+  "options": {
+   "hi": [
+    "Bas heuristic hai",
+    "Taaki O(n²) bane",
+    "Kyunki i+1 hamesha answer hota hai",
+    "[start..i] ke beech ka koi bhi station start ke roop me i tak nahi pahunch sakta, kyunki wo non-negative prefix ke bina shuru hota"
+   ],
+   "en": [
+    "It is just a heuristic",
+    "To make it O(n²)",
+    "Because i+1 is always the answer",
+    "No station in [start..i] can reach past i, since starting there drops a non-negative prefix"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "start se kisi bhi k tak ka tank ≥ 0 tha. Agar k se start karte to wo non-negative hissa chhoot jaata, aur i pe tank aur bhi kam hota. Isliye beech ka koi station kaam nahi karega.",
+   "en": "From start the tank was ≥ 0 at every k. Starting at k drops that non-negative part, so the tank at i would be even lower. No station in between can work."
+  }
+ },
+ {
+  "id": "dsa-09-stack-queue-monotonic-01",
+  "section": "dsa",
+  "topic": "09-stack-queue-monotonic",
+  "level": "easy",
+  "q": {
+   "hi": "'Har element ke liye right me next greater element' ke liye kaunsa DS?",
+   "en": "Which DS for 'next greater element to the right of each element'?"
+  },
+  "options": {
+   "hi": [
+    "Monotonic (decreasing) stack",
+    "Min-heap",
+    "Queue",
+    "Hash set"
+   ],
+   "en": [
+    "Monotonic (decreasing) stack",
+    "Min-heap",
+    "Queue",
+    "Hash set"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Stack me wo indices rakhte hain jinka answer abhi nahi mila. Bada element aate hi unhe pop karke answer set kar dete hain. Har index ek baar push aur ek baar pop hota hai, to O(n).",
+   "en": "The stack holds indices still waiting for an answer, and a bigger element pops them and sets their answer. Each index is pushed and popped once, so O(n)."
+  }
+ },
+ {
+  "id": "dsa-09-stack-queue-monotonic-02",
+  "section": "dsa",
+  "topic": "09-stack-queue-monotonic",
+  "level": "medium",
+  "q": {
+   "hi": "Ye code kya print karega? `nextGreater({2,1,5,3,6})` (missing ho to -1)",
+   "en": "What does `nextGreater({2,1,5,3,6})` return (-1 if none)?"
+  },
+  "options": {
+   "hi": [
+    "[1,5,3,6,-1]",
+    "[5,5,6,6,-1]",
+    "[5,5,6,6,6]",
+    "[-1,2,-1,5,-1]"
+   ],
+   "en": [
+    "[1,5,3,6,-1]",
+    "[5,5,6,6,-1]",
+    "[5,5,6,6,6]",
+    "[-1,2,-1,5,-1]"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "5 aane pe 1 aur 2 pop hote hain, dono ka answer 5. Phir 6 aane pe 3 aur 5 pop hote hain, dono ka answer 6. Last element ke right me kuch nahi, to -1.",
+   "en": "When 5 arrives it pops 1 and 2 (answer 5). When 6 arrives it pops 3 and 5 (answer 6). Nothing follows the last element, so -1."
+  }
+ },
+ {
+  "id": "dsa-09-stack-queue-monotonic-03",
+  "section": "dsa",
+  "topic": "09-stack-queue-monotonic",
+  "level": "medium",
+  "q": {
+   "hi": "Sliding Window Maximum (window k) ka optimal approach aur complexity?",
+   "en": "Optimal approach and complexity for Sliding Window Maximum (window k)?"
+  },
+  "options": {
+   "hi": [
+    "Har window scan, O(nk)",
+    "Sort each window, O(n k log k)",
+    "Monotonic deque of indices, O(n)",
+    "Stack, O(n²)"
+   ],
+   "en": [
+    "Scan each window, O(nk)",
+    "Sort each window, O(n k log k)",
+    "Monotonic deque of indices, O(n)",
+    "Stack, O(n²)"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Deque me values decreasing order me rakhte hain, to front hamesha window ka max hota hai. Purane indices front se nikalte hain aur chhote values back se. Har index ek baar andar aata hai aur ek baar bahar.",
+   "en": "The deque keeps decreasing values, so the front is the window max. Stale indices leave from the front and smaller values from the back. Each index enters and leaves once."
+  }
+ },
+ {
+  "id": "dsa-09-stack-queue-monotonic-04",
+  "section": "dsa",
+  "topic": "09-stack-queue-monotonic",
+  "level": "easy",
+  "q": {
+   "hi": "Largest Rectangle in Histogram, heights = {2,1,5,6,2,3}. Answer?",
+   "en": "Largest Rectangle in Histogram, heights = {2,1,5,6,2,3}. Answer?"
+  },
+  "options": {
+   "hi": [
+    "6",
+    "8",
+    "12",
+    "10"
+   ],
+   "en": [
+    "6",
+    "8",
+    "12",
+    "10"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Bars 5 aur 6 ko height 5 pe le lo: area 5 × 2 = 10. Koi aur combination isse zyada nahi deta (height 2 × width 4 = 8).",
+   "en": "Take bars 5 and 6 at height 5: 5 × 2 = 10. No other combination beats it (height 2 × width 4 = 8)."
+  }
+ },
+ {
+  "id": "dsa-09-stack-queue-monotonic-05",
+  "section": "dsa",
+  "topic": "09-stack-queue-monotonic",
+  "level": "medium",
+  "q": {
+   "hi": "Daily Temperatures me stack me values ki jagah indices kyun rakhte hain?",
+   "en": "Why store indices, not values, in the stack for Daily Temperatures?"
+  },
+  "options": {
+   "hi": [
+    "Answer days ka gap hai, jiske liye position chahiye; value `a[idx]` se mil jaati hai",
+    "Indices chhote hote hain",
+    "Stack values store nahi kar sakta",
+    "Sorting ke liye"
+   ],
+   "en": [
+    "The answer is a gap in days, which needs positions; the value is available as `a[idx]`",
+    "Indices are smaller",
+    "A stack cannot store values",
+    "For sorting"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Answer `i - idx` hai, yaani distance, aur uske liye position chahiye. Index rakhne se value bhi `a[idx]` se mil jaati hai, to dono kaam ho jaate hain.",
+   "en": "The answer is the distance `i - idx`, which needs positions. Storing the index also gives you the value through `a[idx]`."
+  }
+ },
+ {
+  "id": "dsa-09-stack-queue-monotonic-06",
+  "section": "dsa",
+  "topic": "09-stack-queue-monotonic",
+  "level": "hard",
+  "q": {
+   "hi": "Valid parentheses: `isValid(\"((\")` ka result aur reason?",
+   "en": "Valid parentheses: result of `isValid(\"((\")` and why?"
+  },
+  "options": {
+   "hi": [
+    "true, kyunki koi mismatch nahi",
+    "false, kyunki end me stack khaali nahi",
+    "Crash, kyunki empty stack pe top()",
+    "true, kyunki even length"
+   ],
+   "en": [
+    "true, since there is no mismatch",
+    "false, since the stack is not empty at the end",
+    "Crash from top() on an empty stack",
+    "true, since the length is even"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Dono `(` push hote hain aur koi closing bracket nahi aata. End me `st.empty()` false hai, to string invalid hai. Ye check bhoolna common bug hai.",
+   "en": "Both `(` are pushed and nothing closes them. At the end `st.empty()` is false, so the string is invalid. Forgetting this check is a common bug."
+  }
+ },
+ {
+  "id": "dsa-10-recursion-backtracking-01",
+  "section": "dsa",
+  "topic": "10-recursion-backtracking",
+  "level": "easy",
+  "q": {
+   "hi": "\"Return all possible subsets\" aur n ≤ 16. Kaunsi technique?",
+   "en": "\"Return all possible subsets\" with n ≤ 16. Which technique?"
+  },
+  "options": {
+   "hi": [
+    "Backtracking (include/exclude)",
+    "Sliding window",
+    "Dijkstra",
+    "Binary search"
+   ],
+   "en": [
+    "Backtracking (include/exclude)",
+    "Sliding window",
+    "Dijkstra",
+    "Binary search"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "\"All possible\" + chhota n = output khud 2^n hai, backtracking expected hai.",
+   "en": "\"All possible\" plus small n means the output itself is 2^n, so backtracking is expected."
+  }
+ },
+ {
+  "id": "dsa-10-recursion-backtracking-02",
+  "section": "dsa",
+  "topic": "10-recursion-backtracking",
+  "level": "medium",
+  "q": {
+   "hi": "n distinct elements ke saare permutations generate karne ki time complexity?",
+   "en": "Time complexity of generating all permutations of n distinct elements?"
+  },
+  "options": {
+   "hi": [
+    "O(n^2)",
+    "O(2^n)",
+    "O(n! · n)",
+    "O(n log n)"
+   ],
+   "en": [
+    "O(n^2)",
+    "O(2^n)",
+    "O(n! · n)",
+    "O(n log n)"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "n! permutations hain aur har ek ko copy karne me O(n) lagta hai.",
+   "en": "There are n! permutations and copying each one costs O(n)."
+  }
+ },
+ {
+  "id": "dsa-10-recursion-backtracking-03",
+  "section": "dsa",
+  "topic": "10-recursion-backtracking",
+  "level": "medium",
+  "q": {
+   "hi": "Combination Sum (LC 39) me har candidate unlimited baar use ho sakta hai. Recursive call kaisa hoga?",
+   "en": "In Combination Sum (LC 39) each candidate can be reused unlimited times. What is the recursive call?"
+  },
+  "options": {
+   "hi": [
+    "`comb(0, rem - c[i])`",
+    "`comb(i - 1, rem)`",
+    "`comb(i + 1, rem - c[i])`",
+    "`comb(i, rem - c[i])`"
+   ],
+   "en": [
+    "`comb(0, rem - c[i])`",
+    "`comb(i - 1, rem)`",
+    "`comb(i + 1, rem - c[i])`",
+    "`comb(i, rem - c[i])`"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Same element dobara lene ke liye `i` pe hi rehna padta hai; 0 se start karne pe duplicate combinations (orders) bante hain.",
+   "en": "Staying at `i` lets the same element be reused; restarting from 0 would produce duplicate combinations in different orders."
+  }
+ },
+ {
+  "id": "dsa-10-recursion-backtracking-04",
+  "section": "dsa",
+  "topic": "10-recursion-backtracking",
+  "level": "easy",
+  "q": {
+   "hi": "Code: `void f(int n){ if(n==0) return; cout<<n; f(n-1); }` aur call `f(3)`. Output?",
+   "en": "Code: `void f(int n){ if(n==0) return; cout<<n; f(n-1); }` called as `f(3)`. Output?"
+  },
+  "options": {
+   "hi": [
+    "123",
+    "321",
+    "3210",
+    "Infinite loop"
+   ],
+   "en": [
+    "123",
+    "321",
+    "3210",
+    "Infinite loop"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Print recursive call se pehle hota hai, isliye 3, 2, 1; n==0 pe kuch print nahi hota.",
+   "en": "Printing happens before the recursive call, so 3, 2, 1; nothing prints at n==0."
+  }
+ },
+ {
+  "id": "dsa-10-recursion-backtracking-05",
+  "section": "dsa",
+  "topic": "10-recursion-backtracking",
+  "level": "medium",
+  "q": {
+   "hi": "Word Search (LC 79) me galat answers aa rahe hain: ek hi cell ek word me do baar use ho raha hai, ya baad ke starts fail ho rahe hain. Sabse likely bug?",
+   "en": "Word Search (LC 79) gives wrong answers: a cell is reused in one word, or later starts fail. Most likely bug?"
+  },
+  "options": {
+   "hi": [
+    "Base case me `k == 0` check",
+    "BFS use karna chahiye tha",
+    "Cell mark nahi kiya ya recurse ke baad restore nahi kiya",
+    "Board ko sort nahi kiya"
+   ],
+   "en": [
+    "Base case checks `k == 0`",
+    "Should have used BFS",
+    "Not marking the cell, or not restoring it after recursing",
+    "Did not sort the board"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Backtracking me choose ke saath unchoose zaroori hai: mark karo, recurse karo, phir original char wapas rakho.",
+   "en": "Backtracking needs unchoose as well as choose: mark, recurse, then put the original char back."
+  }
+ },
+ {
+  "id": "dsa-10-recursion-backtracking-06",
+  "section": "dsa",
+  "topic": "10-recursion-backtracking",
+  "level": "hard",
+  "q": {
+   "hi": "\"Number of ways\" poocha hai, n = 1000, aur same (index, remaining) state baar baar aata hai. Kya karna chahiye?",
+   "en": "The problem asks for the \"number of ways\", n = 1000, and the same (index, remaining) state repeats. What should you do?"
+  },
+  "options": {
+   "hi": [
+    "Memoize states (DP)",
+    "Har branch ke baad sort karo",
+    "BFS on states without visited",
+    "Plain backtracking, sab enumerate karo"
+   ],
+   "en": [
+    "Memoize the states (DP)",
+    "Sort after every branch",
+    "BFS on states without visited",
+    "Plain backtracking, enumerate everything"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Sirf count chahiye aur subproblems overlap ho rahe hain: memoization exponential ko polynomial bana deta hai.",
+   "en": "Only a count is needed and subproblems overlap: memoization turns exponential into polynomial."
+  }
+ },
+ {
+  "id": "dsa-11-trees-01",
+  "section": "dsa",
+  "topic": "11-trees",
+  "level": "easy",
+  "q": {
+   "hi": "BST ka kaunsa traversal values ko sorted order me deta hai?",
+   "en": "Which traversal of a BST visits values in sorted order?"
+  },
+  "options": {
+   "hi": [
+    "Postorder",
+    "Level order",
+    "Preorder",
+    "Inorder"
+   ],
+   "en": [
+    "Postorder",
+    "Level order",
+    "Preorder",
+    "Inorder"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Inorder = left, node, right; BST me left < node < right, isliye sorted.",
+   "en": "Inorder is left, node, right; in a BST left < node < right, so it is sorted."
+  }
+ },
+ {
+  "id": "dsa-11-trees-02",
+  "section": "dsa",
+  "topic": "11-trees",
+  "level": "easy",
+  "q": {
+   "hi": "\"Binary tree ka right side view\" ke liye sabse natural approach?",
+   "en": "Most natural approach for \"right side view of a binary tree\"?"
+  },
+  "options": {
+   "hi": [
+    "Inorder DFS",
+    "BFS level order, har level ka last node",
+    "Binary search",
+    "Heap"
+   ],
+   "en": [
+    "Inorder DFS",
+    "BFS level order, last node of each level",
+    "Binary search",
+    "Heap"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Level by level question = BFS; har level ka last node right se dikhta hai.",
+   "en": "A level-by-level question means BFS; the last node of each level is what you see from the right."
+  }
+ },
+ {
+  "id": "dsa-11-trees-03",
+  "section": "dsa",
+  "topic": "11-trees",
+  "level": "medium",
+  "q": {
+   "hi": "Diameter of Binary Tree me DFS parent ko kya return karta hai?",
+   "en": "In Diameter of Binary Tree, what does the DFS return to the parent?"
+  },
+  "options": {
+   "hi": [
+    "1 + max(L, R)",
+    "max(L, R)",
+    "L + R + 1",
+    "L + R"
+   ],
+   "en": [
+    "1 + max(L, R)",
+    "max(L, R)",
+    "L + R + 1",
+    "L + R"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Parent sirf ek branch extend kar sakta hai, isliye height return hoti hai; L + R sirf global answer update karta hai.",
+   "en": "A parent can extend only one branch, so the height is returned; L + R only updates the global answer."
+  }
+ },
+ {
+  "id": "dsa-11-trees-04",
+  "section": "dsa",
+  "topic": "11-trees",
+  "level": "medium",
+  "q": {
+   "hi": "BST validate karne ka ye code: har node pe `left->val < val && right->val > val` check. Problem?",
+   "en": "Validating a BST by checking `left->val < val && right->val > val` at each node. What is wrong?"
+  },
+  "options": {
+   "hi": [
+    "Sirf leaf nodes check hote hain",
+    "Kuch nahi, ye sahi hai",
+    "Poore subtree ka constraint check nahi hota; (lo, hi) bounds pass karne chahiye",
+    "Ye O(n^2) hai"
+   ],
+   "en": [
+    "It only checks leaf nodes",
+    "Nothing, it is correct",
+    "It does not enforce the whole-subtree constraint; pass (lo, hi) bounds",
+    "It is O(n^2)"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Tree 5 (3 (_, 6)) local check pass karta hai par 6 > 5 left subtree me hai; bounds hi isse pakadte hain.",
+   "en": "Tree 5 (3 (_, 6)) passes the local check but 6 > 5 sits in the left subtree; only bounds catch it."
+  }
+ },
+ {
+  "id": "dsa-11-trees-05",
+  "section": "dsa",
+  "topic": "11-trees",
+  "level": "medium",
+  "q": {
+   "hi": "Tree `1 (2 (4, 5), 3)` ka postorder?",
+   "en": "Postorder of the tree `1 (2 (4, 5), 3)`?"
+  },
+  "options": {
+   "hi": [
+    "1 2 3 4 5",
+    "1 2 4 5 3",
+    "4 2 5 1 3",
+    "4 5 2 3 1"
+   ],
+   "en": [
+    "1 2 3 4 5",
+    "1 2 4 5 3",
+    "4 2 5 1 3",
+    "4 5 2 3 1"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Postorder = left, right, node: 4, 5, phir 2, phir 3, aakhir me root 1.",
+   "en": "Postorder is left, right, node: 4, 5, then 2, then 3, and root 1 last."
+  }
+ },
+ {
+  "id": "dsa-11-trees-06",
+  "section": "dsa",
+  "topic": "11-trees",
+  "level": "hard",
+  "q": {
+   "hi": "Preorder + inorder se tree banana (LC 105) O(n) me karne ke liye kya chahiye?",
+   "en": "What makes building a tree from preorder + inorder (LC 105) O(n)?"
+  },
+  "options": {
+   "hi": [
+    "Inorder ko sort karna",
+    "Value → inorder index ka hashmap",
+    "Postorder bhi chahiye",
+    "Har level pe BFS"
+   ],
+   "en": [
+    "Sorting the inorder array",
+    "A hashmap from value to inorder index",
+    "Also needing the postorder",
+    "BFS on every level"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Har root ka inorder index linear search se O(n) lagta hai (total O(n^2)); hashmap use O(1) karta hai.",
+   "en": "Linear search for each root's inorder index costs O(n) each (O(n^2) total); a hashmap makes it O(1)."
+  }
+ },
+ {
+  "id": "dsa-12-heaps-priority-queue-01",
+  "section": "dsa",
+  "topic": "12-heaps-priority-queue",
+  "level": "easy",
+  "q": {
+   "hi": "C++ me `priority_queue<int> pq;` me 5, 1, 8 push kiye. `pq.top()`?",
+   "en": "In C++, push 5, 1, 8 into `priority_queue<int> pq;`. What is `pq.top()`?"
+  },
+  "options": {
+   "hi": [
+    "1",
+    "5",
+    "8",
+    "Compile error"
+   ],
+   "en": [
+    "1",
+    "5",
+    "8",
+    "Compile error"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Default `priority_queue` max-heap hai, top sabse bada element hai.",
+   "en": "The default `priority_queue` is a max-heap, so top is the largest element."
+  }
+ },
+ {
+  "id": "dsa-12-heaps-priority-queue-02",
+  "section": "dsa",
+  "topic": "12-heaps-priority-queue",
+  "level": "medium",
+  "q": {
+   "hi": "Array ke K largest elements nikalne ke liye best heap setup?",
+   "en": "Best heap setup to find the K largest elements of an array?"
+  },
+  "options": {
+   "hi": [
+    "Size K ka min-heap, size > K pe pop",
+    "Saare n ka min-heap",
+    "Do heaps",
+    "Size K ka max-heap"
+   ],
+   "en": [
+    "Min-heap of size K, pop when size > K",
+    "Min-heap of all n",
+    "Two heaps",
+    "Max-heap of size K"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Min-heap sabse chhote ko top pe rakhta hai, use pop karke sirf K largest bachte hain: O(n log K).",
+   "en": "The min-heap keeps the smallest on top; popping it leaves only the K largest: O(n log K)."
+  }
+ },
+ {
+  "id": "dsa-12-heaps-priority-queue-03",
+  "section": "dsa",
+  "topic": "12-heaps-priority-queue",
+  "level": "medium",
+  "q": {
+   "hi": "Lambda comparator `[](int a,int b){ return a > b; }` ke saath `priority_queue` kaisa heap banega?",
+   "en": "A `priority_queue` with comparator `[](int a,int b){ return a > b; }` behaves as which heap?"
+  },
+  "options": {
+   "hi": [
+    "Sorted array",
+    "Compile error hamesha",
+    "Max-heap",
+    "Min-heap"
+   ],
+   "en": [
+    "Sorted array",
+    "Always a compile error",
+    "Max-heap",
+    "Min-heap"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Comparator true deta hai jab a ko b ke baad aana hai; a > b me bade baad me, to top pe sabse chhota.",
+   "en": "The comparator returns true when a should come after b; with a > b larger ones go later, so the smallest is on top."
+  }
+ },
+ {
+  "id": "dsa-12-heaps-priority-queue-04",
+  "section": "dsa",
+  "topic": "12-heaps-priority-queue",
+  "level": "medium",
+  "q": {
+   "hi": "Stream se median baar baar chahiye. Best structure?",
+   "en": "You need the median of a stream repeatedly. Best structure?"
+  },
+  "options": {
+   "hi": [
+    "Ek sorted vector, har insert pe sort",
+    "Max-heap (low half) + min-heap (high half)",
+    "Hashmap",
+    "Ek min-heap"
+   ],
+   "en": [
+    "One sorted vector, sort on every insert",
+    "Max-heap (low half) + min-heap (high half)",
+    "Hashmap",
+    "A single min-heap"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Do heaps O(log n) insert aur O(1) median dete hain; sizes ka fark ≤ 1 rakho.",
+   "en": "Two heaps give O(log n) insert and O(1) median; keep the size difference ≤ 1."
+  }
+ },
+ {
+  "id": "dsa-12-heaps-priority-queue-05",
+  "section": "dsa",
+  "topic": "12-heaps-priority-queue",
+  "level": "hard",
+  "q": {
+   "hi": "n elements ke array ko bottom-up heapify karne ki complexity?",
+   "en": "Complexity of bottom-up heapify on an array of n elements?"
+  },
+  "options": {
+   "hi": [
+    "O(n)",
+    "O(n log n)",
+    "O(log n)",
+    "O(n^2)"
+   ],
+   "en": [
+    "O(n)",
+    "O(n log n)",
+    "O(log n)",
+    "O(n^2)"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Zyada tar nodes neeche hain aur kam sift karte hain; sum O(n) aata hai. n baar push karna O(n log n) hai.",
+   "en": "Most nodes are near the bottom and sift only a little; the sum is O(n). Pushing n times is O(n log n)."
+  }
+ },
+ {
+  "id": "dsa-12-heaps-priority-queue-06",
+  "section": "dsa",
+  "topic": "12-heaps-priority-queue",
+  "level": "medium",
+  "q": {
+   "hi": "K sorted lists (total N elements) merge karne ki heap approach ki complexity?",
+   "en": "Complexity of merging K sorted lists (N elements total) with a heap?"
+  },
+  "options": {
+   "hi": [
+    "O(N K)",
+    "O(N log N)",
+    "O(N log K)",
+    "O(K log N)"
+   ],
+   "en": [
+    "O(N K)",
+    "O(N log N)",
+    "O(N log K)",
+    "O(K log N)"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Heap me kabhi K se zyada entries nahi hoti, aur har element ek baar push/pop hota hai.",
+   "en": "The heap never holds more than K entries and each element is pushed and popped once."
+  }
+ },
+ {
+  "id": "dsa-13-graphs-01",
+  "section": "dsa",
+  "topic": "13-graphs",
+  "level": "easy",
+  "q": {
+   "hi": "Unweighted grid me source se target tak minimum steps. Kaunsa algorithm?",
+   "en": "Minimum steps from source to target in an unweighted grid. Which algorithm?"
+  },
+  "options": {
+   "hi": [
+    "Dijkstra with negative weights",
+    "Floyd–Warshall",
+    "DFS",
+    "BFS"
+   ],
+   "en": [
+    "Dijkstra with negative weights",
+    "Floyd–Warshall",
+    "DFS",
+    "BFS"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Unweighted me BFS distance ke order me visit karta hai, pehli baar pahunchna hi shortest hai.",
+   "en": "In an unweighted graph BFS visits in order of distance, so the first visit is the shortest."
+  }
+ },
+ {
+  "id": "dsa-13-graphs-02",
+  "section": "dsa",
+  "topic": "13-graphs",
+  "level": "medium",
+  "q": {
+   "hi": "\"Course Schedule: kya saare courses finish ho sakte hain?\" Kaunsi technique?",
+   "en": "\"Course Schedule: can all courses be finished?\" Which technique?"
+  },
+  "options": {
+   "hi": [
+    "MST",
+    "Topological sort / cycle detection",
+    "Bipartite check",
+    "Binary search"
+   ],
+   "en": [
+    "MST",
+    "Topological sort / cycle detection",
+    "Bipartite check",
+    "Binary search"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Prerequisites ek directed graph hain; cycle ho to finish nahi ho sakta. Kahn ka order size < n matlab cycle.",
+   "en": "Prerequisites form a directed graph; a cycle makes it impossible. Kahn's order size < n means a cycle."
+  }
+ },
+ {
+  "id": "dsa-13-graphs-03",
+  "section": "dsa",
+  "topic": "13-graphs",
+  "level": "medium",
+  "q": {
+   "hi": "Dijkstra negative edge weights pe kyun fail hota hai?",
+   "en": "Why does Dijkstra fail with negative edge weights?"
+  },
+  "options": {
+   "hi": [
+    "Ye O(V^3) ho jaata hai",
+    "Heap negative numbers store nahi karta",
+    "Pop hua node final maana jaata hai, par negative edge baad me use sasta kar sakti hai",
+    "Ye sirf undirected graphs pe chalta hai"
+   ],
+   "en": [
+    "It becomes O(V^3)",
+    "The heap cannot store negative numbers",
+    "A popped node is treated as final, but a negative edge could later make it cheaper",
+    "It only works on undirected graphs"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Greedy assumption toot jaata hai; negative weights ke liye Bellman-Ford use karo.",
+   "en": "The greedy assumption breaks; use Bellman-Ford for negative weights."
+  }
+ },
+ {
+  "id": "dsa-13-graphs-04",
+  "section": "dsa",
+  "topic": "13-graphs",
+  "level": "hard",
+  "q": {
+   "hi": "\"Cheapest flight with at most K stops\" (LC 787). Sabse seedha sahi approach?",
+   "en": "\"Cheapest flight with at most K stops\" (LC 787). Most direct correct approach?"
+  },
+  "options": {
+   "hi": [
+    "Bellman-Ford K+1 passes, har pass me dist copy",
+    "Floyd–Warshall",
+    "DFS without pruning",
+    "Plain Dijkstra on cost"
+   ],
+   "en": [
+    "Bellman-Ford with K+1 passes, copying dist each pass",
+    "Floyd–Warshall",
+    "DFS without pruning",
+    "Plain Dijkstra on cost"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Bellman-Ford ka i-th pass max i edges wale paths deta hai; copy se ek pass me ek hi edge add hoti hai.",
+   "en": "Bellman-Ford's i-th pass covers paths with at most i edges; copying keeps it to one edge per pass."
+  }
+ },
+ {
+  "id": "dsa-13-graphs-05",
+  "section": "dsa",
+  "topic": "13-graphs",
+  "level": "medium",
+  "q": {
+   "hi": "Directed graph me cycle detect karne ke liye sirf ek `visited` array kyun kaafi nahi?",
+   "en": "Why is a single `visited` array not enough to detect a cycle in a directed graph?"
+  },
+  "options": {
+   "hi": [
+    "Visited array sirf BFS ke liye hai",
+    "Ye O(V^2) memory leta hai",
+    "Directed graphs me cycles nahi hote",
+    "Visited node kisi aur branch se ho sakta hai (cross edge); 'current path pe' state chahiye"
+   ],
+   "en": [
+    "Visited arrays only work for BFS",
+    "It uses O(V^2) memory",
+    "Directed graphs have no cycles",
+    "A visited node may come from another branch (cross edge); you need an 'on current path' state"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Sirf back edge (gray node tak) cycle hai; teen colours (white/gray/black) ya recursion-stack array use karo.",
+   "en": "Only a back edge (to a gray node) is a cycle; use three colours (white/gray/black) or a recursion-stack array."
+  }
+ },
+ {
+  "id": "dsa-13-graphs-06",
+  "section": "dsa",
+  "topic": "13-graphs",
+  "level": "medium",
+  "q": {
+   "hi": "Edges ke weights sirf 0 ya 1 hain. Shortest path ke liye efficient choice?",
+   "en": "Edge weights are only 0 or 1. Efficient choice for shortest path?"
+  },
+  "options": {
+   "hi": [
+    "Bellman-Ford",
+    "0-1 BFS with deque",
+    "Floyd–Warshall",
+    "Plain DFS"
+   ],
+   "en": [
+    "Bellman-Ford",
+    "0-1 BFS with deque",
+    "Floyd–Warshall",
+    "Plain DFS"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "Weight 0 → push_front, weight 1 → push_back; O(V + E), Dijkstra ke log factor ke bina.",
+   "en": "Weight 0 goes to push_front, weight 1 to push_back; O(V + E) without Dijkstra's log factor."
+  }
+ },
+ {
+  "id": "dsa-14-dsu-01",
+  "section": "dsa",
+  "topic": "14-dsu",
+  "level": "easy",
+  "q": {
+   "hi": "Edges ek-ek karke aate hain aur har edge ke baad connected components ki count batani hai. Best choice?",
+   "en": "Edges arrive one at a time and after each edge you must report the number of connected components. Best choice?"
+  },
+  "options": {
+   "hi": [
+    "Har edge ke baad DFS",
+    "DSU with a component counter",
+    "Dijkstra",
+    "Topological sort"
+   ],
+   "en": [
+    "Run DFS after every edge",
+    "DSU with a component counter",
+    "Dijkstra",
+    "Topological sort"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "DSU har unite ko lagbhag O(1) me karta hai aur successful unite pe counter ghata deta hai; har baar DFS O(V+E) per edge hoga.",
+   "en": "DSU handles each unite in near O(1) and decrements a counter on success; DFS after every edge costs O(V+E) per edge."
+  }
+ },
+ {
+  "id": "dsa-14-dsu-02",
+  "section": "dsa",
+  "topic": "14-dsu",
+  "level": "medium",
+  "q": {
+   "hi": "Path compression AUR union by size dono ke saath DSU operation ki amortised complexity?",
+   "en": "Amortised cost per DSU operation with BOTH path compression and union by size?"
+  },
+  "options": {
+   "hi": [
+    "O(log n)",
+    "O(√n)",
+    "O(n)",
+    "O(α(n)), practically constant"
+   ],
+   "en": [
+    "O(log n)",
+    "O(√n)",
+    "O(n)",
+    "O(α(n)), practically constant"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Dono optimisations ke saath inverse Ackermann α(n) milta hai, jo kisi bhi real n ke liye ≤ 4 hai. Ek akele se O(log n).",
+   "en": "Together they give inverse Ackermann α(n), at most 4 for any real n. Either one alone gives O(log n)."
+  }
+ },
+ {
+  "id": "dsa-14-dsu-03",
+  "section": "dsa",
+  "topic": "14-dsu",
+  "level": "medium",
+  "q": {
+   "hi": "Kis problem me DSU sahi tool NAHI hai?",
+   "en": "For which problem is DSU NOT the right tool?"
+  },
+  "options": {
+   "hi": [
+    "Directed graph me cycle detection",
+    "Undirected graph me redundant edge",
+    "Common email wale accounts merge",
+    "Kruskal MST"
+   ],
+   "en": [
+    "Cycle detection in a directed graph",
+    "Redundant edge in an undirected graph",
+    "Merging accounts that share an email",
+    "Kruskal's MST"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "DSU direction ignore karta hai; directed cycle ke liye DFS colours ya Kahn ka algorithm chahiye.",
+   "en": "DSU ignores direction; directed cycles need DFS colouring or Kahn's algorithm."
+  }
+ },
+ {
+  "id": "dsa-14-dsu-04",
+  "section": "dsa",
+  "topic": "14-dsu",
+  "level": "easy",
+  "q": {
+   "hi": "DSU(4) pe `unite(0,1); unite(2,3); unite(1,2);` ke baad `components` kya hoga?",
+   "en": "On DSU(4), after `unite(0,1); unite(2,3); unite(1,2);` what is `components`?"
+  },
+  "options": {
+   "hi": [
+    "3",
+    "2",
+    "1",
+    "4"
+   ],
+   "en": [
+    "3",
+    "2",
+    "1",
+    "4"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "4 se shuru; teeno unites alag roots jodte hain, har ek counter 1 ghatata hai: 4 → 3 → 2 → 1.",
+   "en": "Starts at 4; all three unites join different roots, each decrements: 4 → 3 → 2 → 1."
+  }
+ },
+ {
+  "id": "dsa-14-dsu-05",
+  "section": "dsa",
+  "topic": "14-dsu",
+  "level": "medium",
+  "q": {
+   "hi": "Ek candidate likhta hai `void unite(int a,int b){ parent[a]=b; }`. Problem kya hai?",
+   "en": "A candidate writes `void unite(int a,int b){ parent[a]=b; }`. What is wrong?"
+  },
+  "options": {
+   "hi": [
+    "Kuch nahi, ye sahi hai",
+    "a ka purana group b ke group se nahi judta kyunki roots link nahi hue",
+    "Sirf performance issue hai",
+    "Ye infinite loop banata hai hamesha"
+   ],
+   "en": [
+    "Nothing, it is correct",
+    "a's old group is not merged with b's group because roots were not linked",
+    "Only a performance issue",
+    "It always creates an infinite loop"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "a ka parent overwrite hone se a apne purane group se toot jaata hai. Hamesha `find(a)` aur `find(b)` ke roots link karo.",
+   "en": "Overwriting a's parent detaches a from its old group. Always link `find(a)` to `find(b)`."
+  }
+ },
+ {
+  "id": "dsa-14-dsu-06",
+  "section": "dsa",
+  "topic": "14-dsu",
+  "level": "hard",
+  "q": {
+   "hi": "Graph me edges time ke saath DELETE hote hain aur connectivity queries aati hain (saari pehle se pata). Standard trick?",
+   "en": "Edges are DELETED over time with connectivity queries in between (all known in advance). Standard trick?"
+  },
+  "options": {
+   "hi": [
+    "DSU me split operation",
+    "Union by rank hata do",
+    "Har query pe Floyd–Warshall",
+    "Operations ulte order me process karke deletions ko unions banao"
+   ],
+   "en": [
+    "Use a DSU split operation",
+    "Drop union by rank",
+    "Floyd–Warshall per query",
+    "Process operations in reverse so deletions become unions"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "DSU split nahi kar sakta. Offline reverse me deletion add ban jaata hai, phir normal DSU chal jaata hai.",
+   "en": "DSU cannot split. Processed offline in reverse, each deletion becomes an addition, so plain DSU works."
+  }
+ },
+ {
+  "id": "dsa-15-dp-01",
+  "section": "dsa",
+  "topic": "15-dp",
+  "level": "easy",
+  "q": {
+   "hi": "Coins {1, 3, 4}, target 6, minimum coins. Greedy (sabse bada coin pehle) kya deta hai aur sahi answer kya hai?",
+   "en": "Coins {1, 3, 4}, target 6, minimum coins. What does greedy (largest first) give vs the correct answer?"
+  },
+  "options": {
+   "hi": [
+    "Greedy 2, sahi 2",
+    "Greedy 2, sahi 3",
+    "Greedy 3 (4+1+1), sahi 2 (3+3)",
+    "Dono 3"
+   ],
+   "en": [
+    "Greedy 2, correct 2",
+    "Greedy 2, correct 3",
+    "Greedy 3 (4+1+1), correct 2 (3+3)",
+    "Both 3"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Greedy fail hota hai, isliye coin change unbounded knapsack DP se solve hota hai.",
+   "en": "Greedy fails here, which is why coin change is solved with unbounded knapsack DP."
+  }
+ },
+ {
+  "id": "dsa-15-dp-02",
+  "section": "dsa",
+  "topic": "15-dp",
+  "level": "medium",
+  "q": {
+   "hi": "0/1 knapsack ki 1D dp me capacity loop `for (w = W; w >= wt[i]; w--)` neeche ki taraf kyun chalta hai?",
+   "en": "In 1D 0/1 knapsack, why does the capacity loop `for (w = W; w >= wt[i]; w--)` go downward?"
+  },
+  "options": {
+   "hi": [
+    "Taaki same item ek se zyada baar use na ho",
+    "Speed ke liye",
+    "Taaki negative index na aaye",
+    "Koi farak nahi padta"
+   ],
+   "en": [
+    "So the same item is not used more than once",
+    "For speed",
+    "To avoid negative indices",
+    "It makes no difference"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Upar ki taraf loop me dp[w - wt[i]] is item ke saath already update ho chuka hota hai, to item reuse ho jaata (wo unbounded knapsack hai).",
+   "en": "Going upward, dp[w - wt[i]] may already include this item, so it gets reused (that is unbounded knapsack)."
+  }
+ },
+ {
+  "id": "dsa-15-dp-03",
+  "section": "dsa",
+  "topic": "15-dp",
+  "level": "medium",
+  "q": {
+   "hi": "n = 1e5 ke array me Longest Increasing Subsequence. Kaunsa approach?",
+   "en": "Longest Increasing Subsequence for an array of n = 1e5. Which approach?"
+  },
+  "options": {
+   "hi": [
+    "O(n²) dp[i] = 1 + max dp[j]",
+    "Interval DP",
+    "Bitmask DP",
+    "tails array + lower_bound, O(n log n)"
+   ],
+   "en": [
+    "O(n²) dp[i] = 1 + max dp[j]",
+    "Interval DP",
+    "Bitmask DP",
+    "tails array + lower_bound, O(n log n)"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "1e10 operations O(n²) ke liye bahut zyada hain; patience-sorting jaisa tails + binary search O(n log n) deta hai.",
+   "en": "O(n²) is 1e10 operations, too slow; tails + binary search gives O(n log n)."
+  }
+ },
+ {
+  "id": "dsa-15-dp-04",
+  "section": "dsa",
+  "topic": "15-dp",
+  "level": "easy",
+  "q": {
+   "hi": "`int a[]={2,7,9,3,1}; int p2=0,p1=0; for(int x:a){int c=max(p1,p2+x);p2=p1;p1=c;} cout<<p1;` kya print karega?",
+   "en": "What does `int a[]={2,7,9,3,1}; int p2=0,p1=0; for(int x:a){int c=max(p1,p2+x);p2=p1;p1=c;} cout<<p1;` print?"
+  },
+  "options": {
+   "hi": [
+    "11",
+    "12",
+    "13",
+    "22"
+   ],
+   "en": [
+    "11",
+    "12",
+    "13",
+    "22"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "House Robber: 2, 7, 11, 11, 12. Best = 2 + 9 + 1 = 12.",
+   "en": "House Robber: 2, 7, 11, 11, 12. Best = 2 + 9 + 1 = 12."
+  }
+ },
+ {
+  "id": "dsa-15-dp-05",
+  "section": "dsa",
+  "topic": "15-dp",
+  "level": "hard",
+  "q": {
+   "hi": "Burst Balloons / Matrix Chain jaisa problem: range [l, r] pe split point try karna hai. DP table kis order me bharoge?",
+   "en": "Burst Balloons / Matrix Chain style: try split points inside a range [l, r]. In what order do you fill the table?"
+  },
+  "options": {
+   "hi": [
+    "l = 0..n, r = 0..n simple order",
+    "Random order, memo sambhaal lega",
+    "Range length badhte order me",
+    "r ghatte order me sirf"
+   ],
+   "en": [
+    "Plain l = 0..n, r = 0..n",
+    "Any order, memo handles it",
+    "By increasing range length",
+    "Only by decreasing r"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "dp[l][r] chhote ranges dp[l][k], dp[k][r] pe depend karta hai, isliye length ke order me bharna padta hai. O(n³).",
+   "en": "dp[l][r] depends on shorter ranges dp[l][k] and dp[k][r], so fill by length. O(n³)."
+  }
+ },
+ {
+  "id": "dsa-15-dp-06",
+  "section": "dsa",
+  "topic": "15-dp",
+  "level": "medium",
+  "q": {
+   "hi": "Problem: \"target ke saare combinations PRINT karo\". Sahi technique?",
+   "en": "Problem: \"PRINT all combinations that sum to target\". Right technique?"
+  },
+  "options": {
+   "hi": [
+    "Backtracking, kyunki output hi exponential ho sakta hai",
+    "DP, kyunki overlapping subproblems hain",
+    "Binary search",
+    "DSU"
+   ],
+   "en": [
+    "Backtracking, because the output itself can be exponential",
+    "DP, because there are overlapping subproblems",
+    "Binary search",
+    "DSU"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "DP count ya optimise karta hai; saari lists generate karni ho to backtracking (pruning ke saath).",
+   "en": "DP counts or optimises; generating every list is backtracking (with pruning)."
+  }
+ },
+ {
+  "id": "dsa-16-dp-on-trees-graphs-01",
+  "section": "dsa",
+  "topic": "16-dp-on-trees-graphs",
+  "level": "medium",
+  "q": {
+   "hi": "Binary Tree Maximum Path Sum me helper parent ko kya return kare?",
+   "en": "In Binary Tree Maximum Path Sum, what should the helper return to its parent?"
+  },
+  "options": {
+   "hi": [
+    "node->val + max(l, r), l aur r ko 0 se clamp karke",
+    "node->val + l + r",
+    "max(l, r)",
+    "Global best"
+   ],
+   "en": [
+    "node->val + max(l, r), with l and r clamped at 0",
+    "node->val + l + r",
+    "max(l, r)",
+    "The global best"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "Path fork nahi ho sakta, to parent sirf ek chain extend kar sakta hai; l + r wala path sirf global answer me jaata hai.",
+   "en": "A path cannot fork, so the parent can extend only one chain; the l + r path only updates the global answer."
+  }
+ },
+ {
+  "id": "dsa-16-dp-on-trees-graphs-02",
+  "section": "dsa",
+  "topic": "16-dp-on-trees-graphs",
+  "level": "medium",
+  "q": {
+   "hi": "Weighted DAG me longest path. Approach aur complexity?",
+   "en": "Longest path in a weighted DAG. Approach and complexity?"
+  },
+  "options": {
+   "hi": [
+    "NP-hard, backtracking",
+    "Floyd–Warshall O(V³) hi ek option",
+    "Dijkstra with max",
+    "Topological order me DP, O(V + E)"
+   ],
+   "en": [
+    "NP-hard, use backtracking",
+    "Only Floyd–Warshall O(V³)",
+    "Dijkstra with max instead of min",
+    "DP in topological order, O(V + E)"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "General graph me NP-hard hai, par DAG me topo order guarantee karta hai ki predecessors pehle final hon.",
+   "en": "NP-hard on general graphs, but on a DAG topo order guarantees predecessors are final first."
+  }
+ },
+ {
+  "id": "dsa-16-dp-on-trees-graphs-03",
+  "section": "dsa",
+  "topic": "16-dp-on-trees-graphs",
+  "level": "hard",
+  "q": {
+   "hi": "Sum of Distances in Tree (n = 3e4) har node ke liye. Best approach?",
+   "en": "Sum of Distances in Tree (n = 3e4) for every node. Best approach?"
+  },
+  "options": {
+   "hi": [
+    "Har node se BFS, O(n²)",
+    "Floyd–Warshall",
+    "Rerooting: do DFS passes, O(n)",
+    "Bitmask DP"
+   ],
+   "en": [
+    "BFS from every node, O(n²)",
+    "Floyd–Warshall",
+    "Rerooting: two DFS passes, O(n)",
+    "Bitmask DP"
+   ]
+  },
+  "answer": 2,
+  "why": {
+   "hi": "Root ko p se child c pe shift karne se res[c] = res[p] - cnt[c] + (n - cnt[c]); sab ek DFS me.",
+   "en": "Shifting the root from p to child c gives res[c] = res[p] - cnt[c] + (n - cnt[c]); all in one extra DFS."
+  }
+ },
+ {
+  "id": "dsa-16-dp-on-trees-graphs-04",
+  "section": "dsa",
+  "topic": "16-dp-on-trees-graphs",
+  "level": "easy",
+  "q": {
+   "hi": "House Robber III (binary tree) me har node kya return karta hai?",
+   "en": "In House Robber III (binary tree), what does each node return?"
+  },
+  "options": {
+   "hi": [
+    "Sirf max loot",
+    "{take, skip} pair",
+    "Subtree size",
+    "Depth"
+   ],
+   "en": [
+    "Only the max loot",
+    "A {take, skip} pair",
+    "Subtree size",
+    "Depth"
+   ]
+  },
+  "answer": 1,
+  "why": {
+   "hi": "take = val + children ka skip; skip = har child ka max(take, skip). Parent ko dono chahiye.",
+   "en": "take = val + children's skip; skip = sum of max(take, skip) per child. The parent needs both."
+  }
+ },
+ {
+  "id": "dsa-16-dp-on-trees-graphs-05",
+  "section": "dsa",
+  "topic": "16-dp-on-trees-graphs",
+  "level": "medium",
+  "q": {
+   "hi": "Floyd–Warshall me `for i, for j, for k` (k innermost) likh diya. Kya hoga?",
+   "en": "Floyd–Warshall written as `for i, for j, for k` (k innermost). What happens?"
+  },
+  "options": {
+   "hi": [
+    "Galat answers aa sakte hain, kyunki k (allowed intermediates) outer DP dimension hai",
+    "Same answer, bas slow",
+    "Compile error",
+    "Negative cycles detect ho jaate hain"
+   ],
+   "en": [
+    "May give wrong answers, because k (allowed intermediates) is the outer DP dimension",
+    "Same answer, just slower",
+    "Compile error",
+    "It detects negative cycles"
+   ]
+  },
+  "answer": 0,
+  "why": {
+   "hi": "dist[i][j] ke liye 0..k intermediates wale saare pairs pehle final hone chahiye; k ko bahar rakho.",
+   "en": "Every pair must be final for intermediates 0..k before moving to k+1; keep k outermost."
+  }
+ },
+ {
+  "id": "dsa-16-dp-on-trees-graphs-06",
+  "section": "dsa",
+  "topic": "16-dp-on-trees-graphs",
+  "level": "hard",
+  "q": {
+   "hi": "\"Shortest path visiting all nodes\", n = 12, unweighted graph. State kya hoga?",
+   "en": "\"Shortest path visiting all nodes\", n = 12, unweighted graph. What is the state?"
+  },
+  "options": {
+   "hi": [
+    "Sirf current node",
+    "(node, distance) pe DSU",
+    "Topological order",
+    "(visited mask, current node) pe BFS"
+   ],
+   "en": [
+    "Just the current node",
+    "DSU on (node, distance)",
+    "Topological order",
+    "BFS over (visited mask, current node)"
+   ]
+  },
+  "answer": 3,
+  "why": {
+   "hi": "Graph me cycles hain aur nodes revisit ho sakte hain; mask state cycles todta hai. 2^12 × 12 states, chhota.",
+   "en": "The graph has cycles and nodes may be revisited; the mask state breaks cycles. 2^12 × 12 states is small."
+  }
+ }
+]

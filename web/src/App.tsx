@@ -10,6 +10,7 @@ import { PageView, type ReadMode } from './components/PageView'
 import { Quiz } from './components/Quiz'
 import { Resume } from './components/Resume'
 import { Lists } from './components/Lists'
+import { PracticeList, ProblemView } from './dsa/PracticeView'
 import { Planner } from './components/Planner'
 import { NotesPanel } from './components/NotesPanel'
 import { ChatPanel } from './components/ChatPanel'
@@ -37,6 +38,7 @@ function useRoute() {
   const path = usePath()
   const parts = path.split('/')
   if (parts[0] === 'quiz') return { view: 'quiz' as const, slug: 'quiz' }
+  if (parts[0] === 'practice') return { view: 'practice' as const, slug: 'practice', problem: parts[1] }
   if (parts[0] === 'lists') return { view: 'lists' as const, slug: 'lists' }
   if (parts[0] === 'resume') return { view: 'resume' as const, slug: 'resume' }
   if (parts[0] === 'plan') return { view: 'plan' as const, slug: 'plan' }
@@ -44,7 +46,7 @@ function useRoute() {
     const p = `/${parts.join('/')}`
     return { view: 'agents' as const, slug: agentPageFor(p).slug, path: p }
   }
-  if (['topic', 'q', 'lld', 'lldp', 'java', 'db', 'cs', 'behavioral', 'rag'].includes(parts[0]) && parts[1]) return { view: 'page' as const, slug: parts[1] }
+  if (['topic', 'q', 'lld', 'lldp', 'java', 'db', 'cs', 'behavioral', 'rag', 'dsa'].includes(parts[0]) && parts[1]) return { view: 'page' as const, slug: parts[1] }
   return { view: 'home' as const, slug: '' }
 }
 
@@ -103,7 +105,7 @@ export function App() {
   useEffect(() => writeLocal('hld.mode', readMode), [readMode])
 
   useEffect(() => {
-    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : 'Viewinter'
+    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : 'Viewinter'
     document.querySelector('.main')?.scrollTo(0, 0)
     window.scrollTo(0, 0)
   }, [page, view, lang])
@@ -196,6 +198,7 @@ export function App() {
           {view === 'plan' && <Planner />}
           {view === 'quiz' && <Quiz hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} />}
           {view === 'lists' && <Lists />}
+          {view === 'practice' && (route.problem ? <ProblemView id={route.problem} /> : <PracticeList />)}
           {view === 'resume' && <Resume hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} />}
           {view === 'page' && !page && (
             <div className="empty-state">

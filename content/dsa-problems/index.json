@@ -1,0 +1,983 @@
+[
+ {
+  "id": "running-sum-1d",
+  "title": "Running Sum of 1d Array",
+  "topic": "01-cpp-basics",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 1480,
+  "tags": [
+   "array",
+   "prefix sum"
+  ],
+  "order": 1
+ },
+ {
+  "id": "palindrome-number",
+  "title": "Palindrome Number",
+  "topic": "01-cpp-basics",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 9,
+  "tags": [
+   "math"
+  ],
+  "order": 2
+ },
+ {
+  "id": "fizz-buzz",
+  "title": "Fizz Buzz",
+  "topic": "01-cpp-basics",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 412,
+  "tags": [
+   "math",
+   "string"
+  ],
+  "order": 3
+ },
+ {
+  "id": "two-sum",
+  "title": "Two Sum",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 1,
+  "tags": [
+   "hash map"
+  ],
+  "order": 1
+ },
+ {
+  "id": "contains-duplicate",
+  "title": "Contains Duplicate",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 217,
+  "tags": [
+   "hash set",
+   "array"
+  ],
+  "order": 2
+ },
+ {
+  "id": "valid-anagram",
+  "title": "Valid Anagram",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 242,
+  "tags": [
+   "hash map",
+   "string",
+   "counting"
+  ],
+  "order": 3
+ },
+ {
+  "id": "group-anagrams",
+  "title": "Group Anagrams",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 49,
+  "tags": [
+   "hash map",
+   "string",
+   "sorting"
+  ],
+  "order": 4
+ },
+ {
+  "id": "product-of-array-except-self",
+  "title": "Product of Array Except Self",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 238,
+  "tags": [
+   "array",
+   "prefix product"
+  ],
+  "order": 5
+ },
+ {
+  "id": "top-k-frequent-elements",
+  "title": "Top K Frequent Elements",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 347,
+  "tags": [
+   "hash map",
+   "bucket sort",
+   "heap"
+  ],
+  "order": 6
+ },
+ {
+  "id": "longest-consecutive-sequence",
+  "title": "Longest Consecutive Sequence",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 128,
+  "tags": [
+   "hash set",
+   "array"
+  ],
+  "order": 7
+ },
+ {
+  "id": "maximum-subarray",
+  "title": "Maximum Subarray",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 53,
+  "tags": [
+   "array",
+   "kadane",
+   "dp"
+  ],
+  "order": 8
+ },
+ {
+  "id": "subarray-sum-equals-k",
+  "title": "Subarray Sum Equals K",
+  "topic": "05-arrays-hashing-prefix",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 560,
+  "tags": [
+   "prefix sum",
+   "hash map"
+  ],
+  "order": 9
+ },
+ {
+  "id": "valid-palindrome",
+  "title": "Valid Palindrome",
+  "topic": "06-two-pointers-sliding-window",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 125,
+  "tags": [
+   "two pointers",
+   "string"
+  ],
+  "order": 1
+ },
+ {
+  "id": "three-sum",
+  "title": "3Sum",
+  "topic": "06-two-pointers-sliding-window",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 15,
+  "tags": [
+   "two pointers",
+   "sorting"
+  ],
+  "order": 2
+ },
+ {
+  "id": "container-with-most-water",
+  "title": "Container With Most Water",
+  "topic": "06-two-pointers-sliding-window",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 11,
+  "tags": [
+   "two pointers",
+   "greedy"
+  ],
+  "order": 3
+ },
+ {
+  "id": "longest-substring-without-repeating",
+  "title": "Longest Substring Without Repeating Characters",
+  "topic": "06-two-pointers-sliding-window",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 3,
+  "tags": [
+   "sliding window",
+   "hash map",
+   "string"
+  ],
+  "order": 4
+ },
+ {
+  "id": "longest-repeating-character-replacement",
+  "title": "Longest Repeating Character Replacement",
+  "topic": "06-two-pointers-sliding-window",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 424,
+  "tags": [
+   "sliding window",
+   "string"
+  ],
+  "order": 5
+ },
+ {
+  "id": "minimum-window-substring",
+  "title": "Minimum Window Substring",
+  "topic": "06-two-pointers-sliding-window",
+  "difficulty": "hard",
+  "points": 40,
+  "lc": 76,
+  "tags": [
+   "sliding window",
+   "hash map",
+   "string"
+  ],
+  "order": 6
+ },
+ {
+  "id": "binary-search",
+  "title": "Binary Search",
+  "topic": "07-binary-search",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 704,
+  "tags": [
+   "binary search"
+  ],
+  "order": 1
+ },
+ {
+  "id": "find-minimum-in-rotated-sorted-array",
+  "title": "Find Minimum in Rotated Sorted Array",
+  "topic": "07-binary-search",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 153,
+  "tags": [
+   "binary search"
+  ],
+  "order": 2
+ },
+ {
+  "id": "search-in-rotated-sorted-array",
+  "title": "Search in Rotated Sorted Array",
+  "topic": "07-binary-search",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 33,
+  "tags": [
+   "binary search"
+  ],
+  "order": 3
+ },
+ {
+  "id": "koko-eating-bananas",
+  "title": "Koko Eating Bananas",
+  "topic": "07-binary-search",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 875,
+  "tags": [
+   "binary search on answer"
+  ],
+  "order": 4
+ },
+ {
+  "id": "median-of-two-sorted-arrays",
+  "title": "Median of Two Sorted Arrays",
+  "topic": "07-binary-search",
+  "difficulty": "hard",
+  "points": 40,
+  "lc": 4,
+  "tags": [
+   "binary search",
+   "divide and conquer"
+  ],
+  "order": 5
+ },
+ {
+  "id": "jump-game",
+  "title": "Jump Game",
+  "topic": "08-greedy-intervals",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 55,
+  "tags": [
+   "greedy",
+   "array"
+  ],
+  "order": 1
+ },
+ {
+  "id": "merge-intervals",
+  "title": "Merge Intervals",
+  "topic": "08-greedy-intervals",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 56,
+  "tags": [
+   "sorting",
+   "intervals"
+  ],
+  "order": 2
+ },
+ {
+  "id": "non-overlapping-intervals",
+  "title": "Non-overlapping Intervals",
+  "topic": "08-greedy-intervals",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 435,
+  "tags": [
+   "greedy",
+   "sorting",
+   "intervals"
+  ],
+  "order": 3
+ },
+ {
+  "id": "gas-station",
+  "title": "Gas Station",
+  "topic": "08-greedy-intervals",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 134,
+  "tags": [
+   "greedy",
+   "array"
+  ],
+  "order": 4
+ },
+ {
+  "id": "valid-parentheses",
+  "title": "Valid Parentheses",
+  "topic": "09-stack-queue-monotonic",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 20,
+  "tags": [
+   "stack",
+   "string"
+  ],
+  "order": 1
+ },
+ {
+  "id": "reverse-linked-list",
+  "title": "Reverse Linked List",
+  "topic": "09-stack-queue-monotonic",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 206,
+  "tags": [
+   "linked list"
+  ],
+  "order": 2
+ },
+ {
+  "id": "merge-two-sorted-lists",
+  "title": "Merge Two Sorted Lists",
+  "topic": "09-stack-queue-monotonic",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 21,
+  "tags": [
+   "linked list",
+   "two pointers"
+  ],
+  "order": 3
+ },
+ {
+  "id": "daily-temperatures",
+  "title": "Daily Temperatures",
+  "topic": "09-stack-queue-monotonic",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 739,
+  "tags": [
+   "monotonic stack",
+   "array"
+  ],
+  "order": 4
+ },
+ {
+  "id": "sliding-window-maximum",
+  "title": "Sliding Window Maximum",
+  "topic": "09-stack-queue-monotonic",
+  "difficulty": "hard",
+  "points": 40,
+  "lc": 239,
+  "tags": [
+   "monotonic deque",
+   "sliding window"
+  ],
+  "order": 5
+ },
+ {
+  "id": "largest-rectangle-in-histogram",
+  "title": "Largest Rectangle in Histogram",
+  "topic": "09-stack-queue-monotonic",
+  "difficulty": "hard",
+  "points": 40,
+  "lc": 84,
+  "tags": [
+   "monotonic stack",
+   "array"
+  ],
+  "order": 6
+ },
+ {
+  "id": "subsets",
+  "title": "Subsets",
+  "topic": "10-recursion-backtracking",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 78,
+  "tags": [
+   "backtracking",
+   "bit manipulation"
+  ],
+  "order": 1
+ },
+ {
+  "id": "permutations",
+  "title": "Permutations",
+  "topic": "10-recursion-backtracking",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 46,
+  "tags": [
+   "backtracking"
+  ],
+  "order": 2
+ },
+ {
+  "id": "combination-sum",
+  "title": "Combination Sum",
+  "topic": "10-recursion-backtracking",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 39,
+  "tags": [
+   "backtracking"
+  ],
+  "order": 3
+ },
+ {
+  "id": "generate-parentheses",
+  "title": "Generate Parentheses",
+  "topic": "10-recursion-backtracking",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 22,
+  "tags": [
+   "backtracking",
+   "string"
+  ],
+  "order": 4
+ },
+ {
+  "id": "word-search",
+  "title": "Word Search",
+  "topic": "10-recursion-backtracking",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 79,
+  "tags": [
+   "backtracking",
+   "grid",
+   "dfs"
+  ],
+  "order": 5
+ },
+ {
+  "id": "n-queens-ii",
+  "title": "N-Queens II",
+  "topic": "10-recursion-backtracking",
+  "difficulty": "hard",
+  "points": 40,
+  "lc": 52,
+  "tags": [
+   "backtracking"
+  ],
+  "order": 6
+ },
+ {
+  "id": "max-depth-binary-tree",
+  "title": "Maximum Depth of Binary Tree",
+  "topic": "11-trees",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 104,
+  "tags": [
+   "dfs",
+   "tree"
+  ],
+  "order": 1
+ },
+ {
+  "id": "invert-binary-tree",
+  "title": "Invert Binary Tree",
+  "topic": "11-trees",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 226,
+  "tags": [
+   "dfs",
+   "tree"
+  ],
+  "order": 2
+ },
+ {
+  "id": "diameter-of-binary-tree",
+  "title": "Diameter of Binary Tree",
+  "topic": "11-trees",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 543,
+  "tags": [
+   "dfs",
+   "tree"
+  ],
+  "order": 3
+ },
+ {
+  "id": "binary-tree-level-order",
+  "title": "Binary Tree Level Order Traversal",
+  "topic": "11-trees",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 102,
+  "tags": [
+   "bfs",
+   "tree"
+  ],
+  "order": 4
+ },
+ {
+  "id": "binary-tree-right-side-view",
+  "title": "Binary Tree Right Side View",
+  "topic": "11-trees",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 199,
+  "tags": [
+   "bfs",
+   "dfs",
+   "tree"
+  ],
+  "order": 5
+ },
+ {
+  "id": "validate-bst",
+  "title": "Validate Binary Search Tree",
+  "topic": "11-trees",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 98,
+  "tags": [
+   "dfs",
+   "bst",
+   "tree"
+  ],
+  "order": 6
+ },
+ {
+  "id": "kth-smallest-in-bst",
+  "title": "Kth Smallest Element in a BST",
+  "topic": "11-trees",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 230,
+  "tags": [
+   "bst",
+   "inorder",
+   "tree"
+  ],
+  "order": 7
+ },
+ {
+  "id": "lowest-common-ancestor-bst",
+  "title": "Lowest Common Ancestor of a Binary Search Tree",
+  "topic": "11-trees",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 235,
+  "tags": [
+   "bst",
+   "tree"
+  ],
+  "order": 8
+ },
+ {
+  "id": "binary-tree-max-path-sum",
+  "title": "Binary Tree Maximum Path Sum",
+  "topic": "11-trees",
+  "difficulty": "hard",
+  "points": 40,
+  "lc": 124,
+  "tags": [
+   "dfs",
+   "tree"
+  ],
+  "order": 9
+ },
+ {
+  "id": "last-stone-weight",
+  "title": "Last Stone Weight",
+  "topic": "12-heaps-priority-queue",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 1046,
+  "tags": [
+   "heap",
+   "simulation"
+  ],
+  "order": 1
+ },
+ {
+  "id": "kth-largest-element",
+  "title": "Kth Largest Element in an Array",
+  "topic": "12-heaps-priority-queue",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 215,
+  "tags": [
+   "heap",
+   "quickselect"
+  ],
+  "order": 2
+ },
+ {
+  "id": "k-closest-points-to-origin",
+  "title": "K Closest Points to Origin",
+  "topic": "12-heaps-priority-queue",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 973,
+  "tags": [
+   "heap",
+   "sorting"
+  ],
+  "order": 3
+ },
+ {
+  "id": "task-scheduler",
+  "title": "Task Scheduler",
+  "topic": "12-heaps-priority-queue",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 621,
+  "tags": [
+   "greedy",
+   "heap",
+   "counting"
+  ],
+  "order": 4
+ },
+ {
+  "id": "number-of-islands",
+  "title": "Number of Islands",
+  "topic": "13-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 200,
+  "tags": [
+   "dfs",
+   "bfs",
+   "grid"
+  ],
+  "order": 1
+ },
+ {
+  "id": "rotting-oranges",
+  "title": "Rotting Oranges",
+  "topic": "13-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 994,
+  "tags": [
+   "bfs",
+   "multi-source bfs",
+   "grid"
+  ],
+  "order": 2
+ },
+ {
+  "id": "shortest-path-binary-matrix",
+  "title": "Shortest Path in Binary Matrix",
+  "topic": "13-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 1091,
+  "tags": [
+   "bfs",
+   "grid",
+   "shortest path"
+  ],
+  "order": 3
+ },
+ {
+  "id": "course-schedule",
+  "title": "Course Schedule",
+  "topic": "13-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 207,
+  "tags": [
+   "topological sort",
+   "cycle detection",
+   "bfs"
+  ],
+  "order": 4
+ },
+ {
+  "id": "network-delay-time",
+  "title": "Network Delay Time",
+  "topic": "13-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 743,
+  "tags": [
+   "dijkstra",
+   "shortest path",
+   "heap"
+  ],
+  "order": 5
+ },
+ {
+  "id": "cheapest-flights-within-k-stops",
+  "title": "Cheapest Flights Within K Stops",
+  "topic": "13-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 787,
+  "tags": [
+   "bellman-ford",
+   "shortest path",
+   "bfs"
+  ],
+  "order": 6
+ },
+ {
+  "id": "number-of-provinces",
+  "title": "Number of Provinces",
+  "topic": "14-dsu",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 547,
+  "tags": [
+   "union find",
+   "dsu",
+   "dfs"
+  ],
+  "order": 1
+ },
+ {
+  "id": "redundant-connection",
+  "title": "Redundant Connection",
+  "topic": "14-dsu",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 684,
+  "tags": [
+   "union find",
+   "dsu",
+   "cycle detection"
+  ],
+  "order": 2
+ },
+ {
+  "id": "accounts-merge-lite",
+  "title": "Group Sizes After Merging",
+  "topic": "14-dsu",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": null,
+  "tags": [
+   "union find",
+   "dsu"
+  ],
+  "order": 3
+ },
+ {
+  "id": "min-cost-to-connect-all-points",
+  "title": "Min Cost to Connect All Points",
+  "topic": "14-dsu",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 1584,
+  "tags": [
+   "mst",
+   "kruskal",
+   "prim",
+   "union find"
+  ],
+  "order": 4
+ },
+ {
+  "id": "climbing-stairs",
+  "title": "Climbing Stairs",
+  "topic": "15-dp",
+  "difficulty": "easy",
+  "points": 10,
+  "lc": 70,
+  "tags": [
+   "dp",
+   "fibonacci"
+  ],
+  "order": 1
+ },
+ {
+  "id": "house-robber",
+  "title": "House Robber",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 198,
+  "tags": [
+   "dp"
+  ],
+  "order": 2
+ },
+ {
+  "id": "unique-paths",
+  "title": "Unique Paths",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 62,
+  "tags": [
+   "dp",
+   "grid",
+   "combinatorics"
+  ],
+  "order": 3
+ },
+ {
+  "id": "coin-change",
+  "title": "Coin Change",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 322,
+  "tags": [
+   "dp",
+   "unbounded knapsack"
+  ],
+  "order": 4
+ },
+ {
+  "id": "word-break",
+  "title": "Word Break",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 139,
+  "tags": [
+   "dp",
+   "string",
+   "hash set"
+  ],
+  "order": 5
+ },
+ {
+  "id": "longest-increasing-subsequence",
+  "title": "Longest Increasing Subsequence",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 300,
+  "tags": [
+   "dp",
+   "binary search"
+  ],
+  "order": 6
+ },
+ {
+  "id": "longest-common-subsequence",
+  "title": "Longest Common Subsequence",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 1143,
+  "tags": [
+   "dp",
+   "string"
+  ],
+  "order": 7
+ },
+ {
+  "id": "partition-equal-subset-sum",
+  "title": "Partition Equal Subset Sum",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 416,
+  "tags": [
+   "dp",
+   "0/1 knapsack",
+   "subset sum"
+  ],
+  "order": 8
+ },
+ {
+  "id": "edit-distance",
+  "title": "Edit Distance",
+  "topic": "15-dp",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 72,
+  "tags": [
+   "dp",
+   "string"
+  ],
+  "order": 9
+ },
+ {
+  "id": "house-robber-iii",
+  "title": "House Robber III",
+  "topic": "16-dp-on-trees-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 337,
+  "tags": [
+   "dp",
+   "tree",
+   "dfs"
+  ],
+  "order": 1
+ },
+ {
+  "id": "longest-increasing-path-in-matrix",
+  "title": "Longest Increasing Path in a Matrix",
+  "topic": "16-dp-on-trees-graphs",
+  "difficulty": "hard",
+  "points": 40,
+  "lc": 329,
+  "tags": [
+   "dp",
+   "memoization",
+   "dfs",
+   "dag"
+  ],
+  "order": 2
+ },
+ {
+  "id": "number-of-ways-to-arrive",
+  "title": "Number of Ways to Arrive at Destination",
+  "topic": "16-dp-on-trees-graphs",
+  "difficulty": "medium",
+  "points": 20,
+  "lc": 1976,
+  "tags": [
+   "dijkstra",
+   "dp",
+   "shortest path",
+   "graph"
+  ],
+  "order": 3
+ }
+]

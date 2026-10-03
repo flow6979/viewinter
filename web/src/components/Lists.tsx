@@ -9,7 +9,7 @@ import { Markdown } from './Markdown'
 import { Icon } from './Icon'
 import { shortTitle } from './Sidebar'
 
-const KIND_LABEL: Record<Page['kind'], string> = { topic: 'HLD', question: 'HLD problem', lld: 'LLD', lldp: 'LLD problem', java: 'Java', db: 'DB', cs: 'CS', beh: 'Behavioral', rag: 'RAG', agent: 'Agentic AI' }
+const KIND_LABEL: Record<Page['kind'], string> = { topic: 'HLD', question: 'HLD problem', lld: 'LLD', lldp: 'LLD problem', java: 'Java', db: 'DB', cs: 'CS', beh: 'Behavioral', rag: 'RAG', dsa: 'DSA', agent: 'Agentic AI' }
 
 // One-click starting points; users edit them like any other list
 const STARTERS: { name: { hi: string; en: string }; slugs: string[] }[] = [

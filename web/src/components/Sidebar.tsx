@@ -1,6 +1,6 @@
 import { href } from '../router'
 import { useEffect, useState } from 'react'
-import { agentPages, behavioral, cs, db, java, lld, lldProblems, localize, questions, rag, route, topics, type Page } from '../content'
+import { agentPages, behavioral, cs, db, java, lld, lldProblems, localize, questions, rag, dsa, route, topics, type Page } from '../content'
 import { readLocal, useStore, writeLocal } from '../store'
 import { useLang, useTr } from '../i18n'
 import { groupStats, pageStats } from '../progress'
@@ -52,6 +52,7 @@ const SECTIONS: Section[] = [
     ],
   },
   { id: 'beh', label: 'Behavioral', icon: 'chat', subs: [{ pages: behavioral }] },
+  { id: 'dsa', label: 'DSA · C++', icon: 'code', subs: [{ pages: dsa }] },
   { id: 'rag', label: 'RAG', icon: 'search', subs: [{ pages: rag }] },
   { id: 'agents', label: 'Agentic AI', icon: 'bot', subs: [{ pages: agentPages }] },
 ]
@@ -167,6 +168,10 @@ export function Sidebar({ current, onNavigate }: { current: string; onNavigate: 
       <a href={href('quiz')} className={`side-item home ${current === 'quiz' ? 'active' : ''}`}>
         <Icon name="quiz" size={17} />
         Quiz
+      </a>
+      <a href={href('practice')} className={`side-item home ${current === 'practice' ? 'active' : ''}`}>
+        <Icon name="code" size={17} />
+        {tr('Practice (DSA)', 'Practice (DSA)')}
       </a>
       <a href={href('lists')} className={`side-item home ${current === 'lists' ? 'active' : ''}`}>
         <Icon name="list" size={17} />

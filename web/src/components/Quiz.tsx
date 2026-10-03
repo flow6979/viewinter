@@ -16,6 +16,7 @@ const LABEL: Record<Filter, { hi: string; en: string }> = {
   db: { hi: 'Databases', en: 'Databases' },
   cs: { hi: 'CS', en: 'CS' },
   rag: { hi: 'RAG', en: 'RAG' },
+  dsa: { hi: 'DSA', en: 'DSA' },
   agents: { hi: 'Agentic AI', en: 'Agentic AI' },
   starred: { hi: '★ Starred', en: '★ Starred' },
 }
