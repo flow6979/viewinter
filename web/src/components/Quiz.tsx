@@ -119,11 +119,14 @@ export function Quiz({ hasKey, onOpenSettings }: { hasKey: boolean; onOpenSettin
     <div className="quiz">
       <h1>Quiz</h1>
 
+      <Scoreboard bank={bank} answers={quiz.a} starred={quiz.s.length} />
+
       <div className="quiz-sections" role="tablist" aria-label={tr('Section', 'Section')}>
         {(['all', ...SECTIONS, 'starred'] as Filter[]).map((f) => (
           <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => choose(f)}>
             {LABEL[f][lang]}
             {f === 'starred' && quiz.s.length > 0 && <span className="count">{quiz.s.length}</span>}
+            {f !== 'starred' && f !== 'all' && bank && <TabScore bank={bank} section={f} answers={quiz.a} />}
           </button>
         ))}
       </div>
@@ -225,5 +228,62 @@ export function Quiz({ hasKey, onOpenSettings }: { hasKey: boolean; onOpenSettin
       {generating && current && <p className="muted small">{tr('Agle sawal background me ban rahe hain…', 'Preparing the next questions in the background…')}</p>}
       {!user && <p className="muted small">{tr('Login karoge to score aur stars har device pe saath rahenge.', 'Log in to keep your score and stars on every device.')}</p>}
     </div>
+  )
+}
+
+/** Accuracy of one section, shown quietly under its tab */
+function TabScore({ bank, section, answers }: { bank: QuizQuestion[]; section: Section; answers: Record<string, 0 | 1> }) {
+  const done = bank.filter((q) => q.section === section && answers[q.id] !== undefined)
+  if (!done.length) return null
+  const right = done.filter((q) => answers[q.id] === 1).length
+  return <span className="tab-score mono">{Math.round((right / done.length) * 100)}%</span>
+}
+
+/** Overall marks across every section */
+function Scoreboard({ bank, answers, starred }: { bank: QuizQuestion[] | null; answers: Record<string, 0 | 1>; starred: number }) {
+  const tr = useTr()
+  const ids = Object.keys(answers)
+  const right = ids.filter((id) => answers[id] === 1).length
+  const wrong = ids.length - right
+  const acc = ids.length ? Math.round((right / ids.length) * 100) : 0
+  const r = 30
+  const c = 2 * Math.PI * r
+  return (
+    <section className="scoreboard" aria-label={tr('Overall score', 'Overall score')}>
+      <div className="score-ring">
+        <svg viewBox="0 0 72 72" aria-hidden="true">
+          <circle cx="36" cy="36" r={r} className="ring-track" />
+          <circle cx="36" cy="36" r={r} className="ring-fill" strokeDasharray={c} strokeDashoffset={c * (1 - acc / 100)} style={{ transformOrigin: '36px 36px' }} />
+        </svg>
+        <span className="score-ring-value">
+          <span>
+            {ids.length ? acc : '—'}
+            {ids.length > 0 && <small>%</small>}
+          </span>
+        </span>
+        <small className="score-ring-label">{tr('accuracy', 'accuracy')}</small>
+      </div>
+      <dl className="score-stats">
+        <div>
+          <dt>{tr('Sahi', 'Correct')}</dt>
+          <dd>{right}</dd>
+        </div>
+        <div>
+          <dt>{tr('Galat', 'Wrong')}</dt>
+          <dd>{wrong}</dd>
+        </div>
+        <div>
+          <dt>{tr('Kiye', 'Attempted')}</dt>
+          <dd>
+            {ids.length}
+            {bank && <span className="of">/{bank.length}</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>Starred</dt>
+          <dd>{starred}</dd>
+        </div>
+      </dl>
+    </section>
   )
 }

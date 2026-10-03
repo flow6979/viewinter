@@ -45,63 +45,110 @@ export function Planner() {
     <div className="planner">
       <div className="plan-title-row">
         <h1>{tr('Mera plan', 'My plan')}</h1>
-        <button type="button" className={`chip ${showHow ? 'on' : ''}`} aria-expanded={showHow} onClick={() => setShowHow((s) => !s)}>
+        <button type="button" className={`ghost-btn ${showHow ? 'on' : ''}`} aria-expanded={showHow} onClick={() => setShowHow((s) => !s)}>
           <Icon name="info" size={15} /> {tr('Plan kaise banta hai?', 'How is the plan made?')}
         </button>
       </div>
       {showHow && <PlanHowTo />}
 
-      <section className="plan-form" aria-label={tr('Plan ke inputs', 'Plan inputs')}>
-        <div className="field">
-          <span className="field-label">{tr('Kitne din baaki', 'Days left')}</span>
-          {fromDate !== null ? (
-            <span className="field-value">
-              <b className="mono">{fromDate}</b> <span className="muted small">({tr('profile ki interview date se', 'from your interview date')})</span>
-            </span>
-          ) : (
-            <input
-              id="plan-days"
-              type="number"
-              min={1}
-              max={120}
-              value={input.days ?? 14}
-              onChange={(e) => update({ ...input, days: Math.max(1, Math.min(120, Number(e.target.value) || 1)) })}
-            />
-          )}
-        </div>
-
-        <div className="field">
-          <span className="field-label">{tr('Kya prepare karna hai', 'What are you preparing')}</span>
-          <div className={`row wrap ${fromList ? 'dimmed' : ''}`}>
-            {TRACKS.map((t) => (
-              <button key={t.id} type="button" className={`chip ${input.tracks.includes(t.id) ? 'on' : ''}`} aria-pressed={input.tracks.includes(t.id)} onClick={() => toggleTrack(t.id)}>
-                {t.label[lang]}
-              </button>
-            ))}
+      <section className="settings" aria-label={tr('Plan ke inputs', 'Plan inputs')}>
+        <div className="setting">
+          <div className="setting-label">
+            <b>{tr('Kitne din baaki', 'Days left')}</b>
+            <span>{fromDate !== null ? tr('Profile ki interview date se', 'From your interview date') : tr('Interview date profile me daal sakte ho', 'Or set your interview date in the profile')}</span>
+          </div>
+          <div className="setting-control">
+            {fromDate !== null ? (
+              <span className="big-num mono">{fromDate}</span>
+            ) : (
+              <div className="stepper">
+                <button type="button" aria-label="-1" onClick={() => update({ ...input, days: Math.max(1, (input.days ?? 14) - 1) })}>
+                  −
+                </button>
+                <input
+                  id="plan-days"
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={input.days ?? 14}
+                  onChange={(e) => update({ ...input, days: Math.max(1, Math.min(120, Number(e.target.value) || 1)) })}
+                  aria-label={tr('Kitne din baaki', 'Days left')}
+                />
+                <button type="button" aria-label="+1" onClick={() => update({ ...input, days: Math.min(120, (input.days ?? 14) + 1) })}>
+                  +
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="field">
-          <span className="field-label">{tr('Ya sirf apni list se', 'Or only from your list')}</span>
-          {lists.length ? (
-            <select id="plan-list" value={fromList?.id ?? ''} onChange={(e) => update({ ...input, list: e.target.value || undefined })}>
-              <option value="">{tr('— Subjects se (upar wale) —', '— From the subjects above —')}</option>
-              {lists.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name} · {l.slugs.length}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="muted small">
-              {tr('Koi list nahi hai.', 'No lists yet.')} <a href={href('lists')}>{tr('List banao →', 'Make a list →')}</a>
-            </span>
-          )}
+        <div className="setting">
+          <div className="setting-label">
+            <b>{tr('Plan kisse banaye', 'Plan from')}</b>
+            <span>{tr('Subjects chuno, ya apni ek list', 'Pick subjects, or one of your lists')}</span>
+          </div>
+          <div className="setting-control">
+            <div className="seg small" role="radiogroup" aria-label={tr('Plan kisse banaye', 'Plan from')}>
+              <button role="radio" aria-checked={!fromList} className={!fromList ? 'on' : ''} onClick={() => update({ ...input, list: undefined })}>
+                {tr('Subjects', 'Subjects')}
+              </button>
+              <button
+                role="radio"
+                aria-checked={!!fromList}
+                className={fromList ? 'on' : ''}
+                disabled={!lists.length}
+                title={lists.length ? '' : tr('Pehle ek list banao', 'Make a list first')}
+                onClick={() => lists[0] && update({ ...input, list: (fromList ?? lists[0]).id })}
+              >
+                {tr('Meri list', 'My list')}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="field-row">
-          <div className="field">
-            <span className="field-label">{tr('Roz kitne ghante', 'Hours per day')}</span>
+        {fromList ? (
+          <div className="setting">
+            <div className="setting-label">
+              <b>{tr('Kaunsi list', 'Which list')}</b>
+              <span>{tr('Isi list ke pages, isi order me', 'Only its pages, in its order')}</span>
+            </div>
+            <div className="setting-control">
+              <select id="plan-list" value={fromList.id} onChange={(e) => update({ ...input, list: e.target.value })}>
+                {lists.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name} · {l.slugs.length}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div className="setting stack">
+            <div className="setting-label">
+              <b>{tr('Subjects', 'Subjects')}</b>
+              <span>{tr('Jo jo prepare karna hai', 'Everything you are preparing')}</span>
+            </div>
+            <div className="toggle-grid">
+              {TRACKS.map((t) => {
+                const on = input.tracks.includes(t.id)
+                return (
+                  <button key={t.id} type="button" className={`toggle-tile ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => toggleTrack(t.id)}>
+                    <span className="toggle-check" aria-hidden="true">
+                      {on ? '✓' : ''}
+                    </span>
+                    {t.label[lang]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="setting">
+          <div className="setting-label">
+            <b>{tr('Roz kitne ghante', 'Hours per day')}</b>
+          </div>
+          <div className="setting-control">
             <div className="seg small" role="radiogroup" aria-label={tr('Roz kitne ghante', 'Hours per day')}>
               {HOURS.map((h) => (
                 <button key={h} role="radio" aria-checked={input.hours === h} className={input.hours === h ? 'on' : ''} onClick={() => update({ ...input, hours: h })}>
@@ -110,8 +157,13 @@ export function Planner() {
               ))}
             </div>
           </div>
-          <div className="field">
-            <span className="field-label">{tr('Experience', 'Experience')}</span>
+        </div>
+
+        <div className="setting">
+          <div className="setting-label">
+            <b>Experience</b>
+          </div>
+          <div className="setting-control">
             <div className="seg small" role="radiogroup" aria-label="Experience">
               {(
                 [

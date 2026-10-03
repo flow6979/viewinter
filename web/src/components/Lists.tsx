@@ -76,44 +76,55 @@ export function Lists() {
   return (
     <div className="lists">
       <h1>{tr('Meri lists', 'My lists')}</h1>
-      <p className="muted">
-        {tr(
-          'Jo topics tumhe baar baar revise karne hain, unki apni list banao: kisi company ka round, weak topics, ya interview se pehle ki raat. Kisi bhi page pe "List me daalo" se bhi add kar sakte ho.',
-          'Make your own lists of topics to revise again and again: a company round, weak topics, or the night before. You can also add from any page with "Add to list".',
-        )}
-      </p>
+      <p className="muted">{tr('Jo topics baar baar revise karne hain, unki list. Kisi bhi page pe "List me daalo" se bhi add hota hai.', 'Topics you want to revise again and again. You can also add from any page with "Add to list".')}</p>
 
-      <div className="lists-bar">
-        {lists.map((l) => (
-          <button key={l.id} className={`chip ${current?.id === l.id ? 'on' : ''}`} onClick={() => choose(l.id)}>
-            {l.name} <span className="mono small">{l.slugs.length}</span>
-          </button>
-        ))}
-        <form
-          className="lists-new"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!name.trim()) return
-            choose(create(name).id)
-            setName('')
-          }}
-        >
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr('Nayi list ka naam', 'New list name')} aria-label={tr('Nayi list ka naam', 'New list name')} />
-          <button className="btn" disabled={!name.trim()}>
-            <Icon name="plus" size={15} /> {tr('Banao', 'Create')}
-          </button>
-        </form>
-      </div>
+      {lists.length > 0 && (
+        <div className="lists-bar">
+          {lists.map((l) => (
+            <button key={l.id} className={`list-tab ${current?.id === l.id ? 'on' : ''}`} onClick={() => choose(l.id)}>
+              {l.name} <span className="mono">{l.slugs.length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <form
+        className={`lists-new ${lists.length === 0 ? 'hero' : ''}`}
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!name.trim()) return
+          choose(create(name).id)
+          setName('')
+        }}
+      >
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr('Nayi list ka naam, jaise "Amazon round"', 'New list name, e.g. "Amazon round"')} aria-label={tr('Nayi list ka naam', 'New list name')} />
+        <button className="btn primary" disabled={!name.trim()}>
+          <Icon name="plus" size={15} /> {tr('List banao', 'Create list')}
+        </button>
+      </form>
 
       {lists.length === 0 && (
-        <section className="lists-starters">
-          <h2>{tr('Ek ready list se shuru karo', 'Start from a ready list')}</h2>
-          <div className="row wrap">
-            {STARTERS.map((s) => (
-              <button key={s.name.en} className="btn" onClick={() => choose(create(s.name[lang], s.slugs.filter((x) => pageBySlug.has(x))).id)}>
-                <Icon name="plus" size={15} /> {s.name[lang]} <span className="muted small">· {s.slugs.length}</span>
-              </button>
-            ))}
+        <section className="starters">
+          <span className="eyebrow">{tr('Ya ready list se shuru karo', 'Or start from a ready list')}</span>
+          <div className="starter-grid">
+            {STARTERS.map((st) => {
+              const slugs = st.slugs.filter((x) => pageBySlug.has(x))
+              return (
+                <button key={st.name.en} type="button" className="starter-card" onClick={() => choose(create(st.name[lang], slugs).id)}>
+                  <span className="starter-top">
+                    <b>{st.name[lang]}</b>
+                    <span className="mono">{slugs.length}</span>
+                  </span>
+                  <span className="starter-preview">
+                    {slugs.slice(0, 3).map((x) => shortTitle(localize(pageBySlug.get(x)!, lang).title)).join(' · ')}
+                    {slugs.length > 3 ? ` +${slugs.length - 3}` : ''}
+                  </span>
+                  <span className="starter-add">
+                    <Icon name="plus" size={14} /> {tr('Add karo', 'Add')}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </section>
       )}
@@ -212,9 +223,6 @@ export function Lists() {
         </section>
       )}
       {!user && <p className="muted small">{tr('Login karoge to lists har device pe saath rahengi.', 'Log in to keep your lists on every device.')}</p>}
-      <p className="muted small">
-        <a href={href('plan')}>{tr('Plan dekho →', 'See your plan →')}</a>
-      </p>
     </div>
   )
 }
