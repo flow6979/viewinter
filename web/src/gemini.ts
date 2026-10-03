@@ -130,7 +130,7 @@ export async function streamGemini(
     if (res.status === 404) throw new Error(
         L(`Model "${model}" nahi mila. Settings me "Models dikhao" se koi aur model chuno.`, `Model "${model}" not found. Pick another one with "Show models" in Settings.`),
       )
-    if (res.status === 429) throw new Error(L('AI ki rate limit lag gayi. Thodi der baad try karo.', 'AI rate limit hit. Try again in a bit.'))
+    if (res.status === 429) throw new Error(L(`AI ki rate limit lag gayi: ${detail}`, `AI rate limit hit: ${detail}`))
     throw new Error(`AI error: ${detail}`)
   }
 
@@ -241,42 +241,49 @@ export function extractJson<T>(raw: string): T {
  * LeetCode pages…) and we get JSON back plus the pages it used. The site has no server, so this is how
  * "look it up on the internet" works from the browser.
  */
-export async function groundedJson<T>(prompt: string, signal?: AbortSignal): Promise<{ data: T; sources: Source[] }> {
+export async function groundedJson<T>(prompt: string, signal?: AbortSignal): Promise<{ data: T; sources: Source[]; live: boolean; note?: string }> {
   const { apiKey, model: saved } = getGeminiSettings()
   if (!apiKey) throw new Error(L('AI set up nahi hai. Settings me Gemini key daalo.', 'AI is not set up. Add your Gemini key in Settings.'))
   let model = saved || DEFAULT_MODEL
-  const call = (m: string) =>
+  const call = (m: string, search: boolean, text = prompt) =>
     fetch(`${API}/models/${encodeURIComponent(m)}:generateContent`, {
       method: 'POST',
       signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }],
+        contents: [{ role: 'user', parts: [{ text }] }],
+        ...(search ? { tools: [{ google_search: {} }] } : {}),
         generationConfig: { temperature: 0.3 },
       }),
     })
-  let res = await call(model)
+  const detailOf = async (r: Response) => {
+    try {
+      return ((await r.json())?.error?.message as string) ?? `${r.status}`
+    } catch {
+      return `${r.status}`
+    }
+  }
+  let res = await call(model, true)
   if (res.status === 404) {
     const fallback = pickModel(await listModels(apiKey).catch(() => []))
-    if (fallback && fallback !== model) res = await call((model = fallback))
+    if (fallback && fallback !== model) res = await call((model = fallback), true)
   }
-  if (res.status === 429) throw new Error(L('AI ki rate limit lag gayi. Thodi der baad try karo.', 'AI rate limit hit. Try again in a bit.'))
-  if (!res.ok) {
-    let detail = `${res.status}`
-    try {
-      detail = (await res.json())?.error?.message ?? detail
-    } catch {
-      /* keep status */
-    }
-    throw new Error(`AI error: ${detail}`)
+  let live = true
+  let note: string | undefined
+  // Search grounding has its own (smaller) free quota and is not on every model: fall back to the model's own knowledge
+  if (res.status === 429 || res.status === 400 || res.status === 403) {
+    note = await detailOf(res)
+    live = false
+    res = await call(model, false, `${prompt}\n\nLive web search is unavailable right now: answer from your own knowledge of public interview reports and problem lists, and be conservative (skip anything you are not confident about).`)
   }
+  if (res.status === 429) throw new Error(L(`AI ki rate limit lag gayi: ${await detailOf(res)}`, `AI rate limit hit: ${await detailOf(res)}`))
+  if (!res.ok) throw new Error(`AI error: ${await detailOf(res)}`)
   const json = await res.json()
   const cand = json?.candidates?.[0]
   const text = (cand?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('')
   const chunks = (cand?.groundingMetadata?.groundingChunks ?? []) as { web?: { uri?: string; title?: string } }[]
   const sources = chunks.flatMap((c) => (c.web?.uri ? [{ uri: c.web.uri, title: c.web.title ?? c.web.uri }] : []))
-  return { data: extractJson<T>(text), sources }
+  return { data: extractJson<T>(text), sources, live, note }
 }
 
 /** Long JSON answer without search (problem specs, test inputs). Uses JSON mode so the output stays parseable. */
@@ -293,7 +300,6 @@ export async function longJson<T>(prompt: string, signal?: AbortSignal): Promise
       generationConfig: { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 32768 },
     }),
   })
-  if (res.status === 429) throw new Error(L('AI ki rate limit lag gayi. Thodi der baad try karo.', 'AI rate limit hit. Try again in a bit.'))
   if (!res.ok) {
     let detail = `${res.status}`
     try {
@@ -301,7 +307,7 @@ export async function longJson<T>(prompt: string, signal?: AbortSignal): Promise
     } catch {
       /* keep status */
     }
-    throw new Error(`AI error: ${detail}`)
+    throw new Error(res.status === 429 ? L(`AI ki rate limit lag gayi: ${detail}`, `AI rate limit hit: ${detail}`) : `AI error: ${detail}`)
   }
   const json = await res.json()
   const text = (json?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('')

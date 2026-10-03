@@ -1304,3 +1304,8 @@ a.btn { text-decoration: none; }
 .explain-btn:hover { border-color: var(--ink); background: var(--surface-2); }
 .verdict-head { gap: 10px; flex-wrap: wrap; }
 .fail-case-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.crash { max-width: 640px; margin: 40px auto; padding: 20px; border: 1px solid var(--danger); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; } .crash h2 { margin: 0; color: var(--danger); }
+.role-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
+.role-pick { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: 500 0.82rem var(--f-body); cursor: pointer; transition: color 0.12s, border-color 0.12s; }
+.role-pick:hover { color: var(--ink); border-color: color-mix(in srgb, var(--ink) 40%, var(--bg)); }
+.role-pick.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }

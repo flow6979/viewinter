@@ -10,6 +10,7 @@ import { PageView, type ReadMode } from './components/PageView'
 import { Quiz } from './components/Quiz'
 import { Resume } from './components/Resume'
 import { Lists } from './components/Lists'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Company } from './company/Company'
 import { PracticeList, ProblemView } from './dsa/PracticeView'
 import { Planner } from './components/Planner'
@@ -196,6 +197,7 @@ export function App() {
         {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
 
         <main className="main">
+          <ErrorBoundary resetKey={slug}>
           {view === 'home' && <Dashboard />}
           {view === 'plan' && <Planner />}
           {view === 'quiz' && <Quiz hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} />}
@@ -228,6 +230,7 @@ export function App() {
               onCodeLang={setCodeLang}
             />
           )}
+          </ErrorBoundary>
         </main>
 
         {showPanel && page && (

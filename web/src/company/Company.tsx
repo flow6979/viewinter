@@ -89,16 +89,18 @@ export function Company() {
         }}
       >
         <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder={tr('Company: Amazon, Flipkart, Google…', 'Company: Amazon, Flipkart, Google…')} aria-label="Company" />
-        <input value={role} onChange={(e) => setRole(e.target.value)} list="company-roles" placeholder="Role: SDE2" aria-label="Role" />
-        <datalist id="company-roles">
-          {ROLES.map((r) => (
-            <option key={r} value={r} />
-          ))}
-        </datalist>
+        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Role: SDE2" aria-label="Role" />
         <button className="btn primary" disabled={busy || !company.trim() || !role.trim()}>
           {busy ? tr('Web pe dhoondh rahe hain…', 'Searching the web…') : tr('Sawal dhoondho', 'Find questions')}
         </button>
       </form>
+      <div className="role-picks" role="radiogroup" aria-label={tr('Role chuno', 'Pick a role')}>
+        {ROLES.map((r) => (
+          <button key={r} type="button" role="radio" aria-checked={role === r} className={`role-pick ${role === r ? 'on' : ''}`} onClick={() => setRole(r)}>
+            {r}
+          </button>
+        ))}
+      </div>
       {!settings.apiKey && (
         <p className="plan-warn">
           {tr('Iske liye AI set up karo (free key, 1 minute).', 'This needs AI to be set up (free key, 1 minute).')}{' '}
@@ -138,6 +140,12 @@ export function Company() {
                 {tr('Refresh', 'Refresh')}
               </button>
             </div>
+            {report.live === false && (
+              <p className="plan-warn small">
+                {tr('Live web search abhi available nahi tha (Google Search ka free quota), isliye ye list AI ki apni knowledge se hai. Baad me "Refresh" karke live search try karo.', 'Live web search was unavailable (Google Search free quota), so this list comes from the AI’s own knowledge. Try "Refresh" later for a live search.')}
+                {report.note && <span className="muted"> ({report.note.slice(0, 160)})</span>}
+              </p>
+            )}
             {report.levels.length > 0 && <p className="muted small">{tr('Levels:', 'Levels:')} {report.levels.join(', ')}</p>}
             {report.process && <p>{report.process}</p>}
             {report.rounds.length > 0 && (

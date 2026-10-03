@@ -39,6 +39,9 @@ export interface CompanyReport {
   questions: CompanyQuestion[]
   sources: Source[]
   at: number
+  /** false when live web search was unavailable and the AI answered from its own knowledge */
+  live?: boolean
+  note?: string
 }
 
 const CACHE_DAYS = 30
@@ -74,7 +77,7 @@ Return ONLY JSON:
   "system_design": [...], "lld": [...], "behavioral": [...], "resume": [...], "cs": [...], "misc": [...]
  }}
 Put 8–20 real questions in each section that has evidence (fewer is fine; empty arrays if none). Prefer questions reported multiple times; frequency = how often it appears across sources. No invented questions: if evidence is thin, say so in "process".`
-  const { data, sources } = await groundedJson<RawReport>(prompt, signal)
+  const { data, sources, live, note } = await groundedJson<RawReport>(prompt, signal)
   const questions: CompanyQuestion[] = []
   for (const s of SECTIONS) {
     for (const item of data.sections?.[s.id] ?? []) {
@@ -93,6 +96,8 @@ Put 8–20 real questions in each section that has evidence (fewer is fine; empt
     questions,
     sources: sources.slice(0, 20),
     at: Date.now(),
+    live,
+    note,
   }
 }
 
@@ -114,7 +119,7 @@ export async function getReport(company: string, role: string, uid: string | nul
   if (!opts.refresh && local[key] && Date.now() - local[key].at < CACHE_DAYS * 86400000) return local[key]
   const report = await searchWeb(company.trim(), role.trim(), opts.signal)
   writeLocal('hld.company.reports', { ...local, [key]: report })
-  if (uid && db) setDoc(doc(db, 'companyQuestions', key), { company: report.company, role: report.role, data: JSON.stringify(report), by: uid, at: report.at }).catch(() => {})
+  if (uid && db && report.live !== false) setDoc(doc(db, 'companyQuestions', key), { company: report.company, role: report.role, data: JSON.stringify(report), by: uid, at: report.at }).catch(() => {})
   return report
 }
 
