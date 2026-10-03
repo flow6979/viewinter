@@ -49,11 +49,23 @@ function cppParam(p: Param): string {
   return `${p.type}& ${p.name}`
 }
 
+function defaultReturn(t: DsaType): string {
+  if (t === 'void') return ''
+  if (t === 'bool') return 'return false;'
+  if (t === 'string') return 'return "";'
+  if (t === 'char') return "return ' ';"
+  if (t === 'TreeNode*' || t === 'ListNode*') return 'return nullptr;'
+  if (t.startsWith('vector<')) return 'return {};'
+  return 'return 0;'
+}
+
 export function starterCode(sig: Signature): string {
+  const ret = defaultReturn(sig.ret)
   return `class Solution {
 public:
     ${sig.ret} ${sig.fn}(${sig.params.map(cppParam).join(', ')}) {
-        
+        // your code here
+        ${ret}
     }
 };
 `
