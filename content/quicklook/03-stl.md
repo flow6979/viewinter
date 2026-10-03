@@ -5,6 +5,7 @@
 - **priority_queue:** default max-heap; min-heap = `priority_queue<int, vector<int>, greater<int>>`.
 - **set / map:** sorted, O(log n), floor/ceil ke liye `lower_bound`. `multiset` duplicates rakhta hai.
 - **unordered_map / set:** O(1) average lookups aur counts; worst case O(n).
+- **multiset / list:** `ms.erase(x)` saari copies mitata hai, ek ke liye `ms.erase(ms.find(x))`; `list` sirf LRU cache jaise kaam ke liye (O(1) `splice`).
 - **Algorithms:** `sort` (+ comparator), `lower_bound` (pehla ≥), `upper_bound` (pehla >), `binary_search`.
 - **Aur:** `accumulate(..., 0LL)`, `reverse`, `min/max_element`, `iota`, `next_permutation`.
 - **Dedupe:** pehle `sort`, phir `v.erase(unique(v.begin(), v.end()), v.end())`.
