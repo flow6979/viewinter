@@ -250,7 +250,7 @@ function Scoreboard({ bank, answers, starred }: { bank: QuizQuestion[] | null; a
   const r = 30
   const c = 2 * Math.PI * r
   return (
-    <section className="scoreboard" aria-label={tr('Overall score', 'Overall score')}>
+    <section className={`scoreboard ${ids.length ? (acc >= 70 ? 'is-good' : acc < 50 ? 'is-bad' : '') : ''}`} aria-label={tr('Overall score', 'Overall score')}>
       <div className="score-ring">
         <svg viewBox="0 0 72 72" aria-hidden="true">
           <circle cx="36" cy="36" r={r} className="ring-track" />
@@ -267,11 +267,11 @@ function Scoreboard({ bank, answers, starred }: { bank: QuizQuestion[] | null; a
       <dl className="score-stats">
         <div>
           <dt>{tr('Sahi', 'Correct')}</dt>
-          <dd>{right}</dd>
+          <dd className="ok-text">{right}</dd>
         </div>
         <div>
           <dt>{tr('Galat', 'Wrong')}</dt>
-          <dd>{wrong}</dd>
+          <dd className={wrong ? 'error' : ''}>{wrong}</dd>
         </div>
         <div>
           <dt>{tr('Kiye', 'Attempted')}</dt>

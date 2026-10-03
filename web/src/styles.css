@@ -28,8 +28,8 @@
 }
 :root[data-theme='light'] {
   --bg: #f5f5f2; --side: #efefeb; --surface: #ffffff; --surface-2: #f0f0ec; --ink: #0b0b0c; --muted: #5d5d66; --line: #e2e2dd; --shadow: none;
-  --accent: #0b0b0c; --accent-ink: #ffffff; --accent-soft: #ebebe7; --signal: #0b0b0c; --marker: #ececea; --ok: #12805c; --warn: #52525b;
-  --danger: #c0392b; --grid: rgba(0, 0, 0, 0.035); --code-kw: #000000; --code-str: #52525b; --code-num: #3f3f46; --code-com: #9a9aa2; --code-type: #18181b; --code-fn: #27272a; color-scheme: light;
+  --accent: #0b0b0c; --accent-ink: #ffffff; --accent-soft: #ebebe7; --signal: #0b0b0c; --marker: #ececea; --ok: #15803d; --warn: #52525b;
+  --danger: #dc2626; --grid: rgba(0, 0, 0, 0.035); --code-kw: #000000; --code-str: #52525b; --code-num: #3f3f46; --code-com: #9a9aa2; --code-type: #18181b; --code-fn: #27272a; color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -1140,3 +1140,39 @@ a.btn { text-decoration: none; }
 .mermaid-box .node.hot .nodeLabel, .mermaid-box .node.hot .nodeLabel *, .mermaid-box .node.hot span, .mermaid-box .node.hot p { color: var(--bg) !important; font-weight: 700; }
 .mermaid-box .node.hot text, .mermaid-box .node.hot tspan { fill: var(--bg) !important; font-weight: 700; }
 .mermaid-box .node.dim .nodeLabel, .mermaid-box .node.dim span { color: var(--muted) !important; }
+
+/* ---- Right / wrong everywhere: green = correct / passed / done, red = wrong / failed ---- */
+:root { --ok-soft: color-mix(in srgb, var(--ok) 12%, transparent); --bad-soft: color-mix(in srgb, var(--danger) 12%, transparent); }
+/* DSA judge */
+.verdict.good { box-shadow: inset 3px 0 0 var(--ok); background: linear-gradient(90deg, var(--ok-soft), var(--surface) 40%); }
+.verdict.bad { box-shadow: inset 3px 0 0 var(--danger); background: linear-gradient(90deg, var(--bad-soft), var(--surface) 40%); }
+.verdict.good .verdict-head b { color: var(--ok); }
+.verdict.bad .verdict-head b { color: var(--danger); }
+.test-dots .dot.ok { background: var(--ok); }
+.test-dots .dot.fail { background: var(--danger); border: 0; }
+.fail-case pre { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.solved-pill { background: var(--ok-soft); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); }
+.problem-status, .topic-problem .problem-status { color: var(--ok); }
+.problem-row.solved .problem-points { color: var(--ok); }
+/* Quiz */
+.quiz-why.right { border-color: var(--ok); background: var(--ok-soft); }
+.quiz-why.right > b { color: var(--ok); }
+.quiz-why.wrong { border-color: var(--danger); background: var(--bad-soft); }
+.quiz-why.wrong > b { color: var(--danger); }
+.scoreboard.is-good .ring-fill { stroke: var(--ok); }
+.scoreboard.is-bad .ring-fill { stroke: var(--danger); }
+.score-stats dd.ok-text { color: var(--ok); }
+.score-stats dd.error { color: var(--danger); }
+/* Resume feedback */
+.score-pill.good, .score-big.good { background: var(--ok-soft); color: var(--ok); }
+.score-pill.low, .score-big.low { background: var(--bad-soft); color: var(--danger); }
+.feedback-block.good { border-left-color: var(--ok); }
+.feedback-block.improve { border-left-color: var(--danger); }
+.feedback-block.good .fb-title { color: var(--ok); }
+.feedback-block.improve .fb-title { color: var(--danger); }
+/* Checklists, solved pages, lists */
+.checklist input { accent-color: var(--ok); }
+.checklist input:checked + span { text-decoration-color: var(--ok); }
+.side-item.done .side-count { color: var(--ok); }
+.list-pages li.done .list-page-link .mono { color: var(--ok); }
+.quiz-why { border: 1px solid transparent; }
