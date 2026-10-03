@@ -52,7 +52,7 @@ export function DsaAssistant({ problem, code, judge, ask }: { problem: Problem; 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const abort = useRef<AbortController | null>(null)
-  const end = useRef<HTMLDivElement>(null)
+  const log = useRef<HTMLDivElement>(null)
 
   useEffect(() => () => abort.current?.abort(), [])
   // "Explain with AI" from the result panel sends its question straight away
@@ -64,8 +64,10 @@ export function DsaAssistant({ problem, code, judge, ask }: { problem: Problem; 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ask?.id, hasKey])
+  // Keep the newest reply in view inside the chat box (without moving the page)
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'nearest' })
+    const el = log.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [messages, streaming])
 
   const quick: [string, string][] = [
@@ -124,45 +126,48 @@ export function DsaAssistant({ problem, code, judge, ask }: { problem: Problem; 
           </button>
         ))}
       </div>
-      <div className="dsa-ai-log">
-        {messages.map((m, i) => (
-          <div key={i} className={`quiz-ask-msg ${m.role}`}>
-            {m.role === 'user' ? m.text : <Markdown text={m.text} showAllCode />}
-          </div>
-        ))}
-        {streaming && (
-          <div className="quiz-ask-msg model">
-            <Markdown text={streaming} showAllCode />
-          </div>
-        )}
-        {busy && !streaming && <p className="muted small">{tr('Soch raha hai…', 'Thinking…')}</p>}
-        {error && <p className="error small">{error}</p>}
-        <div ref={end} />
+      <div className="dsa-chat">
+        <div className="dsa-ai-log" ref={log} data-empty={tr('Upar ka koi button dabao ya neeche apna sawal likho.', 'Pick a button above or type your question below.')}>
+          {messages.map((m, i) => (
+            <div key={i} className={`quiz-ask-msg ${m.role}`}>
+              {m.role === 'user' ? m.text : <Markdown text={m.text} showAllCode />}
+            </div>
+          ))}
+          {streaming && (
+            <div className="quiz-ask-msg model">
+              <Markdown text={streaming} showAllCode />
+            </div>
+          )}
+          {busy && !streaming && <p className="muted small">{tr('Soch raha hai…', 'Thinking…')}</p>}
+          {error && <p className="error small">{error}</p>}
+        </div>
+        <div className="dsa-chat-foot">
+          <form
+            className="quiz-ask-form"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault()
+              send(input)
+            }}
+          >
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={tr('Kuch bhi poochho: "mera loop galat kyu hai?"', 'Ask anything: "why is my loop wrong?"')} aria-label={tr('AI se poochho', 'Ask AI')} />
+            <button className="btn primary" disabled={busy || !input.trim()}>
+              {tr('Poochho', 'Ask')}
+            </button>
+          </form>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => {
+                setMessages([])
+                writeLocal(storeKey, [])
+              }}
+            >
+              {tr('Chat saaf karo', 'Clear chat')}
+            </button>
+          )}
+        </div>
       </div>
-      <form
-        className="quiz-ask-form"
-        onSubmit={(e: FormEvent) => {
-          e.preventDefault()
-          send(input)
-        }}
-      >
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={tr('Kuch bhi poochho: "mera loop galat kyu hai?"', 'Ask anything: "why is my loop wrong?"')} aria-label={tr('AI se poochho', 'Ask AI')} />
-        <button className="btn primary" disabled={busy || !input.trim()}>
-          {tr('Poochho', 'Ask')}
-        </button>
-      </form>
-      {messages.length > 0 && (
-        <button
-          type="button"
-          className="ghost-btn small"
-          onClick={() => {
-            setMessages([])
-            writeLocal(storeKey, [])
-          }}
-        >
-          {tr('Chat saaf karo', 'Clear chat')}
-        </button>
-      )}
     </div>
   )
 }
