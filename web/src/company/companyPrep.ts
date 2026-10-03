@@ -6,6 +6,7 @@ import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { groundedJson, type Source } from '../gemini'
 import { readLocal, useStore, writeLocal } from '../store'
+import { packJson, unpackJson } from '../codec'
 
 export type SectionId = 'dsa' | 'system_design' | 'lld' | 'behavioral' | 'resume' | 'cs' | 'misc'
 export const SECTIONS: { id: SectionId; hi: string; en: string }[] = [
@@ -108,7 +109,7 @@ export async function getReport(company: string, role: string, uid: string | nul
     try {
       const snap = await getDoc(doc(db, 'companyQuestions', key))
       if (snap.exists()) {
-        const r = JSON.parse(snap.data().data as string) as CompanyReport
+        const r = await unpackJson<CompanyReport>(snap.data())
         if (Date.now() - r.at < CACHE_DAYS * 86400000) return r
       }
     } catch {
@@ -119,7 +120,10 @@ export async function getReport(company: string, role: string, uid: string | nul
   if (!opts.refresh && local[key] && Date.now() - local[key].at < CACHE_DAYS * 86400000) return local[key]
   const report = await searchWeb(company.trim(), role.trim(), opts.signal)
   writeLocal('hld.company.reports', { ...local, [key]: report })
-  if (uid && db && report.live !== false) setDoc(doc(db, 'companyQuestions', key), { company: report.company, role: report.role, data: JSON.stringify(report), by: uid, at: report.at }).catch(() => {})
+  if (uid && db && report.live !== false) {
+    const body = await packJson(report)
+    setDoc(doc(db, 'companyQuestions', key), { company: report.company, role: report.role, ...body, by: uid, at: report.at }).catch(() => {})
+  }
   return report
 }
 

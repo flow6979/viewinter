@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore'
 import { syncCollection } from '../firestoreCache'
+import { packJson, unpackJson } from '../codec'
 import { db } from '../firebase'
 import { readLocal, useStore, writeLocal } from '../store'
 import type { Compare, Json, Signature } from './harness'
@@ -50,7 +51,7 @@ export async function loadProblem(id: string): Promise<Problem | null> {
   if (!db) return null
   try {
     const snap = await getDoc(doc(db, 'dsaProblems', id))
-    return snap.exists() ? (JSON.parse(snap.data().data as string) as Problem) : null
+    return snap.exists() ? await unpackJson<Problem>(snap.data()) : null
   } catch {
     return null
   }
@@ -66,7 +67,8 @@ export async function saveGenerated(p: Problem, uid: string | null): Promise<'sh
   if (uid && db) {
     try {
       const at = Date.now()
-      await setDoc(doc(db, 'dsaProblems', p.id), { data: JSON.stringify(clean), by: uid, at })
+      // Deflate-compressed (~3x smaller in Firestore)
+      await setDoc(doc(db, 'dsaProblems', p.id), { ...(await packJson(clean)), by: uid, at })
       await setDoc(doc(db, 'dsaIndex', p.id), { ...metaOf(p), by: uid, at })
       return 'shared'
     } catch {

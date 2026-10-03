@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import { Bytes, arrayRemove, arrayUnion, deleteDoc, deleteField, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { auth, db, firebaseEnabled } from './firebase'
+import { pack, unpack } from './codec'
 
 type Progress = Record<string, boolean>
 
@@ -77,24 +78,6 @@ export function writeLocal(key: string, value: unknown) {
 // ---- Note storage: keep Firestore documents small ----------------------------------
 // Long notes are deflate-compressed into a bytes field (about half the size); short ones stay
 // plain text because compression would make them bigger. Empty notes delete the document.
-const COMPRESS_FROM = 200
-
-async function pack(text: string): Promise<{ text: string } | { z: Bytes }> {
-  if (text.length < COMPRESS_FROM || typeof CompressionStream === 'undefined') return { text }
-  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('deflate-raw'))
-  const packed = new Uint8Array(await new Response(stream).arrayBuffer())
-  return packed.length < new TextEncoder().encode(text).length ? { z: Bytes.fromUint8Array(packed) } : { text }
-}
-
-async function unpack(data: { text?: string; z?: Bytes } | undefined): Promise<string> {
-  if (!data) return ''
-  if (data.z) {
-    const stream = new Blob([data.z.toUint8Array() as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
-    return new Response(stream).text()
-  }
-  return data.text ?? ''
-}
-
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(!firebaseEnabled)

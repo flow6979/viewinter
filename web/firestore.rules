@@ -36,8 +36,10 @@ service cloud.firestore {
       allow read: if true;
       allow create: if request.auth != null
         && request.resource.data.by == request.auth.uid
-        && request.resource.data.data is string && request.resource.data.data.size() < 900000
-        && request.resource.data.keys().hasOnly(['data', 'by', 'at']);
+        // compressed `z` bytes (new) or a plain `data` string (old clients)
+        && ((request.resource.data.get('z', null) is bytes && request.resource.data.z.size() < 900000)
+          || (request.resource.data.get('data', null) is string && request.resource.data.data.size() < 900000))
+        && request.resource.data.keys().hasOnly(['data', 'z', 'by', 'at']);
       allow update, delete: if false;
     }
     // Company interview questions found on the web, cached for everyone (refreshable)
@@ -45,8 +47,9 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if request.auth != null
         && request.resource.data.by == request.auth.uid
-        && request.resource.data.data is string && request.resource.data.data.size() < 600000
-        && request.resource.data.keys().hasOnly(['company', 'role', 'data', 'by', 'at']);
+        && ((request.resource.data.get('z', null) is bytes && request.resource.data.z.size() < 600000)
+          || (request.resource.data.get('data', null) is string && request.resource.data.data.size() < 600000))
+        && request.resource.data.keys().hasOnly(['company', 'role', 'data', 'z', 'by', 'at']);
       allow delete: if false;
     }
 
