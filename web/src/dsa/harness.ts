@@ -126,7 +126,7 @@ template <class T> static string canon(const vector<T>& v, int mode) {
 // Online judges cap total output (~32 KB), so long answers travel as a fingerprint: FNV-1a 64, length, prefix
 static void out(int t, const string& s) {
   cout << "@@" << t << ' ';
-  if (s.size() <= 600) { cout << s; return; }
+  if (s.size() <= VI_LIMIT) { cout << s; return; }
   unsigned long long h = 14695981039346656037ULL; for (unsigned char c : s) { h ^= c; h *= 1099511628211ULL; }
   cout << '#' << hex << h << dec << ' ' << s.size() << ' ' << s.substr(0, 120);
 }
@@ -134,7 +134,8 @@ static void out(int t, const string& s) {
 `
 
 /** Full program: prelude + user code + runtime + main for this signature */
-export function buildProgram(userCode: string, sig: Signature, compare: Compare = 'exact'): string {
+/** full = print every answer in full (used to compute expected outputs from a reference solution) */
+export function buildProgram(userCode: string, sig: Signature, compare: Compare = 'exact', full = false): string {
   const mode = { exact: 0, unordered: 1, 'unordered-nested': 2, float: 3 }[compare]
   const decls = sig.params.map((p, i) => `    ${p.type === 'void' ? 'int' : p.type} a${i}; vi_io::rd(a${i});`).join('\n')
   const args = sig.params.map((_, i) => `a${i}`).join(', ')
@@ -145,6 +146,7 @@ export function buildProgram(userCode: string, sig: Signature, compare: Compare 
   return `${PRELUDE}
 #line 1 "solution.cpp"
 ${userCode}
+#define VI_LIMIT ${full ? '100000000' : '600'}
 ${RUNTIME}
 int main() {
   ios::sync_with_stdio(false); cin.tie(nullptr);
@@ -271,4 +273,21 @@ export function parseOutput(stdout: string, count: number): (Got | undefined)[] 
     }
   }
   return out
+}
+
+const TYPES = new Set<string>(['int', 'long long', 'double', 'bool', 'char', 'string', 'vector<int>', 'vector<long long>', 'vector<double>', 'vector<bool>', 'vector<char>', 'vector<string>', 'vector<vector<int>>', 'vector<vector<char>>', 'vector<vector<string>>', 'TreeNode*', 'ListNode*', 'void'])
+export const isSupportedType = (t: string): t is DsaType => TYPES.has(t)
+
+/** True when a JSON value fits the C++ type (used to check AI-written test inputs before running them) */
+export function fitsType(type: DsaType, v: Json): boolean {
+  if (type === 'int') return Number.isInteger(v) && (v as number) <= 2147483647 && (v as number) >= -2147483648
+  if (type === 'long long') return Number.isSafeInteger(v)
+  if (type === 'double') return typeof v === 'number' && Number.isFinite(v)
+  if (type === 'bool') return typeof v === 'boolean'
+  if (type === 'char') return typeof v === 'string' && v.length === 1
+  if (type === 'string') return typeof v === 'string' && !v.includes('\n')
+  if (type === 'TreeNode*') return Array.isArray(v) && v.every((x) => x === null || Number.isInteger(x))
+  if (type === 'ListNode*') return Array.isArray(v) && v.every((x) => Number.isInteger(x))
+  if (type.startsWith('vector<')) return Array.isArray(v) && v.every((x) => fitsType(inner(type) as DsaType, x))
+  return false
 }

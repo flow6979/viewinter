@@ -21,11 +21,44 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // AI-generated practice problems, verified in the browser against the compiler before saving.
+    // Anyone can read; logged-in users can add new ones; nobody can overwrite or delete.
+    match /dsaIndex/{id} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.title is string && request.resource.data.title.size() < 200
+        && request.resource.data.difficulty in ['easy', 'medium', 'hard']
+        && request.resource.data.keys().hasOnly(['id', 'title', 'topic', 'difficulty', 'points', 'lc', 'tags', 'order', 'ai', 'by', 'at']);
+      allow update, delete: if false;
+    }
+    match /dsaProblems/{id} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.data is string && request.resource.data.data.size() < 900000
+        && request.resource.data.keys().hasOnly(['data', 'by', 'at']);
+      allow update, delete: if false;
+    }
+    // Company interview questions found on the web, cached for everyone (refreshable)
+    match /companyQuestions/{key} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.data is string && request.resource.data.data.size() < 600000
+        && request.resource.data.keys().hasOnly(['company', 'role', 'data', 'by', 'at']);
+      allow delete: if false;
+    }
+
     // Each user can read and write only their own progress, profile and notes
     match /users/{uid} {
       allow read, write: if isOwner(uid);
       // Resume page: practice answers + AI feedback (the resume text itself stays in the browser)
       match /resume/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+      // Company prep: the user's own answers and AI answers per company + role
+      match /companyPrep/{key} {
         allow read, write: if isOwner(uid);
       }
       match /notes/{slug} {

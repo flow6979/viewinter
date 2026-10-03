@@ -18,9 +18,9 @@ export interface RunResult {
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 const lines = (arr?: { text: string }[]) => (arr ?? []).map((l) => stripAnsi(l.text)).join('\n')
 
-export async function runCpp(code: string, sig: Signature, tests: Json[][], compare: Compare, signal?: AbortSignal): Promise<RunResult> {
+export async function runCpp(code: string, sig: Signature, tests: Json[][], compare: Compare, signal?: AbortSignal, full = false): Promise<RunResult & { truncated?: boolean }> {
   const body = {
-    source: buildProgram(code, sig, compare),
+    source: buildProgram(code, sig, compare, full),
     options: {
       userArguments: '-O2 -std=c++17 -fdiagnostics-color=never',
       executeParameters: { args: [], stdin: buildInput(sig, tests) },
@@ -58,5 +58,24 @@ export async function runCpp(code: string, sig: Signature, tests: Json[][], comp
     exitCode: data.code ?? 0,
     timedOut: !!data.timedOut,
     ms: data.execTime ? Number(data.execTime) : undefined,
+    truncated: !!data.truncated,
   }
+}
+
+/**
+ * Runs a trusted reference solution and returns every answer in full (to compute expected outputs).
+ * The judge caps output at ~32 KB, so when a batch gets truncated we split it and try again.
+ */
+export async function runFull(code: string, sig: Signature, tests: Json[][], signal?: AbortSignal): Promise<{ compileError?: string; outputs: (Json | undefined)[] }> {
+  if (!tests.length) return { outputs: [] }
+  const res = await runCpp(code, sig, tests, 'exact', signal, true)
+  if (res.compileError) return { compileError: res.compileError, outputs: [] }
+  if (res.truncated && tests.length > 1) {
+    const mid = Math.ceil(tests.length / 2)
+    const a = await runFull(code, sig, tests.slice(0, mid), signal)
+    if (a.compileError) return a
+    const b = await runFull(code, sig, tests.slice(mid), signal)
+    return { compileError: b.compileError, outputs: [...a.outputs, ...b.outputs] }
+  }
+  return { outputs: res.outputs.map((o) => (o && typeof o === 'object' && !Array.isArray(o) ? undefined : (o as Json | undefined))) }
 }

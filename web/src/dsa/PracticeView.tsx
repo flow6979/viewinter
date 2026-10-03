@@ -7,7 +7,8 @@ import { Icon } from '../components/Icon'
 import { Markdown } from '../components/Markdown'
 import { shortTitle } from '../components/Sidebar'
 import { isFingerprint, sameAnswer, type Got, type Json } from './harness'
-import { draftKey, loadProblem, PROBLEMS, usePractice, type Problem, type ProblemMeta } from './practice'
+import { draftKey, loadProblem, useProblemIndex, usePractice, type Problem, type ProblemMeta } from './practice'
+import { AddProblems } from './AddProblems'
 import { runCpp, type RunResult } from './runner'
 import { DsaAssistant } from './DsaAssistant'
 
@@ -41,12 +42,14 @@ export function PracticeList() {
   const { lang } = useLang()
   const tr = useTr()
   const { solved, points } = usePractice()
+  const PROBLEMS = useProblemIndex()
+  const [adding, setAdding] = useState(false)
   const [topic, setTopic] = useState<string>(() => readLocal('hld.dsa.topic', ''))
   const [diff, setDiff] = useState<string>('')
   const [status, setStatus] = useState<'all' | 'todo' | 'done'>('all')
   const [q, setQ] = useState('')
 
-  const topics = useMemo(() => [...new Set(PROBLEMS.map((p) => p.topic))].sort(), [])
+  const topics = useMemo(() => [...new Set(PROBLEMS.map((p) => p.topic))].sort(), [PROBLEMS])
   const total = PROBLEMS.reduce((n, p) => n + p.points, 0)
   const shown = PROBLEMS.filter(
     (p) =>
@@ -103,6 +106,14 @@ export function PracticeList() {
         </div>
       </div>
 
+      <div className="add-bar">
+        <span className="muted small">{tr('Koi aur problem chahiye? LeetCode link do ya company/topic ke top questions dhoondho.', 'Want another problem? Paste a LeetCode link or find top questions for a company/topic.')}</span>
+        <button className="btn" onClick={() => setAdding((a) => !a)}>
+          <Icon name="plus" size={15} /> {tr('Problem add karo', 'Add problems')}
+        </button>
+      </div>
+      {adding && <AddProblems known={PROBLEMS} onClose={() => setAdding(false)} />}
+
       <div className="practice-filters">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr('Problem dhoondho ya LeetCode #', 'Search a problem or LeetCode #')} aria-label={tr('Problem dhoondho', 'Search problems')} />
         <div className="seg small" role="radiogroup" aria-label={tr('Difficulty', 'Difficulty')}>
@@ -145,6 +156,7 @@ export function PracticeList() {
               <span className="problem-title">
                 {p.title}
                 {p.lc && <span className="mono muted"> #{p.lc}</span>}
+                {p.ai && <span className="ai-tag">AI</span>}
               </span>
               <span className="problem-topic">{topicTitle(p.topic, lang)}</span>
               <span className={`diff d-${p.difficulty}`}>{DIFF[p.difficulty][lang]}</span>
@@ -247,6 +259,7 @@ export function ProblemView({ id }: { id: string }) {
           <span className="mono muted">+{p.points}</span>
           {p.lc && <span className="mono muted">LeetCode #{p.lc}</span>}
           {isSolved && <span className="solved-pill">✓ {tr('Solved', 'Solved')}</span>}
+          {p.ai && <span className="ai-tag" title={tr('AI ne banaya; tests reference + brute force solution se compiler pe verify hue', 'Built by AI; tests verified on the compiler with a reference and a brute-force solution')}>AI · verified</span>}
         </div>
 
         <div className="seg-tabs problem-tabs four" role="tablist">
@@ -469,6 +482,7 @@ function VerdictPanel({ verdict, problem }: { verdict: Verdict; problem: Problem
 export function TopicProblems({ topic }: { topic: string }) {
   const tr = useTr()
   const { solved } = usePractice()
+  const PROBLEMS = useProblemIndex()
   const list = PROBLEMS.filter((p) => p.topic === topic)
   if (!list.length) return null
   return (

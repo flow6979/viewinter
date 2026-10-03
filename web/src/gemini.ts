@@ -217,3 +217,93 @@ export function useGemini(): { settings: GeminiSettings; status: ConnectionStatu
   }, [])
   return state
 }
+
+export interface Source {
+  uri: string
+  title: string
+}
+
+/** Pulls the first JSON value out of a model reply (it may wrap it in prose or ``` fences) */
+export function extractJson<T>(raw: string): T {
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    const start = text.search(/[[{]/)
+    const end = Math.max(text.lastIndexOf(']'), text.lastIndexOf('}'))
+    if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1)) as T
+    throw new Error(L('AI ka jawab samajh nahi aaya. Dobara try karo.', 'Could not read the AI reply. Please try again.'))
+  }
+}
+
+/**
+ * One-shot call with Google Search grounding: the model searches the web itself (interview experiences,
+ * LeetCode pages…) and we get JSON back plus the pages it used. The site has no server, so this is how
+ * "look it up on the internet" works from the browser.
+ */
+export async function groundedJson<T>(prompt: string, signal?: AbortSignal): Promise<{ data: T; sources: Source[] }> {
+  const { apiKey, model: saved } = getGeminiSettings()
+  if (!apiKey) throw new Error(L('AI set up nahi hai. Settings me Gemini key daalo.', 'AI is not set up. Add your Gemini key in Settings.'))
+  let model = saved || DEFAULT_MODEL
+  const call = (m: string) =>
+    fetch(`${API}/models/${encodeURIComponent(m)}:generateContent`, {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.3 },
+      }),
+    })
+  let res = await call(model)
+  if (res.status === 404) {
+    const fallback = pickModel(await listModels(apiKey).catch(() => []))
+    if (fallback && fallback !== model) res = await call((model = fallback))
+  }
+  if (res.status === 429) throw new Error(L('AI ki rate limit lag gayi. Thodi der baad try karo.', 'AI rate limit hit. Try again in a bit.'))
+  if (!res.ok) {
+    let detail = `${res.status}`
+    try {
+      detail = (await res.json())?.error?.message ?? detail
+    } catch {
+      /* keep status */
+    }
+    throw new Error(`AI error: ${detail}`)
+  }
+  const json = await res.json()
+  const cand = json?.candidates?.[0]
+  const text = (cand?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('')
+  const chunks = (cand?.groundingMetadata?.groundingChunks ?? []) as { web?: { uri?: string; title?: string } }[]
+  const sources = chunks.flatMap((c) => (c.web?.uri ? [{ uri: c.web.uri, title: c.web.title ?? c.web.uri }] : []))
+  return { data: extractJson<T>(text), sources }
+}
+
+/** Long JSON answer without search (problem specs, test inputs). Uses JSON mode so the output stays parseable. */
+export async function longJson<T>(prompt: string, signal?: AbortSignal): Promise<T> {
+  const { apiKey, model: saved } = getGeminiSettings()
+  if (!apiKey) throw new Error(L('AI set up nahi hai. Settings me Gemini key daalo.', 'AI is not set up. Add your Gemini key in Settings.'))
+  const model = saved || DEFAULT_MODEL
+  const res = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 32768 },
+    }),
+  })
+  if (res.status === 429) throw new Error(L('AI ki rate limit lag gayi. Thodi der baad try karo.', 'AI rate limit hit. Try again in a bit.'))
+  if (!res.ok) {
+    let detail = `${res.status}`
+    try {
+      detail = (await res.json())?.error?.message ?? detail
+    } catch {
+      /* keep status */
+    }
+    throw new Error(`AI error: ${detail}`)
+  }
+  const json = await res.json()
+  const text = (json?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('')
+  return extractJson<T>(text)
+}

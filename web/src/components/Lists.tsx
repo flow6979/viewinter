@@ -82,7 +82,7 @@ export function Lists() {
         <div className="lists-bar">
           {lists.map((l) => (
             <button key={l.id} className={`list-tab ${current?.id === l.id ? 'on' : ''}`} onClick={() => choose(l.id)}>
-              {l.name} <span className="mono">{l.slugs.length}</span>
+              {l.name} <span className="mono">{l.slugs.length + (l.questions?.length ?? 0)}</span>
             </button>
           ))}
         </div>
@@ -172,7 +172,8 @@ export function Lists() {
             </div>
           ) : (
             <>
-              {pages.length === 0 && <p className="muted">{tr('List khaali hai. Neeche se topics dhoondh ke daalo.', 'The list is empty. Search below to add topics.')}</p>}
+              {(current.questions?.length ?? 0) > 0 && <SavedQuestions listId={current.id} />}
+              {pages.length === 0 && !current.questions?.length && <p className="muted">{tr('List khaali hai. Neeche se topics dhoondh ke daalo.', 'The list is empty. Search below to add topics.')}</p>}
               <ol className="list-pages">
                 {pages.map((p, i) => {
                   const s = pageStats(p, progress)
@@ -223,6 +224,42 @@ export function Lists() {
         </section>
       )}
       {!user && <p className="muted small">{tr('Login karoge to lists har device pe saath rahengi.', 'Log in to keep your lists on every device.')}</p>}
+    </div>
+  )
+}
+
+/** Questions saved from Company prep, with the user's answer (edit it in Company prep) */
+function SavedQuestions({ listId }: { listId: string }) {
+  const tr = useTr()
+  const { lists, update } = useLists()
+  const list = lists.find((l) => l.id === listId)
+  const [open, setOpen] = useState<string | null>(null)
+  if (!list?.questions?.length) return null
+  return (
+    <div className="saved-qs">
+      <span className="eyebrow">{tr('Saved sawal', 'Saved questions')} · {list.questions.length}</span>
+      <ol className="list-pages">
+        {list.questions.map((q) => (
+          <li key={q.id} className="saved-q">
+            <button type="button" className="saved-q-main" onClick={() => setOpen(open === q.id ? null : q.id)} aria-expanded={open === q.id}>
+              <span className="saved-q-text">{q.q}</span>
+              <span className="muted small">{q.from}</span>
+              {q.answer ? <span className="ok-text small">✓ {tr('answer', 'answered')}</span> : <span className="muted small">{tr('answer baaki', 'no answer yet')}</span>}
+            </button>
+            <button className="icon-btn" onClick={() => update(list.id, { questions: list.questions!.filter((x) => x.id !== q.id) })} aria-label={tr('Hatao', 'Remove')}>
+              ✕
+            </button>
+            {open === q.id && (
+              <div className="saved-q-answer">
+                {q.answer ? <Markdown text={q.answer} /> : <p className="muted small">{tr('Abhi answer nahi likha. Company prep me "Answer likho" se likho.', 'No answer yet. Write one with "Write answer" in Company prep.')}</p>}
+                <a className="small" href={href('company')}>
+                  {tr('Company prep kholo →', 'Open Company prep →')}
+                </a>
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }

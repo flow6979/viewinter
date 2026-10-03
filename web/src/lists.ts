@@ -1,7 +1,7 @@
 // The user's own topic lists ("Amazon round", "Weak topics"): saved in the profile, so they follow the login
 import { useCallback } from 'react'
 import type { PlanInput } from './plan'
-import { useStore, type TopicList } from './store'
+import { useStore, type SavedQuestion, type TopicList } from './store'
 
 export function useLists() {
   const { profile, saveProfile } = useStore()
@@ -27,7 +27,24 @@ export function useLists() {
     update(id, { slugs: list.slugs.includes(slug) ? list.slugs.filter((s) => s !== slug) : [...list.slugs, slug] })
   }
 
-  return { lists, create, update, remove, toggle }
+  const toggleQuestion = (id: string, item: SavedQuestion) => {
+    const list = lists.find((l) => l.id === id)
+    if (!list) return
+    const qs = list.questions ?? []
+    update(id, { questions: qs.some((x) => x.id === item.id) ? qs.filter((x) => x.id !== item.id) : [...qs, item] })
+  }
+  /** Keep the copy of an answer inside every list that holds this question in sync */
+  const syncAnswer = (qid: string, answer: string) => {
+    if (!lists.some((l) => l.questions?.some((x) => x.id === qid && x.answer !== answer))) return
+    write(lists.map((l) => (l.questions?.some((x) => x.id === qid) ? { ...l, questions: l.questions.map((x) => (x.id === qid ? { ...x, answer } : x)) } : l)))
+  }
+  const createWith = (name: string, item: SavedQuestion): TopicList => {
+    const list = { id: Date.now().toString(36), name: name.trim() || 'My list', slugs: [], questions: [item] }
+    write([...lists, list])
+    return list
+  }
+
+  return { lists, create, update, remove, toggle, toggleQuestion, syncAnswer, createWith }
 }
 
 /** Fills in the pages of the chosen list so buildPlan can use them */

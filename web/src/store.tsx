@@ -12,10 +12,20 @@ export interface QuizState {
 }
 const LOCAL_QUIZ = 'hld.quiz.state'
 
+export interface SavedQuestion {
+  id: string
+  q: string
+  /** e.g. "Amazon · SDE2 · System design" */
+  from: string
+  answer?: string
+}
+
 export interface TopicList {
   id: string
   name: string
   slugs: string[]
+  /** questions saved from Company prep, with the user's answer */
+  questions?: SavedQuestion[]
 }
 
 export interface Profile {
