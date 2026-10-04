@@ -60,6 +60,10 @@ service cloud.firestore {
       match /resume/{docId} {
         allow read, write: if isOwner(uid);
       }
+      // Mock interviews: only the compact scorecard (no transcript, video or board)
+      match /interviews/{id} {
+        allow read, write: if isOwner(uid);
+      }
       // Company prep: the user's own answers and AI answers per company + role
       match /companyPrep/{key} {
         allow read, write: if isOwner(uid);

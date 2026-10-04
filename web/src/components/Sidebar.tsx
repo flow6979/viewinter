@@ -169,6 +169,11 @@ export function Sidebar({ current, onNavigate }: { current: string; onNavigate: 
         <Icon name="quiz" size={17} />
         {'Quiz'}
       </a>
+      <a href={href('interview')} className={`side-item home side-mock ${current === 'interview' ? 'active' : ''}`}>
+        <Icon name="chat" size={17} />
+        {tr('Mock interview', 'Mock interview')}
+        <span className="side-new">LIVE</span>
+      </a>
       <a href={href('practice')} className={`side-item home ${current === 'practice' ? 'active' : ''}`}>
         <Icon name="code" size={17} />
         {tr('Practice DSA', 'Practice DSA')}

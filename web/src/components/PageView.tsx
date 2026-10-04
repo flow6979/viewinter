@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { allPages, behavioral, cs, dsa, rag, db, java, lld, lldProblems, localize, pageBySlug, quickLook, revisionBody, route, type Page } from '../content'
 import { ListPicker } from './ListPicker'
+import { navigate } from '../router'
 import { readLocal, writeLocal } from '../store'
 import { TopicProblems } from '../dsa/PracticeView'
 import { useLang, useTr } from '../i18n'
@@ -98,14 +99,14 @@ export function PageView({
           <ListPicker slug={page.slug} />
         </div>
       </div>
-      {page.kind === 'question' && (
-        <button type="button" className="mock-cta" onClick={() => window.dispatchEvent(new Event('viewinter:open-mock'))}>
+      {(page.kind === 'question' || page.kind === 'lldp') && (
+        <button type="button" className="mock-cta" onClick={() => navigate(`interview?type=${page.kind === 'lldp' ? 'lld' : 'hld'}&slug=${page.slug}`)}>
           <span className="mock-cta-icon">
             <Icon name="chat" size={18} />
           </span>
           <span className="mock-cta-text">
-            <b>{tr('Mock interview shuru karo · 45 min', 'Start a mock interview · 45 min')}</b>
-            <span>{tr('AI interviewer is problem pe interview lega; END likho to scorecard milega.', 'An AI interviewer runs this problem with you; type END for a scorecard.')}</span>
+            <b>{tr('Is problem pe mock interview do', 'Take a mock interview on this problem')}</b>
+            <span>{tr('Voice + video + whiteboard. AI interviewer bolta-sunta hai, end me score aur feedback.', 'Voice, video and a whiteboard. The AI interviewer talks and listens, then scores you.')}</span>
           </span>
           <Icon name="arrow" size={16} />
         </button>

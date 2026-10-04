@@ -69,6 +69,23 @@ export function Dashboard() {
         )}
       </header>
 
+ <a className="mock-hero" href={href('interview')}>
+        <span className="mock-hero-text">
+          <span className="eyebrow">{tr('Mock interview room', 'Mock interview room')}</span>
+          <b>{tr('Asli interview jaisa, bina kisi ke saamne baithe', 'Practise the real thing before the real thing')}</b>
+          <span className="muted">{tr('AI interviewer bolta aur sunta hai, camera on, whiteboard pe system design ya editor me code. End me score, verdict aur feedback.', 'An AI interviewer that talks and listens, your camera on, a whiteboard for system design or an editor for code. A score, a verdict and feedback at the end.')}</span>
+          <span className="mock-hero-tags">
+            <span>HLD</span>
+            <span>LLD</span>
+            <span>DSA</span>
+            <span>Behavioral</span>
+          </span>
+        </span>
+        <span className="mock-hero-cta">
+          {tr('Interview shuru karo', 'Start an interview')} <Icon name="arrow" size={16} />
+        </span>
+      </a>
+
       <nav className="quick" aria-label={tr('Jaldi jao', 'Jump to')}>
         {quick.map(([icon, title, sub, link]) => (
           <a key={title} className="quick-card" href={link}>
