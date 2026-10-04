@@ -1387,3 +1387,10 @@ a.btn { text-decoration: none; }
 .about-facts p { margin: 0; line-height: 1.6; }
 @media (max-width: 640px) { .about-facts { grid-template-columns: 1fr; } }
 .about-link { margin-left: auto; margin-right: 16px; }
+.mock-cta { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 16px; border: 1px solid var(--ai-line); border-radius: 12px; background: linear-gradient(120deg, var(--ai-soft), var(--surface) 60%); color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.mock-cta:hover { border-color: var(--ai); transform: translateY(-1px); }
+.mock-cta-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--ai-line); color: var(--ai); flex: none; }
+.mock-cta-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.mock-cta-text span { font-size: 0.85rem; color: var(--muted); }
+.mock-cta > .icon-arrow { color: var(--ai); }
+.mode-seg { flex-wrap: wrap; max-width: 100%; } .mode-seg button { white-space: nowrap; }

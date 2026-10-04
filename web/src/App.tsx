@@ -127,6 +127,16 @@ export function App() {
       } as React.CSSProperties)
     : undefined
   const toggleNav = () => (desktop ? setNavHidden((h) => !h) : setNavOpen((o) => !o))
+  // "Start mock interview" on HLD problem pages: open the side panel on the Mock tab
+  useEffect(() => {
+    const open = () => {
+      setTab('mock')
+      if (desktop) setPanelHidden(false)
+      else setPanelOpen(true)
+    }
+    window.addEventListener('viewinter:open-mock', open)
+    return () => window.removeEventListener('viewinter:open-mock', open)
+  }, [desktop])
   const togglePanel = () => (desktop ? setPanelHidden((h) => !h) : setPanelOpen((o) => !o))
   const panelVisible = desktop ? showPanel : panelOpen
 

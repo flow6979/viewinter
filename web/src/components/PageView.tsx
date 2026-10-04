@@ -98,6 +98,18 @@ export function PageView({
           <ListPicker slug={page.slug} />
         </div>
       </div>
+      {page.kind === 'question' && (
+        <button type="button" className="mock-cta" onClick={() => window.dispatchEvent(new Event('viewinter:open-mock'))}>
+          <span className="mock-cta-icon">
+            <Icon name="chat" size={18} />
+          </span>
+          <span className="mock-cta-text">
+            <b>{tr('Mock interview shuru karo · 45 min', 'Start a mock interview · 45 min')}</b>
+            <span>{tr('AI interviewer is problem pe interview lega; END likho to scorecard milega.', 'An AI interviewer runs this problem with you; type END for a scorecard.')}</span>
+          </span>
+          <Icon name="arrow" size={16} />
+        </button>
+      )}
       <div className="mode-row">
         <div className="mode-seg" role="radiogroup" aria-label={tr('Kaise padhna hai', 'Reading mode')}>
           {modes.map(([m, icon, label]) => (
