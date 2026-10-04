@@ -9,7 +9,7 @@ import { shortTitle } from '../components/Sidebar'
 import { useProblemIndex } from '../dsa/practice'
 import type { Report, RoundType } from './prompts'
 import { loadReport, useReports } from './reports'
-import { canListen, getVoiceSettings } from './voice'
+import { canListen, canSpeak, speak, unlockAudio } from './voice'
 
 const TYPES: { id: RoundType; icon: IconName; hi: string; en: string; sub: { hi: string; en: string } }[] = [
   { id: 'hld', icon: 'hld', hi: 'System design', en: 'System design', sub: { hi: 'Whiteboard pe design, deep dives', en: 'Design on a whiteboard, deep dives' } },
@@ -116,12 +116,6 @@ export function InterviewSetup() {
             <b>{tr('Awaaz aur camera', 'Voice and camera')}</b>
             <span>
               {canListen() ? tr('Mic se bolo; interviewer bol ke jawab deta hai', 'Speak into the mic; the interviewer answers out loud') : tr('Voice input ke liye Chrome/Edge; yahan type kar sakte ho', 'Voice input needs Chrome/Edge; you can type here')}
-              {' · '}
-              {getVoiceSettings().elevenKey ? tr('ElevenLabs voice on', 'ElevenLabs voice on') : (
-                <button className="link-btn" onClick={openSettings}>
-                  {tr('Natural voice (ElevenLabs) add karo', 'Add a natural voice (ElevenLabs)')}
-                </button>
-              )}
             </span>
           </div>
           <div className="setting-control row">
@@ -130,6 +124,16 @@ export function InterviewSetup() {
             </button>
             <button className={`room-toggle ${cam ? 'on' : ''}`} onClick={() => setCam((c) => !c)}>
               {cam ? tr('Camera on', 'Camera on') : tr('Camera off', 'Camera off')}
+            </button>
+            <button
+              className="room-toggle"
+              disabled={!canSpeak()}
+              onClick={() => {
+                unlockAudio()
+                speak(tr('Hello! Main aapka interviewer hoon. Kya aap mujhe sun pa rahe hain?', 'Hello! I am your interviewer. Can you hear me clearly?'))
+              }}
+            >
+              {tr('Sound test', 'Test sound')}
             </button>
           </div>
         </div>

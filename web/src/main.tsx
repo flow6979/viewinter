@@ -8,6 +8,12 @@ import './styles.css'
 import { installRouter } from './router'
 
 installRouter()
+// ElevenLabs was removed: drop any key saved by the old voice setting
+try {
+  localStorage.removeItem('hld.voice')
+} catch {
+  /* storage blocked */
+}
 // Lazy chunks from an older deploy are gone: load the new build once
 window.addEventListener('vite:preloadError', (e) => {
   if (reloadForNewBuild()) e.preventDefault()

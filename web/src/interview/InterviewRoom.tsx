@@ -11,7 +11,7 @@ import { runCpp } from '../dsa/runner'
 import { sameAnswer, type Json } from '../dsa/harness'
 import { interviewerSystem, scoringPrompt, type Brief, type Report, type RoundType } from './prompts'
 import { saveReport } from './reports'
-import { canListen, speak, stopSpeaking, useListener } from './voice'
+import { canListen, canSpeak, speak, speechError, stopSpeaking, unlockAudio, useListener } from './voice'
 
 const Board = lazy(() => import('./Board').then((m) => ({ default: m.Board })))
 const CodeEditor = lazy(() => import('../dsa/CodeEditor').then((m) => ({ default: m.CodeEditor })))
@@ -63,6 +63,8 @@ export function InterviewRoom({ type, slug, minutes, voiceOn: voiceStart, camOn:
   const [code, setCode] = useState('')
   const [runNote, setRunNote] = useState('')
   const [lldTab, setLldTab] = useState<'board' | 'code'>('board')
+  const [joined, setJoined] = useState(false)
+  const [soundBlocked, setSoundBlocked] = useState(false)
   const video = useRef<HTMLVideoElement>(null)
   const stream = useRef<MediaStream | null>(null)
   const log = useRef<HTMLDivElement>(null)
@@ -158,6 +160,7 @@ export function InterviewRoom({ type, slug, minutes, voiceOn: voiceStart, camOn:
           setSpeaking(true)
           await speak(reply)
           setSpeaking(false)
+          if (speechError() === 'blocked') setSoundBlocked(true)
           listener.resume()
         }
       } catch (e) {
@@ -175,10 +178,10 @@ export function InterviewRoom({ type, slug, minutes, voiceOn: voiceStart, camOn:
   // The interviewer opens the round
   const opened = useRef(false)
   useEffect(() => {
-    if (!brief || opened.current || !settings.apiKey) return
+    if (!brief || opened.current || !settings.apiKey || !joined) return
     opened.current = true
     ask([{ role: 'user', text: '(The candidate has joined the call. Greet them in one line and start the interview.)', hidden: true }])
-  }, [brief, ask, settings.apiKey])
+  }, [brief, ask, settings.apiKey, joined])
 
   function send(text: string) {
     const t = text.trim()
@@ -397,6 +400,49 @@ export function InterviewRoom({ type, slug, minutes, voiceOn: voiceStart, camOn:
             )}
           </Suspense>
         </section>
+      )}
+
+      {!joined && (
+        <div className="room-join">
+          <div className="room-join-card">
+            <span className="ai-orb">
+              <Icon name="sparkle" size={22} />
+            </span>
+            <h2>{brief?.title ?? '…'}</h2>
+            <p className="muted">
+              {tr(
+                `${minutes} minute ka ${type.toUpperCase()} round. Interviewer bolega aur sunega; mic on karke jawab do ya type karo.`,
+                `A ${minutes}-minute ${type.toUpperCase()} round. The interviewer speaks and listens; turn the mic on to answer, or type.`,
+              )}
+            </p>
+            {!canSpeak() && <p className="error small">{tr('Is browser me awaaz nahi chalegi; text me interview hoga.', 'This browser cannot play the voice; the interview will be in text.')}</p>}
+            <button
+              className="btn primary big"
+              disabled={!brief}
+              onClick={() => {
+                unlockAudio()
+                setJoined(true)
+              }}
+            >
+              {tr('Interview join karo', 'Join interview')}
+            </button>
+            <span className="muted small">{tr('Speaker/headphones on rakho. Video aapke browser se bahar nahi jaata.', 'Keep your speakers or headphones on. Your video never leaves your browser.')}</span>
+          </div>
+        </div>
+      )}
+
+      {soundBlocked && voiceOn && (
+        <button
+          className="room-sound"
+          onClick={() => {
+            unlockAudio()
+            setSoundBlocked(false)
+            const lastAi = [...msgsRef.current].reverse().find((m) => m.role === 'model')
+            if (lastAi) speak(lastAi.text)
+          }}
+        >
+          {tr('Awaaz browser ne roki: yahan click karke chalu karo', 'The browser blocked the sound: click to turn it on')}
+        </button>
       )}
 
       {ending && (

@@ -1,4 +1,3 @@
-import { DEFAULT_VOICE_ID, getVoiceSettings, saveVoiceSettings } from '../interview/voice'
 import { useState } from 'react'
 import { useTr } from '../i18n'
 import { DEFAULT_MODEL, listModels, saveGeminiSettings, testConnection, useGemini } from '../gemini'
@@ -132,41 +131,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <VoiceSettingsBlock />
       </div>
     </div>
-  )
-}
-
-/** Optional ElevenLabs key for a natural interviewer voice (mock interviews); the free browser voice is the default */
-function VoiceSettingsBlock() {
-  const tr = useTr()
-  const [v, setV] = useState(getVoiceSettings)
-  const [saved, setSaved] = useState(false)
-  return (
-    <details className="voice-settings">
-      <summary>{tr('Mock interview voice (optional)', 'Mock interview voice (optional)')}</summary>
-      <p className="muted small">
-        {tr('Default me browser ki free awaaz use hoti hai. Zyada natural awaaz ke liye ElevenLabs ki free key daalo; ye sirf is browser me rehti hai.', 'By default the browser’s free voice is used. For a more natural voice add a free ElevenLabs key; it stays in this browser.')}{' '}
-        <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noreferrer">
-          {tr('Key yahan milegi', 'Get a key')}
-        </a>
-      </p>
-      <input type="password" value={v.elevenKey} onChange={(e) => (setV({ ...v, elevenKey: e.target.value }), setSaved(false))} placeholder="ElevenLabs API key (sk_…)" aria-label="ElevenLabs API key" autoComplete="off" />
-      <input value={v.voiceId} onChange={(e) => (setV({ ...v, voiceId: e.target.value }), setSaved(false))} placeholder={DEFAULT_VOICE_ID} aria-label="ElevenLabs voice id" />
-      <div className="row end">
-        <span className="muted small">{saved ? tr('Save ho gaya', 'Saved') : ''}</span>
-        <button
-          className="btn"
-          type="button"
-          onClick={() => {
-            saveVoiceSettings({ elevenKey: v.elevenKey.trim(), voiceId: v.voiceId.trim() || DEFAULT_VOICE_ID })
-            setSaved(true)
-          }}
-        >
-          {tr('Voice save karo', 'Save voice')}
-        </button>
-      </div>
-    </details>
   )
 }

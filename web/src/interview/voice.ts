@@ -1,18 +1,6 @@
-// Voice for the interview room.
-// Listening: the browser's speech recognition (Chrome / Edge), free, no key.
-// Speaking: ElevenLabs when the user added a key (natural voice), otherwise the browser's speech synthesis.
+// Voice for the interview room, fully free and in the browser:
+// listening = speech recognition (Chrome / Edge), speaking = speech synthesis (every modern browser).
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { readLocal, writeLocal } from '../store'
-
-export interface VoiceSettings {
-  elevenKey: string
-  /** ElevenLabs voice id; default is a calm, neutral voice */
-  voiceId: string
-}
-const KEY = 'hld.voice'
-export const DEFAULT_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb'
-export const getVoiceSettings = (): VoiceSettings => ({ elevenKey: '', voiceId: DEFAULT_VOICE_ID, ...readLocal<Partial<VoiceSettings>>(KEY, {}) })
-export const saveVoiceSettings = (v: VoiceSettings) => writeLocal(KEY, v)
 
 /** Markdown → plain sentences worth reading aloud (code blocks, tables and symbols skipped) */
 export function speakable(md: string): string {
@@ -28,74 +16,102 @@ export function speakable(md: string): string {
 
 // ---- speaking ----
 
-let audio: HTMLAudioElement | null = null
+let generation = 0
+export const canSpeak = () => typeof window !== 'undefined' && 'speechSynthesis' in window
 
 export function stopSpeaking() {
-  window.speechSynthesis?.cancel()
-  if (audio) {
-    audio.pause()
-    audio = null
-  }
+  generation++
+  if (canSpeak()) window.speechSynthesis.cancel()
 }
 
-function browserVoice(): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis?.getVoices() ?? []
-  const en = voices.filter((v) => v.lang.startsWith('en'))
-  return en.find((v) => /Google UK English Female|Samantha|Microsoft (Aria|Jenny|Neerja)/.test(v.name)) ?? en.find((v) => v.lang === 'en-IN') ?? en[0]
-}
-
-function speakBrowser(text: string): Promise<void> {
+/** Voices load asynchronously in Chrome; wait (briefly) for the list */
+function voicesReady(): Promise<SpeechSynthesisVoice[]> {
+  const now = window.speechSynthesis.getVoices()
+  if (now.length) return Promise.resolve(now)
   return new Promise((resolve) => {
-    if (!window.speechSynthesis) return resolve()
+    const done = () => resolve(window.speechSynthesis.getVoices())
+    window.speechSynthesis.addEventListener('voiceschanged', done, { once: true })
+    window.setTimeout(done, 1500)
+  })
+}
+
+function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const en = voices.filter((v) => v.lang.toLowerCase().startsWith('en'))
+  return (
+    en.find((v) => /Google UK English Female|Google US English|Samantha|Microsoft (Aria|Jenny|Neerja|Ava)/i.test(v.name)) ??
+    en.find((v) => v.lang === 'en-IN') ??
+    en.find((v) => v.localService) ??
+    en[0] ??
+    voices[0]
+  )
+}
+
+/** Chrome cuts off long utterances, so speak sentence-sized chunks one after another */
+function chunks(text: string): string[] {
+  const parts = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text]
+  const out: string[] = []
+  let cur = ''
+  for (const p of parts) {
+    if ((cur + p).length > 200 && cur) {
+      out.push(cur.trim())
+      cur = ''
+    }
+    cur += p
+  }
+  if (cur.trim()) out.push(cur.trim())
+  return out
+}
+
+let lastError = ''
+export const speechError = () => lastError
+
+function sayOne(text: string, voice: SpeechSynthesisVoice | undefined, gen: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (gen !== generation) return resolve()
     const u = new SpeechSynthesisUtterance(text)
-    const v = browserVoice()
-    if (v) u.voice = v
-    u.rate = 1.03
+    if (voice) u.voice = voice
+    u.lang = voice?.lang ?? 'en-US'
+    u.rate = 1.02
+    u.volume = 1
     // Some engines never fire onend; never wait longer than the text could take to read
-    const guard = window.setTimeout(resolve, 3000 + text.length * 90)
+    const guard = window.setTimeout(resolve, 2500 + text.length * 95)
     const done = () => {
       window.clearTimeout(guard)
       resolve()
     }
     u.onend = done
-    u.onerror = done
+    u.onerror = (e) => {
+      if ((e as SpeechSynthesisErrorEvent).error === 'not-allowed') lastError = 'blocked'
+      done()
+    }
+    window.speechSynthesis.resume() // Chrome can be stuck in "paused"
     window.speechSynthesis.speak(u)
   })
 }
 
-async function speakEleven(text: string, s: VoiceSettings): Promise<void> {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(s.voiceId || DEFAULT_VOICE_ID)}?output_format=mp3_44100_128`, {
-    method: 'POST',
-    headers: { 'xi-api-key': s.elevenKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
-  })
-  if (!res.ok) throw new Error(`ElevenLabs ${res.status}`)
-  const url = URL.createObjectURL(await res.blob())
-  await new Promise<void>((resolve) => {
-    audio = new Audio(url)
-    audio.onended = () => resolve()
-    audio.onerror = () => resolve()
-    audio.play().catch(() => resolve())
-  })
-  URL.revokeObjectURL(url)
+/** Reads the text aloud; resolves when done (or when stopped) */
+export async function speak(md: string): Promise<void> {
+  if (!canSpeak()) return
+  stopSpeaking()
+  const gen = generation
+  const text = speakable(md).slice(0, 3000)
+  if (!text) return
+  lastError = ''
+  const voice = pickVoice(await voicesReady())
+  await new Promise((r) => window.setTimeout(r, 60)) // cancel() followed at once by speak() can drop audio
+  for (const c of chunks(text)) {
+    if (gen !== generation) return
+    await sayOne(c, voice, gen)
+  }
 }
 
-/** Reads the text aloud; resolves when done. ElevenLabs failures fall back to the browser voice. */
-export async function speak(md: string): Promise<'eleven' | 'browser'> {
-  stopSpeaking()
-  const text = speakable(md).slice(0, 2500)
-  if (!text) return 'browser'
-  const s = getVoiceSettings()
-  if (s.elevenKey) {
-    try {
-      await speakEleven(text, s)
-      return 'eleven'
-    } catch {
-      /* quota / key issue: use the free voice */
-    }
-  }
-  await speakBrowser(text)
-  return 'browser'
+/** Call from a click: browsers only allow speech after a user gesture */
+export function unlockAudio() {
+  if (!canSpeak()) return
+  const u = new SpeechSynthesisUtterance(' ')
+  u.volume = 0
+  window.speechSynthesis.speak(u)
+  window.speechSynthesis.resume()
 }
 
 // ---- listening ----
