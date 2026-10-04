@@ -4,6 +4,7 @@ import { href } from '../router'
 import { SEED } from '../quizBank'
 import { PROBLEMS } from '../dsa/practice'
 import { Icon, type IconName } from './Icon'
+import { openCoffee, supportEnabled } from '../support'
 
 interface Feature {
   icon: IconName
@@ -174,6 +175,16 @@ export function About() {
           <p className="muted">{tr('Har page, quiz aur AI jawab dono bhashaon me. Upar ke switch se badlo.', 'Every page, quiz and AI answer in both. Switch any time from the top bar.')}</p>
         </div>
       </section>
+
+      {supportEnabled() && (
+        <section className="about-group about-support">
+          <h2>{tr('Support karo', 'Support Viewinter')}</h2>
+          <p className="muted">{tr('Site free hai aur free rahegi. Madad mili ho to ek coffee pila do.', 'The site is free and stays free. If it helped you, buy me a coffee.')}</p>
+          <button className="btn primary" onClick={openCoffee}>
+            <Icon name="cup" size={16} /> {tr('Ek coffee pilao', 'Buy me a coffee')}
+          </button>
+        </section>
+      )}
     </div>
   )
 }

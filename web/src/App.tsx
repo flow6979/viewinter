@@ -31,6 +31,9 @@ import { Checklist } from './components/Checklist'
 import { Icon } from './components/Icon'
 import { href, usePath } from './router'
 import { Avatar, ProfileModal } from './components/ProfileModal'
+import { Stats } from './components/Stats'
+import { CoffeeModal } from './components/CoffeeModal'
+import { openCoffee, supportEnabled } from './support'
 
 const AgentSection = lazy(() => import('./agents/AgentSection').then((m) => ({ default: m.AgentSection })))
 
@@ -46,6 +49,7 @@ function useRoute() {
   if (parts[0] === 'quiz') return { view: 'quiz' as const, slug: 'quiz' }
   if (parts[0] === 'interview') return { view: (parts[1] === 'live' ? 'interviewLive' : parts[1] === 'report' ? 'interviewReport' : 'interview') as 'interview' | 'interviewLive' | 'interviewReport', slug: 'interview', reportId: parts[2] }
   if (parts[0] === 'about') return { view: 'about' as const, slug: 'about' }
+  if (parts[0] === 'stats') return { view: 'stats' as const, slug: 'stats' }
   if (parts[0] === 'company') return { view: 'company' as const, slug: 'company' }
   if (parts[0] === 'practice') return { view: 'practice' as const, slug: 'practice', problem: parts[1] }
   if (parts[0] === 'lists') return { view: 'lists' as const, slug: 'lists' }
@@ -72,6 +76,12 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(() => readLocal('hld.theme', 'dark'))
   const [showAuth, setShowAuth] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showCoffee, setShowCoffee] = useState(false)
+  useEffect(() => {
+    const open = () => setShowCoffee(true)
+    window.addEventListener('viewinter:open-coffee', open)
+    return () => window.removeEventListener('viewinter:open-coffee', open)
+  }, [])
   const gemini = useGemini()
   const hasKey = !!gemini.settings.apiKey
   // Key icon dot: orange = no key, red = last test failed
@@ -114,7 +124,7 @@ export function App() {
   useEffect(() => writeLocal('hld.mode', readMode), [readMode])
 
   useEffect(() => {
-    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : view === 'company' ? 'Company prep · Viewinter' : view === 'about' ? 'About · Viewinter' : view.startsWith('interview') ? 'Mock interview · Viewinter' : 'Viewinter'
+    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : view === 'company' ? 'Company prep · Viewinter' : view === 'about' ? 'About · Viewinter' : view === 'stats' ? 'Stats · Viewinter' : view.startsWith('interview') ? 'Mock interview · Viewinter' : 'Viewinter'
     document.querySelector('.main')?.scrollTo(0, 0)
     window.scrollTo(0, 0)
   }, [page, view, lang])
@@ -165,6 +175,11 @@ export function App() {
           <span>Viewinter</span>
         </a>
         <div className="spacer" />
+        {supportEnabled() && (
+          <button className="icon-btn" onClick={openCoffee} aria-label={tr('Ek coffee pilao', 'Buy me a coffee')} title={tr('Ek coffee pilao', 'Buy me a coffee')}>
+            <Icon name="cup" />
+          </button>
+        )}
         <LangSwitch />
         <button className="icon-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={tr('Theme badlo', 'Toggle theme')}>
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
@@ -220,6 +235,7 @@ export function App() {
           {view === 'lists' && <Lists />}
           {view === 'company' && <Company />}
           {view === 'about' && <About />}
+          {view === 'stats' && <Stats />}
           {view === 'interview' && <InterviewSetup />}
           {view === 'interviewReport' && 'reportId' in route && route.reportId && <InterviewReport id={route.reportId} />}
           {view === 'interviewLive' && <LiveRoom />}
@@ -288,6 +304,7 @@ export function App() {
 
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
+      {showCoffee && <CoffeeModal onClose={() => setShowCoffee(false)} />}
       {showSettings && (
         <SettingsModal
           onClose={() => {

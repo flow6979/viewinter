@@ -4,6 +4,8 @@ import { collection, deleteDoc, doc, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useStore } from '../store'
 import { useTr } from '../i18n'
+import { href } from '../router'
+import { isAdmin } from './Stats'
 
 export function initials(name: string): string {
   const parts = name.trim().split(/[\s._@-]+/).filter(Boolean)
@@ -122,6 +124,12 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
             {busy === 'details' ? tr('Save ho raha hai…', 'Saving…') : 'Save'}
           </button>
         </form>
+
+        {isAdmin(user.uid) && (
+          <a className="btn wide" href={href('stats')} onClick={onClose}>
+            Stats
+          </a>
+        )}
 
         {hasPassword && (
           <details className="profile-section">
