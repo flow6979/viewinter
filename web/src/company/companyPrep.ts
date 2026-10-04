@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { groundedJson, type Source } from '../gemini'
+import { AiReplyError, groundedJson, type Source } from '../gemini'
 import { readLocal, useStore, writeLocal } from '../store'
 import { packJson, unpackJson } from '../codec'
 
@@ -78,7 +78,15 @@ Return ONLY JSON:
   "system_design": [...], "lld": [...], "behavioral": [...], "resume": [...], "cs": [...], "misc": [...]
  }}
 Put 8–20 real questions in each section that has evidence (fewer is fine; empty arrays if none). Prefer questions reported multiple times; frequency = how often it appears across sources. No invented questions: if evidence is thin, say so in "process".`
-  const { data, sources, live, note } = await groundedJson<RawReport>(prompt, signal)
+  let res: Awaited<ReturnType<typeof groundedJson<RawReport>>>
+  try {
+    res = await groundedJson<RawReport>(prompt, signal)
+  } catch (e) {
+    // Empty / cut / filtered reply: one retry asking for compact, paraphrased JSON
+    if (!(e instanceof AiReplyError)) throw e
+    res = await groundedJson<RawReport>(`${prompt}\n\nIMPORTANT: reply with one compact valid JSON object only, at most 12 questions per section, questions paraphrased in your own words.`, signal)
+  }
+  const { data, sources, live, note } = res
   const questions: CompanyQuestion[] = []
   for (const s of SECTIONS) {
     for (const item of data.sections?.[s.id] ?? []) {

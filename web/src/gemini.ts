@@ -228,17 +228,93 @@ export interface Source {
   title: string
 }
 
-/** Pulls the first JSON value out of a model reply (it may wrap it in prose or ``` fences) */
+/** Why a JSON reply could not be used: lets callers retry with the right instruction */
+export class AiReplyError extends Error {
+  reason: 'empty' | 'cut' | 'blocked' | 'json'
+  constructor(message: string, reason: 'empty' | 'cut' | 'blocked' | 'json') {
+    super(message)
+    this.reason = reason
+  }
+}
+
+/** Every balanced {...} / [...] in the text, longest first, skipping brackets inside strings */
+function jsonCandidates(text: string): string[] {
+  const out: string[] = []
+  for (let start = 0; start < text.length; start++) {
+    const open = text[start]
+    if (open !== '{' && open !== '[') continue
+    let depth = 0
+    let inStr = false
+    for (let i = start; i < text.length; i++) {
+      const c = text[i]
+      if (inStr) {
+        if (c === '\\') i++
+        else if (c === '"') inStr = false
+        continue
+      }
+      if (c === '"') inStr = true
+      else if (c === '{' || c === '[') depth++
+      else if (c === '}' || c === ']') {
+        depth--
+        if (depth === 0) {
+          out.push(text.slice(start, i + 1))
+          start = i
+          break
+        }
+      }
+    }
+  }
+  return out.sort((x, y) => y.length - x.length)
+}
+
+/** Pulls the JSON value out of a model reply (it may wrap it in prose, ``` fences or [1] citations) */
 export function extractJson<T>(raw: string): T {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+  const text = raw.trim().replace(/```(?:json)?/gi, '').trim()
+  if (!text) throw new AiReplyError(L('AI ne khaali jawab diya.', 'The AI returned an empty reply.'), 'empty')
   try {
     return JSON.parse(text) as T
   } catch {
-    const start = text.search(/[[{]/)
-    const end = Math.max(text.lastIndexOf(']'), text.lastIndexOf('}'))
-    if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1)) as T
-    throw new Error(L('AI ka jawab samajh nahi aaya. Dobara try karo.', 'Could not read the AI reply. Please try again.'))
+    // Where the real JSON starts: first { or [ that is not a citation marker like [1]
+    const m = /\{|\[(?!\d+\])/.exec(text)
+    const start = m ? m.index : -1
+    const candidates = jsonCandidates(text)
+    if (start < 0 || !candidates.some((c) => text.startsWith(c, start)))
+      throw new AiReplyError(L('AI ka jawab beech me kat gaya.', 'The AI reply was cut off.'), 'cut')
+    for (const c of candidates.filter((x) => text.startsWith(x, start))) {
+      for (const attempt of [c, c.replace(/,\s*([}\]])/g, '$1')]) {
+        try {
+          return JSON.parse(attempt) as T
+        } catch {
+          /* try the next candidate */
+        }
+      }
+    }
+    throw new AiReplyError(L('AI ka jawab poora JSON nahi tha (shayad beech me kat gaya).', 'The AI reply was not complete JSON (it may have been cut off).'), 'json')
   }
+}
+
+/** Text of the first candidate, or a typed error explaining why there is none */
+function replyText(json: { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[]; promptFeedback?: { blockReason?: string } }): string {
+  const cand = json?.candidates?.[0]
+  const text = (cand?.content?.parts ?? [])
+    .filter((p) => !p.thought)
+    .map((p) => p.text ?? '')
+    .join('')
+  const finish = cand?.finishReason ?? ''
+  if (!text.trim()) {
+    if (finish === 'MAX_TOKENS') throw new AiReplyError(L('AI ka jawab limit se lamba ho gaya.', 'The AI reply hit its length limit.'), 'cut')
+    if (finish === 'RECITATION' || finish === 'SAFETY' || finish === 'BLOCKLIST' || json?.promptFeedback?.blockReason)
+      throw new AiReplyError(L('AI ne jawab rok diya (copyright/safety filter).', 'The AI held back its reply (copyright or safety filter).'), 'blocked')
+    throw new AiReplyError(L('AI ne khaali jawab diya.', 'The AI returned an empty reply.'), 'empty')
+  }
+  if (finish === 'MAX_TOKENS') {
+    try {
+      return JSON.stringify(extractJson(text))
+    } catch {
+      throw new AiReplyError(L('AI ka jawab beech me kat gaya.', 'The AI reply was cut off.'), 'cut')
+    }
+  }
+  return text
 }
 
 /**
@@ -285,7 +361,7 @@ export async function groundedJson<T>(prompt: string, signal?: AbortSignal): Pro
   if (!res.ok) throw new Error(`AI error: ${await detailOf(res)}`)
   const json = await res.json()
   const cand = json?.candidates?.[0]
-  const text = (cand?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('')
+  const text = replyText(json)
   const chunks = (cand?.groundingMetadata?.groundingChunks ?? []) as { web?: { uri?: string; title?: string } }[]
   const sources = chunks.flatMap((c) => (c.web?.uri ? [{ uri: c.web.uri, title: c.web.title ?? c.web.uri }] : []))
   return { data: extractJson<T>(text), sources, live, note }
@@ -302,7 +378,7 @@ export async function longJson<T>(prompt: string, signal?: AbortSignal): Promise
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 32768 },
+      generationConfig: { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 65536 },
     }),
   })
   if (!res.ok) {
@@ -314,7 +390,5 @@ export async function longJson<T>(prompt: string, signal?: AbortSignal): Promise
     }
     throw new Error(res.status === 429 ? L(`AI ki rate limit lag gayi: ${detail}`, `AI rate limit hit: ${detail}`) : `AI error: ${detail}`)
   }
-  const json = await res.json()
-  const text = (json?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('')
-  return extractJson<T>(text)
+  return extractJson<T>(replyText(await res.json()))
 }
