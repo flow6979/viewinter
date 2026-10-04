@@ -9,7 +9,7 @@ import { shortTitle } from '../components/Sidebar'
 import { useProblemIndex } from '../dsa/practice'
 import type { Report, RoundType } from './prompts'
 import { loadReport, useReports } from './reports'
-import { canListen, canSpeak, speak, unlockAudio } from './voice'
+import { canListen, canSpeak, speak, speechError, speechStarted, unlockAudio } from './voice'
 
 const TYPES: { id: RoundType; icon: IconName; hi: string; en: string; sub: { hi: string; en: string } }[] = [
   { id: 'hld', icon: 'hld', hi: 'System design', en: 'System design', sub: { hi: 'Whiteboard pe design, deep dives', en: 'Design on a whiteboard, deep dives' } },
@@ -35,6 +35,14 @@ export function InterviewSetup() {
   const [minutes, setMinutes] = useState(last.minutes)
   const [voice, setVoice] = useState(last.voice)
   const [cam, setCam] = useState(last.cam)
+  const [test, setTest] = useState<'idle' | 'playing' | 'done' | 'silent'>('idle')
+
+  const testSound = async () => {
+    setTest('playing')
+    unlockAudio()
+    await speak(tr('Hello! Main aapka interviewer hoon. Kya aap mujhe sun pa rahe hain?', 'Hello! I am your interviewer. Can you hear me clearly?'))
+    setTest(speechStarted() && !speechError() ? 'done' : 'silent')
+  }
 
   const options = useMemo(() => {
     if (type === 'hld') return questions.map((p) => ({ slug: p.slug, title: shortTitle(localize(p, lang).title) }))
@@ -125,17 +133,17 @@ export function InterviewSetup() {
             <button className={`room-toggle ${cam ? 'on' : ''}`} onClick={() => setCam((c) => !c)}>
               {cam ? tr('Camera on', 'Camera on') : tr('Camera off', 'Camera off')}
             </button>
-            <button
-              className="room-toggle"
-              disabled={!canSpeak()}
-              onClick={() => {
-                unlockAudio()
-                speak(tr('Hello! Main aapka interviewer hoon. Kya aap mujhe sun pa rahe hain?', 'Hello! I am your interviewer. Can you hear me clearly?'))
-              }}
-            >
-              {tr('Sound test', 'Test sound')}
+            <button className="btn sound-test" disabled={!canSpeak() || test === 'playing'} onClick={testSound}>
+              <Icon name="sound" size={16} /> {test === 'playing' ? tr('Bol raha hai…', 'Playing…') : tr('Sound test', 'Test sound')}
             </button>
           </div>
+          {test === 'done' && <p className="sound-note">{tr('Awaaz nahi aayi? System volume aur tab mute check karo.', 'Heard nothing? Check the system volume and that this tab is not muted.')}</p>}
+          {test === 'silent' && (
+            <p className="sound-note bad">
+              {tr('Browser ne awaaz nahi chalayi. Chrome ya Edge try karo, ya site settings me Sound allow karo.', 'The browser did not play any sound. Try Chrome or Edge, or allow Sound for this site in the browser settings.')}
+            </p>
+          )}
+          {!canSpeak() && <p className="sound-note bad">{tr('Is browser me awaaz support nahi hai; interviewer likh ke jawab dega.', 'This browser cannot speak; the interviewer will reply in text.')}</p>}
         </div>
       </section>
 

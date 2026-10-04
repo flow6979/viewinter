@@ -63,7 +63,10 @@ function chunks(text: string): string[] {
 }
 
 let lastError = ''
+let started = false
 export const speechError = () => lastError
+/** true once the engine actually began playing the last speak() */
+export const speechStarted = () => started
 
 function sayOne(text: string, voice: SpeechSynthesisVoice | undefined, gen: number): Promise<void> {
   return new Promise((resolve) => {
@@ -79,6 +82,9 @@ function sayOne(text: string, voice: SpeechSynthesisVoice | undefined, gen: numb
       window.clearTimeout(guard)
       resolve()
     }
+    u.onstart = () => {
+      started = true
+    }
     u.onend = done
     u.onerror = (e) => {
       if ((e as SpeechSynthesisErrorEvent).error === 'not-allowed') lastError = 'blocked'
@@ -86,19 +92,32 @@ function sayOne(text: string, voice: SpeechSynthesisVoice | undefined, gen: numb
     }
     window.speechSynthesis.resume() // Chrome can be stuck in "paused"
     window.speechSynthesis.speak(u)
+    // Chrome sometimes queues an utterance and never starts it: kick the engine once
+    let began = false
+    u.addEventListener('start', () => (began = true))
+    window.setTimeout(() => {
+      if (began || gen !== generation) return
+      window.speechSynthesis.cancel()
+      window.speechSynthesis.resume()
+      window.speechSynthesis.speak(u)
+    }, 1500)
   })
 }
 
 /** Reads the text aloud; resolves when done (or when stopped) */
 export async function speak(md: string): Promise<void> {
   if (!canSpeak()) return
+  const busy = window.speechSynthesis.speaking || window.speechSynthesis.pending
   stopSpeaking()
   const gen = generation
   const text = speakable(md).slice(0, 3000)
   if (!text) return
   lastError = ''
-  const voice = pickVoice(await voicesReady())
-  await new Promise((r) => window.setTimeout(r, 60)) // cancel() followed at once by speak() can drop audio
+  started = false
+  // Stay synchronous when possible so the first sentence still counts as part of the user's click
+  const loaded = window.speechSynthesis.getVoices()
+  const voice = pickVoice(loaded.length ? loaded : await voicesReady())
+  if (busy) await new Promise((r) => window.setTimeout(r, 60)) // cancel() followed at once by speak() can drop audio
   for (const c of chunks(text)) {
     if (gen !== generation) return
     await sayOne(c, voice, gen)
