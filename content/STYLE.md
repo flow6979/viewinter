@@ -94,7 +94,7 @@ Questions (`02-questions/`):
 t1-01-url-shortener, t1-02-rate-limiter, t1-03-news-feed, t1-04-whatsapp-chat, t1-05-bookmyshow, t1-06-uber, t1-07-youtube, t1-08-dropbox, t1-09-notification-system, t1-10-typeahead, t1-11-payment-system, t1-12-web-crawler, t2-13-instagram, t2-14-food-delivery, t2-15-flash-sale, t2-16-leaderboard, t2-17-ad-click-aggregator, t2-18-job-scheduler, t2-19-google-docs, t2-20-distributed-kv-store, t2-21-nearby-places, t2-22-llm-chat-app
 
 ## New questions (added later)
-t2-23-recommendation-system, t2-24-ecommerce-inventory, t2-25-discord, t2-26-distributed-logging
+t2-23-recommendation-system, t2-24-ecommerce-inventory, t2-25-discord, t2-26-distributed-logging, t2-27-bike-rental
 
 ## LLD / Design patterns files (`03-lld/`)
 
@@ -171,7 +171,7 @@ Rules (same spirit as Java files):
 23-microservices-patterns (Microservices Patterns), 24-cqrs-event-sourcing (CQRS & Event Sourcing), 25-consensus-leader-election (Consensus & Leader Election). Same format as other topic files (see "Topic file sections").
 
 ## LLD problem files (`06-lld-problems/`, English mirror in `content-en/06-lld-problems/`)
-01-parking-lot (Parking Lot), 02-elevator (Elevator System), 03-vending-machine (Vending Machine), 04-splitwise (Splitwise), 05-bookmyshow (BookMyShow LLD), 06-lru-cache (LRU Cache), 07-snake-and-ladder (Snake & Ladder), 08-atm (ATM)
+01-parking-lot (Parking Lot), 02-elevator (Elevator System), 03-vending-machine (Vending Machine), 04-splitwise (Splitwise), 05-bookmyshow (BookMyShow LLD), 06-lru-cache (LRU Cache), 07-snake-and-ladder (Snake & Ladder), 08-atm (ATM), 09-bike-rental (Bike Rental System)
 
 Frontmatter: `title`, `order`, `time`, `patterns: [Strategy, State, …]`.
 Sections in this order (keep headings exactly; English uses the English text after the slash):
