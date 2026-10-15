@@ -6,8 +6,13 @@ import { App } from './App'
 import { LangProvider } from './i18n'
 import './styles.css'
 import { installRouter } from './router'
+import { initAnalytics } from './analytics'
+import { initTraffic } from './traffic'
 
 installRouter()
+// Visitor stats for the live site (logged in or not): Google Analytics + our own daily counter
+initAnalytics()
+initTraffic()
 // ElevenLabs was removed: drop any key saved by the old voice setting
 try {
   localStorage.removeItem('hld.voice')

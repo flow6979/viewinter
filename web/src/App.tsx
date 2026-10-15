@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { allItems, pageBySlug } from './content'
 import { useStore, readLocal, writeLocal } from './store'
 import { OPEN_SETTINGS_EVENT, useGemini } from './gemini'
+import { useGeminiSync } from './geminiSync'
 import { pct } from './progress'
 import { Sidebar } from './components/Sidebar'
 import { Dashboard } from './components/Dashboard'
@@ -32,6 +33,7 @@ import { Icon } from './components/Icon'
 import { href, usePath } from './router'
 import { Avatar, ProfileModal } from './components/ProfileModal'
 import { Stats } from './components/Stats'
+import { SharedListView } from './components/SharedListView'
 import { CoffeeModal } from './components/CoffeeModal'
 import { openCoffee, supportEnabled } from './support'
 
@@ -53,6 +55,7 @@ function useRoute() {
   if (parts[0] === 'company') return { view: 'company' as const, slug: 'company' }
   if (parts[0] === 'practice') return { view: 'practice' as const, slug: 'practice', problem: parts[1] }
   if (parts[0] === 'lists') return { view: 'lists' as const, slug: 'lists' }
+  if (parts[0] === 'list' && parts[1]) return { view: 'sharedList' as const, slug: 'lists', shareId: parts[1] }
   if (parts[0] === 'resume') return { view: 'resume' as const, slug: 'resume' }
   if (parts[0] === 'plan') return { view: 'plan' as const, slug: 'plan' }
   if (parts[0] === 'agents') {
@@ -66,6 +69,7 @@ function useRoute() {
 
 export function App() {
   const { user, authReady, progress } = useStore()
+  useGeminiSync(user)
   const route = useRoute()
   const { view, slug } = route
   const { lang } = useLang()
@@ -124,7 +128,7 @@ export function App() {
   useEffect(() => writeLocal('hld.mode', readMode), [readMode])
 
   useEffect(() => {
-    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : view === 'company' ? 'Company prep · Viewinter' : view === 'about' ? 'About · Viewinter' : view === 'stats' ? 'Stats · Viewinter' : view.startsWith('interview') ? 'Mock interview · Viewinter' : 'Viewinter'
+    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'sharedList' ? 'Shared list · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : view === 'company' ? 'Company prep · Viewinter' : view === 'about' ? 'About · Viewinter' : view === 'stats' ? 'Stats · Viewinter' : view.startsWith('interview') ? 'Mock interview · Viewinter' : 'Viewinter'
     document.querySelector('.main')?.scrollTo(0, 0)
     window.scrollTo(0, 0)
   }, [page, view, lang])
@@ -233,6 +237,7 @@ export function App() {
           {view === 'plan' && <Planner />}
           {view === 'quiz' && <Quiz hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} />}
           {view === 'lists' && <Lists />}
+          {view === 'sharedList' && 'shareId' in route && <SharedListView id={route.shareId} />}
           {view === 'company' && <Company />}
           {view === 'about' && <About />}
           {view === 'stats' && <Stats />}

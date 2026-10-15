@@ -1,8 +1,10 @@
-// Owner-only stats: who signed up, who came back, and what they use. Firestore rules let only the
-// admin uid read other users' documents; traffic (anonymous visitors) lives in Google Analytics.
+// Owner-only stats: who signed up, who came back, and what they use. Firestore rules let only an admin
+// (a doc at admins/{uid}) read other users' documents. Traffic (logged-out visitors too) comes from traffic/{day} docs
+// written by traffic.ts, with Google Analytics as the deeper view (countries, sources, realtime).
 import { useEffect, useState } from 'react'
-import { collection, collectionGroup, getCountFromServer, getDocs, type Timestamp } from 'firebase/firestore'
+import { collection, collectionGroup, documentId, getCountFromServer, getDocs, query, where, type Timestamp } from 'firebase/firestore'
 import { db } from '../firebase'
+import { trafficDay } from '../traffic'
 import { useStore } from '../store'
 import { href } from '../router'
 import { Icon } from './Icon'
@@ -24,7 +26,19 @@ interface Row {
   dsa: number
 }
 
+interface Day {
+  day: string
+  visitors: number
+  newVisitors: number
+  sessions: number
+  views: number
+  mobile: number
+  desktop: number
+  pages: Record<string, number>
+}
+
 interface Data {
+  traffic: Day[]
   rows: Row[]
   interviews: number
   problems: number
@@ -43,7 +57,15 @@ const ago = (t: number) => {
 async function load(): Promise<Data> {
   const d = db!
   const safeCount = (q: Parameters<typeof getCountFromServer>[0]) => getCountFromServer(q).then((s) => s.data().count).catch(() => 0)
-  const [users, interviews, problems, questions, companies] = await Promise.all([
+  const since = trafficDay(Date.now() - 29 * DAY)
+  const [traffic, users, interviews, problems, questions, companies] = await Promise.all([
+    getDocs(query(collection(d, 'traffic'), where(documentId(), '>=', since))).then((s) =>
+      s.docs.map((x): Day => {
+        const v = x.data()
+        const n = (k: string) => Number(v[k] ?? 0)
+        return { day: x.id, visitors: n('visitors'), newVisitors: n('newVisitors'), sessions: n('sessions'), views: n('views'), mobile: n('mobile'), desktop: n('desktop'), pages: v.pages ?? {} }
+      }),
+    ),
     getDocs(collection(d, 'users')),
     safeCount(collectionGroup(d, 'interviews')),
     safeCount(collection(d, 'dsaIndex')),
@@ -64,17 +86,14 @@ async function load(): Promise<Data> {
     }
   })
   rows.sort((a, b) => b.seen - a.seen || b.joined - a.joined)
-  return { rows, interviews, problems, questions, companies }
+  return { traffic, rows, interviews, problems, questions, companies }
 }
 
-/** Last 14 days as columns: how many accounts were created each day */
-function Signups({ rows }: { rows: Row[] }) {
-  const today = new Date().setHours(0, 0, 0, 0)
-  const days = Array.from({ length: 14 }, (_, i) => today - (13 - i) * DAY)
-  const per = days.map((d) => rows.filter((r) => r.joined >= d && r.joined < d + DAY).length)
+/** Last 14 days as columns */
+function Bars({ per, days, label }: { per: number[]; days: number[]; label: string }) {
   const max = Math.max(1, ...per)
   return (
-    <div className="stats-chart" role="img" aria-label="Sign-ups in the last 14 days">
+    <div className="stats-chart" role="img" aria-label={label}>
       {per.map((n, i) => (
         <span key={days[i]} title={`${new Date(days[i]).toLocaleDateString()}: ${n}`}>
           <i style={{ height: `${(n / max) * 100}%` }} />
@@ -82,6 +101,75 @@ function Signups({ rows }: { rows: Row[] }) {
         </span>
       ))}
     </div>
+  )
+}
+
+const last14 = () => {
+  const today = new Date().setHours(0, 0, 0, 0)
+  return Array.from({ length: 14 }, (_, i) => today - (13 - i) * DAY)
+}
+
+/** How many accounts were created each day */
+function Signups({ rows }: { rows: Row[] }) {
+  const days = last14()
+  return <Bars days={days} per={days.map((d) => rows.filter((r) => r.joined >= d && r.joined < d + DAY).length)} label="Sign-ups in the last 14 days" />
+}
+
+/** Visitors (logged in or not) per day, from the traffic counter */
+function Traffic({ traffic }: { traffic: Day[] }) {
+  const byDay = new Map(traffic.map((t) => [t.day, t]))
+  const sum = (from: number, k: keyof Omit<Day, 'day' | 'pages'>) => traffic.filter((t) => t.day >= trafficDay(Date.now() - from * DAY)).reduce((s, t) => s + t[k], 0)
+  const today = byDay.get(trafficDay())
+  const days = last14()
+  const mobile = sum(29, 'mobile')
+  const desktop = sum(29, 'desktop')
+  const pages = new Map<string, number>()
+  for (const t of traffic) for (const [p, n] of Object.entries(t.pages)) pages.set(p, (pages.get(p) ?? 0) + Number(n))
+  const top = [...pages].sort((a, b) => b[1] - a[1]).slice(0, 10)
+  const tiles: [string, number | string][] = [
+    ['Visitors today', today?.visitors ?? 0],
+    ['Visitors 7 days', sum(6, 'visitors')],
+    ['Visitors 30 days', sum(29, 'visitors')],
+    ['New visitors 30 days', sum(29, 'newVisitors')],
+    ['Visits 30 days', sum(29, 'sessions')],
+    ['Page views 30 days', sum(29, 'views')],
+    ['On phones', mobile + desktop ? `${Math.round((mobile / (mobile + desktop)) * 100)}%` : '—'],
+  ]
+  return (
+    <>
+      <section className="stats-tiles">
+        {tiles.map(([label, v]) => (
+          <div key={label} className="stats-tile">
+            <b className="mono">{v}</b>
+            <span>{label}</span>
+          </div>
+        ))}
+      </section>
+      <section className="stats-block">
+        <h2>Visitors, last 14 days</h2>
+        <Bars days={days} per={days.map((d) => byDay.get(trafficDay(d + DAY / 2))?.visitors ?? 0)} label="Visitors in the last 14 days" />
+        <p className="muted small">Everyone who opened the site, logged in or not. A visitor is one browser per day; counting started with this update.</p>
+      </section>
+      {top.length > 0 && (
+        <section className="stats-block">
+          <h2>Top pages, 30 days</h2>
+          <div className="stats-table-wrap">
+            <table className="stats-table">
+              <tbody>
+                {top.map(([p, n]) => (
+                  <tr key={p}>
+                    <td>
+                      <a href={href(p === 'home' ? '' : p)}>{p}</a>
+                    </td>
+                    <td className="mono">{n}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
   )
 }
 
@@ -124,7 +212,7 @@ export function Stats() {
     : []
 
   return (
-    <div className="stats">
+    <div className="stats-page">
       <header>
         <span className="eyebrow">Only you can see this</span>
         <h1>Stats</h1>
@@ -135,7 +223,7 @@ export function Stats() {
           <Icon name="target" size={18} />
           <span className="quick-text">
             <b>Traffic</b>
-            <span>Visitors, page views, countries, devices, realtime (Google Analytics)</span>
+            <span>Countries, sources, devices, realtime (Google Analytics; data shows up within a day)</span>
           </span>
           <span className="quick-arrow">
             <Icon name="arrow" size={14} />
@@ -157,6 +245,10 @@ export function Stats() {
       {!data && !error && <p className="muted">Loading…</p>}
       {data && (
         <>
+          <h2 className="stats-h">Traffic</h2>
+          <Traffic traffic={data.traffic} />
+
+          <h2 className="stats-h">Accounts and usage</h2>
           <section className="stats-tiles">
             {tiles.map(([label, v]) => (
               <div key={label} className="stats-tile">

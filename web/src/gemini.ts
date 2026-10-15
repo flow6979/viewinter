@@ -19,7 +19,8 @@ export const DEFAULT_MODEL = 'gemini-flash-latest'
 /** Appended to every prompt: the site shows Markdown, not LaTeX */
 export const NO_TEX = 'Never use LaTeX or $…$ math; write math as plain text and Unicode (n × n, 1 ≤ n ≤ 10⁵, O(n log n)).'
 
-// The key stays in this browser only. It is never written to Firestore or the repo.
+// The app reads the key from this browser. Signed-in users also get it synced to their account
+// (users/{uid}/private/gemini, owner-only) by geminiSync.ts, so it shows up on every device.
 export const getGeminiSettings = (): GeminiSettings =>
   readLocal(SETTINGS_KEY, { apiKey: '', model: DEFAULT_MODEL })
 

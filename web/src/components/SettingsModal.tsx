@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useTr } from '../i18n'
 import { DEFAULT_MODEL, listModels, saveGeminiSettings, testConnection, useGemini } from '../gemini'
+import { useStore } from '../store'
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tr = useTr()
   const { settings, status } = useGemini()
+  const { user } = useStore()
   const [apiKey, setApiKey] = useState(settings.apiKey)
   const [model, setModel] = useState(settings.model || DEFAULT_MODEL)
   const [show, setShow] = useState(false)
@@ -51,7 +53,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           {tr('Ek Gemini key, poori site ka AI: Ask AI, mock interview, quiz, resume aur agent labs.', 'One Gemini key powers all AI on the site: Ask AI, mock interviews, quiz, resume and agent labs.')}{' '}
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
             {tr('Free key lo', 'Get a free key')}
-          </a>
+          </a>{' '}
+          {user
+            ? tr('Key tumhare account me save hoti hai, to har device pe login karte hi mil jayegi.', 'The key is saved to your account, so it is there on every device you log in on.')
+            : tr('Login karo to key har device pe mil jayegi; abhi sirf is browser me hai.', 'Log in to get the key on every device; for now it stays in this browser.')}
         </p>
 
         <div className="form">

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { allPages, localize, pageBySlug, quickLook, route, type Page } from '../content'
 import { useLang, useTr } from '../i18n'
-import { useLists } from '../lists'
+import { shareUrl, useLists } from '../lists'
 import { groupStats, pageStats } from '../progress'
 import { href, navigate } from '../router'
 import { readLocal, useStore, writeLocal } from '../store'
@@ -9,7 +9,7 @@ import { Markdown } from './Markdown'
 import { Icon } from './Icon'
 import { shortTitle } from './Sidebar'
 
-const KIND_LABEL: Record<Page['kind'], string> = { topic: 'HLD', question: 'HLD problem', lld: 'LLD', lldp: 'LLD problem', java: 'Java', db: 'DB', cs: 'CS', beh: 'Behavioral', rag: 'RAG', dsa: 'DSA', agent: 'Agentic AI' }
+export const KIND_LABEL: Record<Page['kind'], string> = { topic: 'HLD', question: 'HLD problem', lld: 'LLD', lldp: 'LLD problem', java: 'Java', db: 'DB', cs: 'CS', beh: 'Behavioral', rag: 'RAG', dsa: 'DSA', agent: 'Agentic AI' }
 
 // One-click starting points; users edit them like any other list
 const STARTERS: { name: { hi: string; en: string }; slugs: string[] }[] = [
@@ -36,6 +36,7 @@ export function Lists() {
   const [name, setName] = useState('')
   const [search, setSearch] = useState('')
   const [quickAll, setQuickAll] = useState(false)
+  const [sharing, setSharingOpen] = useState(false)
 
   const current = lists.find((l) => l.id === selected) ?? lists[0]
   const pages = (current?.slugs ?? []).map((s) => pageBySlug.get(s)).filter((p): p is Page => !!p)
@@ -44,6 +45,7 @@ export function Lists() {
   const choose = (id: string) => {
     setSelected(id)
     setQuickAll(false)
+    setSharingOpen(false)
     writeLocal('hld.lists.selected', id)
   }
 
@@ -145,6 +147,10 @@ export function Lists() {
             <button className="btn" disabled={!pages.length} onClick={planFromList}>
               <Icon name="plan" size={15} /> {tr('Isi list se plan banao', 'Make a plan from this list')}
             </button>
+            <button className={`btn ${sharing ? 'on' : ''}`} aria-expanded={sharing} onClick={() => setSharingOpen((o) => !o)}>
+              <Icon name="link" size={15} /> {tr('Share', 'Share')}
+              {current.share?.public && <span className="share-badge">{tr('Public', 'Public')}</span>}
+            </button>
             <button
               className="btn"
               onClick={() => {
@@ -154,6 +160,8 @@ export function Lists() {
               {tr('Delete', 'Delete')}
             </button>
           </div>
+
+          {sharing && <SharePanel listId={current.id} />}
 
           {quickAll ? (
             <div className="quick-stack">
@@ -224,6 +232,71 @@ export function Lists() {
         </section>
       )}
       {!user && <p className="muted small">{tr('Login karoge to lists har device pe saath rahengi.', 'Log in to keep your lists on every device.')}</p>}
+    </div>
+  )
+}
+
+/** Public / private switch and the link to copy */
+function SharePanel({ listId }: { listId: string }) {
+  const tr = useTr()
+  const { user } = useStore()
+  const { lists, setSharing } = useLists()
+  const [copied, setCopied] = useState(false)
+  const list = lists.find((l) => l.id === listId)
+  if (!list) return null
+
+  if (!user)
+    return (
+      <div className="share-panel">
+        <p className="muted small">{tr('List share karne ke liye login karo (upar "Log in").', 'Log in to share a list (use "Log in" at the top).')}</p>
+      </div>
+    )
+
+  const isPublic = !!list.share?.public
+  const url = list.share ? shareUrl(list.share.id) : ''
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      window.prompt(tr('Link copy karo:', 'Copy the link:'), url)
+    }
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1800)
+  }
+  const canNativeShare = typeof navigator.share === 'function'
+
+  return (
+    <div className="share-panel">
+      <div className="share-mode" role="radiogroup" aria-label={tr('Kaun dekh sakta hai', 'Who can open the link')}>
+        <button type="button" role="radio" aria-checked={!isPublic} className={!isPublic ? 'on' : ''} onClick={() => (!list.share || isPublic) && setSharing(list.id, false)}>
+          <b>{tr('Private', 'Private')}</b>
+          <span>{tr('Sirf tum. Link kisi aur ke liye nahi khulega.', 'Only you. The link will not open for anyone else.')}</span>
+        </button>
+        <button type="button" role="radio" aria-checked={isPublic} className={isPublic ? 'on' : ''} onClick={() => !isPublic && setSharing(list.id, true)}>
+          <b>{tr('Public', 'Public')}</b>
+          <span>{tr('Link wala koi bhi dekh sakta hai aur apni copy save kar sakta hai.', 'Anyone with the link can view it and save their own copy.')}</span>
+        </button>
+      </div>
+      {list.share && (
+        <>
+          <div className="share-link">
+            <input readOnly value={url} aria-label={tr('Share link', 'Share link')} onFocus={(e) => e.currentTarget.select()} />
+            <button type="button" className="btn primary" onClick={copy}>
+              {copied ? tr('Copy ho gaya ✓', 'Copied ✓') : tr('Copy link', 'Copy link')}
+            </button>
+            {canNativeShare && isPublic && (
+              <button type="button" className="btn" onClick={() => navigator.share({ title: list.name, url }).catch(() => {})}>
+                {tr('Bhejo', 'Send')}
+              </button>
+            )}
+          </div>
+          <p className="muted small">
+            {isPublic
+              ? tr('List me jo badlav karoge, link pe bhi dikhenge. Tumhare answers share nahi hote, sirf topics aur sawal.', 'Edits you make show up on the link too. Your answers are never shared, only the topics and questions.')
+              : tr('Abhi private hai: link sirf tumhare liye khulega. Public karte hi wahi link sab ke liye chal jayega.', 'Private for now: the link opens only for you. Make it public and the same link works for everyone.')}
+          </p>
+        </>
+      )}
     </div>
   )
 }

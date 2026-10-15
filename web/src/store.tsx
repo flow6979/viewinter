@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
-import { Bytes, arrayRemove, arrayUnion, deleteDoc, deleteField, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { Bytes, arrayRemove, arrayUnion, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { track } from './analytics'
 import { auth, db, firebaseEnabled } from './firebase'
 import { pack, unpack } from './codec'
 
@@ -27,6 +28,8 @@ export interface TopicList {
   slugs: string[]
   /** questions saved from Company prep, with the user's answer */
   questions?: SavedQuestion[]
+  /** share link (sharedLists/{id}); public = anyone with the link can open it, otherwise only the owner */
+  share?: { id: string; public: boolean }
 }
 
 export interface Profile {
@@ -105,6 +108,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     savedNotes.current.clear()
     const ref = doc(db, 'users', user.uid)
+    // Once per browser session: when they joined, when they were last here, how many visits (owner's Stats page)
+    const seenKey = `vi.seen.${user.uid}`
+    if (!sessionStorage.getItem(seenKey)) {
+      sessionStorage.setItem(seenKey, '1')
+      const joined = Date.parse(user.metadata.creationTime ?? '') || Date.now()
+      setDoc(ref, { meta: { name: user.displayName ?? '', joined, seen: serverTimestamp(), visits: increment(1) } }, { merge: true }).catch(() => {})
+      track(Date.now() - joined < 120_000 ? 'sign_up' : 'login', { method: user.providerData[0]?.providerId ?? 'password' })
+    }
     const local = readLocal<Progress>(LOCAL_PROGRESS, {})
     const pending = Object.fromEntries(Object.entries(local).filter(([, v]) => v))
     if (Object.keys(pending).length) {

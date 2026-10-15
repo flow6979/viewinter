@@ -4,6 +4,51 @@ service cloud.firestore {
     function isOwner(uid) {
       return request.auth != null && request.auth.uid == uid;
     }
+    // Site owner: whoever has a doc at admins/{uid} (created by hand in the console) may read accounts
+    // and traffic for the Stats page. Nobody can write admins/ from the app.
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function isCount(field) {
+      return request.resource.data.get(field, 0) is int;
+    }
+
+    match /admins/{uid} {
+      allow read, write: if false;
+    }
+
+    // Anonymous daily visit counter (traffic.ts): anyone can add to today's counts, only the owner reads
+    match /traffic/{day} {
+      allow read: if isAdmin();
+      allow create, update: if day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.keys().hasOnly(['visitors', 'newVisitors', 'sessions', 'views', 'mobile', 'desktop', 'pages'])
+        && isCount('visitors') && isCount('newVisitors') && isCount('sessions') && isCount('views') && isCount('mobile') && isCount('desktop')
+        && request.resource.data.get('pages', {}) is map && request.resource.data.get('pages', {}).size() < 1000;
+      allow delete: if false;
+    }
+    // Shared topic lists (/list/{id}): public ones open for anyone with the link, private ones only
+    // for their owner. Opened one by one by id; nobody can browse or search the collection.
+    match /sharedLists/{id} {
+      function validList() {
+        let d = request.resource.data;
+        return isOwner(d.by)
+          && d.keys().hasOnly(['by', 'byName', 'name', 'slugs', 'questions', 'public', 'at'])
+          && d.name is string && d.name.size() <= 120
+          && d.byName is string && d.byName.size() <= 120
+          && d.slugs is list && d.slugs.size() <= 500
+          && d.questions is list && d.questions.size() <= 300
+          && d.public is bool;
+      }
+      allow get: if resource.data.public == true || isOwner(resource.data.by);
+      allow list: if false;
+      allow create: if validList();
+      allow update: if isOwner(resource.data.by) && validList();
+      allow delete: if isOwner(resource.data.by);
+    }
+    // Mock interview count on the Stats page
+    match /{path=**}/interviews/{id} {
+      allow read: if isAdmin();
+    }
     // Shared quiz bank: questions Gemini generated once, reused by everyone.
     // Anyone can read; logged-in users can add well-formed questions; nobody can edit or delete.
     match /quiz/{id} {
@@ -55,7 +100,12 @@ service cloud.firestore {
 
     // Each user can read and write only their own progress, profile and notes
     match /users/{uid} {
-      allow read, write: if isOwner(uid);
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid);
+      // Gemini key synced across the user's devices; owner only (not even the admin)
+      match /private/{docId} {
+        allow read, write: if isOwner(uid);
+      }
       // Resume page: practice answers + AI feedback (the resume text itself stays in the browser)
       match /resume/{docId} {
         allow read, write: if isOwner(uid);
