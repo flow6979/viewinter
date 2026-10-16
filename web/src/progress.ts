@@ -24,3 +24,13 @@ export function groupStats(pages: Page[], progress: Record<string, boolean>) {
   }
   return { done, total, complete, pages: pages.length, percent: pct(done, total) }
 }
+
+// "Read" ticks from My lists live in the same progress map (key read:<slug> / read:q:<id>), so they sync
+// with the account like checklist ticks. The site-wide % counts only checklist items, so these don't move it.
+export const readKey = (slug: string) => `read:${slug}`
+export const readQuestionKey = (id: string) => `read:q:${id}`
+
+/** A page counts as read when it was ticked in a list, or every checklist item on it is done */
+export function isRead(page: Page, progress: Record<string, boolean>) {
+  return !!progress[readKey(page.slug)] || pageStats(page, progress).complete
+}

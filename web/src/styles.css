@@ -682,7 +682,32 @@ body { background: var(--bg); background-image: none; }
 .list-pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .list-pages li { display: flex; align-items: center; gap: 6px; border-radius: 8px; }
 .list-pages li:hover { background: var(--surface-2); }
-.list-pages li.done .list-page-link > span:nth-child(2) { color: var(--muted); text-decoration: line-through; }
+/* Read tracking: purple tick, purple strike-through, purple progress */
+.list-pages li { padding-left: 6px; }
+.read-tick { position: relative; flex: none; display: grid; place-items: center; width: 28px; height: 28px; cursor: pointer; }
+.read-tick input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.read-tick input:disabled { cursor: default; }
+.read-tick span { pointer-events: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid color-mix(in srgb, var(--ink) 35%, var(--bg)); background: var(--bg); transition: background 0.15s, border-color 0.15s, transform 0.15s; }
+.read-tick:hover span { border-color: var(--ai); }
+.read-tick input:checked + span { background: var(--ai); border-color: var(--ai); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-size: 14px; background-position: center; background-repeat: no-repeat; }
+.read-tick input:active + span { transform: scale(0.9); }
+.read-tick input:focus-visible + span { outline: 2px solid var(--ai); outline-offset: 2px; }
+.list-pages li.read .list-page-link > span:nth-child(2), .saved-q.read .saved-q-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--ai); text-decoration-thickness: 2px; }
+.list-pages li.read .list-page-link .mono { color: var(--ai); }
+.list-progress { display: flex; align-items: center; gap: 18px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--ai-line); background: radial-gradient(120% 140% at 0% 0%, var(--ai-soft), var(--surface) 60%); }
+.gauge { position: relative; width: 120px; flex: none; }
+.gauge svg { display: block; width: 100%; overflow: visible; }
+.gauge path { fill: none; stroke-width: 10; stroke-linecap: round; }
+.gauge-track { stroke: color-mix(in srgb, var(--ai) 18%, var(--line)); }
+.gauge-fill { stroke: var(--ai); transition: stroke-dasharray 0.5s ease; }
+.gauge b { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-size: 1.35rem; color: var(--ink); }
+.list-progress-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.list-bar { display: block; height: 6px; margin-top: 4px; border-radius: 99px; background: color-mix(in srgb, var(--ai) 18%, var(--line)); overflow: hidden; }
+.list-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ai); transition: width 0.5s ease; }
+.list-tab .tab-pct { color: var(--ai); }
+.list-tab.on .tab-pct { color: inherit; }
+@media (max-width: 640px) { .list-progress { gap: 12px; padding: 12px; } .gauge { width: 96px; } .gauge b { font-size: 1.1rem; } }
+@media (prefers-reduced-motion: reduce) { .gauge-fill, .list-bar i { transition: none; } }
 .list-page-link { flex: 1; display: flex; align-items: center; gap: 10px; padding: 7px 8px; color: var(--ink); text-decoration: none; min-width: 0; }
 .list-page-link > span:nth-child(2) { flex: 1; }
 .list-page-actions { display: flex; }
@@ -1199,7 +1224,6 @@ a.btn { text-decoration: none; }
 .checklist input { accent-color: var(--ok); }
 .checklist input:checked + span { text-decoration-color: var(--ok); }
 .side-item.done .side-count { color: var(--ok); }
-.list-pages li.done .list-page-link .mono { color: var(--ok); }
 .quiz-why { border: 1px solid transparent; }
 .problem-tabs.four { grid-template-columns: repeat(4, 1fr); }
 .dsa-ai { display: flex; flex-direction: column; gap: 10px; }

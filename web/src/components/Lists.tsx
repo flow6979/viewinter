@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { allPages, localize, pageBySlug, quickLook, route, type Page } from '../content'
 import { useLang, useTr } from '../i18n'
 import { shareUrl, useLists } from '../lists'
-import { groupStats, pageStats } from '../progress'
+import { isRead, pageStats, pct, readKey, readQuestionKey } from '../progress'
 import { href, navigate } from '../router'
 import { readLocal, useStore, writeLocal } from '../store'
 import { Markdown } from './Markdown'
@@ -30,7 +30,7 @@ const STARTERS: { name: { hi: string; en: string }; slugs: string[] }[] = [
 export function Lists() {
   const { lang } = useLang()
   const tr = useTr()
-  const { progress, profile, saveProfile, user } = useStore()
+  const { progress, profile, saveProfile, user, toggle } = useStore()
   const { lists, create, update, remove } = useLists()
   const [selected, setSelected] = useState<string>(() => readLocal('hld.lists.selected', ''))
   const [name, setName] = useState('')
@@ -40,7 +40,9 @@ export function Lists() {
 
   const current = lists.find((l) => l.id === selected) ?? lists[0]
   const pages = (current?.slugs ?? []).map((s) => pageBySlug.get(s)).filter((p): p is Page => !!p)
-  const st = groupStats(pages, progress)
+  const questions = current?.questions ?? []
+  const readPages = pages.filter((p) => isRead(p, progress)).length
+  const readQs = questions.filter((q) => progress[readQuestionKey(q.id)]).length
 
   const choose = (id: string) => {
     setSelected(id)
@@ -85,6 +87,12 @@ export function Lists() {
           {lists.map((l) => (
             <button key={l.id} className={`list-tab ${current?.id === l.id ? 'on' : ''}`} onClick={() => choose(l.id)}>
               {l.name} <span className="mono">{l.slugs.length + (l.questions?.length ?? 0)}</span>
+              {(() => {
+                const ps = l.slugs.map((x) => pageBySlug.get(x)).filter((p): p is Page => !!p)
+                const total = ps.length + (l.questions?.length ?? 0)
+                const done = ps.filter((p) => isRead(p, progress)).length + (l.questions ?? []).filter((q) => progress[readQuestionKey(q.id)]).length
+                return total && done ? <span className="mono tab-pct">{pct(done, total)}%</span> : null
+              })()}
             </button>
           ))}
         </div>
@@ -135,10 +143,8 @@ export function Lists() {
         <section className="list-card">
           <div className="list-head">
             <input className="list-name" value={current.name} onChange={(e) => update(current.id, { name: e.target.value })} aria-label={tr('List ka naam', 'List name')} />
-            <span className="muted small mono">
-              {st.complete}/{pages.length} {tr('pages pure', 'pages done')}
-            </span>
           </div>
+          {pages.length + questions.length > 0 && <ListProgress done={readPages + readQs} total={pages.length + questions.length} />}
 
           <div className="row wrap">
             <button className="btn primary" disabled={!pages.length} onClick={() => setQuickAll((q) => !q)}>
@@ -185,12 +191,24 @@ export function Lists() {
               <ol className="list-pages">
                 {pages.map((p, i) => {
                   const s = pageStats(p, progress)
+                  const read = isRead(p, progress)
+                  const name = shortTitle(localize(p, lang).title)
                   return (
-                    <li key={p.slug} className={s.complete ? 'done' : ''}>
+                    <li key={p.slug} className={read ? 'read' : ''}>
+                      <label className="read-tick" title={s.complete && !progress[readKey(p.slug)] ? tr('Saare checklist items ho gaye', 'All checklist items are done') : undefined}>
+                        <input
+                          type="checkbox"
+                          checked={read}
+                          disabled={s.complete && !progress[readKey(p.slug)]}
+                          onChange={(e) => toggle(readKey(p.slug), e.target.checked)}
+                          aria-label={read ? tr(`${name}: padh liya`, `${name}: read`) : tr(`${name} ko padh liya mark karo`, `Mark ${name} as read`)}
+                        />
+                        <span aria-hidden="true" />
+                      </label>
                       <a href={route(p)} className="list-page-link">
                         <span className="plan-track">{KIND_LABEL[p.kind]}</span>
                         <span>{shortTitle(localize(p, lang).title)}</span>
-                        <span className="muted small mono">{s.complete ? '✓' : s.done ? `${s.done}/${s.total}` : `${p.time}m`}</span>
+                        <span className="muted small mono">{read ? tr('padh liya', 'read') : s.done ? `${s.done}/${s.total}` : `${p.time}m`}</span>
                       </a>
                       <span className="list-page-actions">
                         <button className="icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label={tr('Upar', 'Move up')}>
@@ -232,6 +250,39 @@ export function Lists() {
         </section>
       )}
       {!user && <p className="muted small">{tr('Login karoge to lists har device pe saath rahengi.', 'Log in to keep your lists on every device.')}</p>}
+    </div>
+  )
+}
+
+/** Purple half-ring gauge: how much of the list has been read */
+function ListProgress({ done, total }: { done: number; total: number }) {
+  const tr = useTr()
+  const p = pct(done, total)
+  const left = total - done
+  return (
+    <div className="list-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p)} aria-label={tr('List progress', 'List progress')}>
+      <div className="gauge">
+        <svg viewBox="0 0 120 66" aria-hidden="true">
+          <path className="gauge-track" d="M10 60 A50 50 0 0 1 110 60" pathLength={100} />
+          <path className="gauge-fill" d="M10 60 A50 50 0 0 1 110 60" pathLength={100} strokeDasharray={`${p} 100`} />
+        </svg>
+        <b className="mono">{p}%</b>
+      </div>
+      <div className="list-progress-text">
+        <b>
+          {done}/{total} {tr('padh liye', 'read')}
+        </b>
+        <span className="muted small">
+          {done === 0
+            ? tr('Page padh ke uske aage tick karo.', 'Tick a page after you read it.')
+            : left === 0
+              ? tr('Poori list ho gayi. Interview se pehle "Quick look" se revise karo.', 'List done. Revise with "Quick look" before the interview.')
+              : tr(`${left} aur baaki.`, `${left} to go.`)}
+        </span>
+        <span className="list-bar" aria-hidden="true">
+          <i style={{ width: `${p}%` }} />
+        </span>
+      </div>
     </div>
   )
 }
@@ -305,6 +356,7 @@ function SharePanel({ listId }: { listId: string }) {
 function SavedQuestions({ listId }: { listId: string }) {
   const tr = useTr()
   const { lists, update } = useLists()
+  const { progress, toggle } = useStore()
   const list = lists.find((l) => l.id === listId)
   const [open, setOpen] = useState<string | null>(null)
   if (!list?.questions?.length) return null
@@ -313,7 +365,16 @@ function SavedQuestions({ listId }: { listId: string }) {
       <span className="eyebrow">{tr('Saved sawal', 'Saved questions')} · {list.questions.length}</span>
       <ol className="list-pages">
         {list.questions.map((q) => (
-          <li key={q.id} className="saved-q">
+          <li key={q.id} className={`saved-q ${progress[readQuestionKey(q.id)] ? 'read' : ''}`}>
+            <label className="read-tick">
+              <input
+                type="checkbox"
+                checked={!!progress[readQuestionKey(q.id)]}
+                onChange={(e) => toggle(readQuestionKey(q.id), e.target.checked)}
+                aria-label={tr('Taiyar ho gaya mark karo', 'Mark as prepared')}
+              />
+              <span aria-hidden="true" />
+            </label>
             <button type="button" className="saved-q-main" onClick={() => setOpen(open === q.id ? null : q.id)} aria-expanded={open === q.id}>
               <span className="saved-q-text">{q.q}</span>
               <span className="muted small">{q.from}</span>
