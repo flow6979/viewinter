@@ -33,7 +33,7 @@ export function MicButton({ listening, disabled, onStart, onStop }: { listening:
   return (
     <button
       type="button"
-      className={`mic-btn ${listening ? 'on' : ''}`}
+      className={`voice-btn ${listening ? 'on' : ''}`}
       onClick={listening ? onStop : onStart}
       disabled={disabled && !listening}
       aria-pressed={listening}
@@ -41,7 +41,7 @@ export function MicButton({ listening, disabled, onStart, onStop }: { listening:
       title={listening ? tr('Ruk jao to apne aap bhej dega. Yahan dabao to bina bheje rukega.', 'Pause and it sends by itself. Tap here to stop without sending.') : tr('Bolke poochho', 'Ask by voice')}
     >
       <Icon name="mic" size={16} />
-      {listening && <span className="mic-pulse" aria-hidden="true" />}
+      {listening && <span className="voice-pulse" aria-hidden="true" />}
     </button>
   )
 }

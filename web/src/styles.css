@@ -1654,13 +1654,14 @@ a.btn { text-decoration: none; }
 .note-added { display: inline-flex; align-items: center; gap: 8px; color: var(--ai); font-weight: 600; }
 
 /* Voice input (mic next to Send) */
-.mic-btn { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
-.mic-btn:hover { border-color: var(--ai); color: var(--ai); }
-.mic-btn:disabled { opacity: 0.5; cursor: default; }
-.mic-btn.on { background: var(--ai); border-color: var(--ai); color: #fff; }
-.mic-pulse { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--ai); animation: mic-pulse 1.4s ease-out infinite; pointer-events: none; }
-@keyframes mic-pulse { from { transform: scale(0.85); opacity: 0.9; } to { transform: scale(1.35); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .mic-pulse { animation: none; } }
+.voice-btn { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; box-sizing: border-box; line-height: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.voice-btn svg { display: block; }
+.voice-btn:hover { border-color: var(--ai); color: var(--ai); }
+.voice-btn:disabled { opacity: 0.5; cursor: default; }
+.voice-btn.on { background: var(--ai); border-color: var(--ai); color: #fff; }
+.voice-pulse { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--ai); animation: voice-pulse 1.4s ease-out infinite; pointer-events: none; }
+@keyframes voice-pulse { from { transform: scale(0.85); opacity: 0.9; } to { transform: scale(1.35); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .voice-pulse { animation: none; } }
 .composer .row.end { align-items: center; }
 
 /* Ask AI composer toolbar: New chat on the left, mic + Send on the right */
