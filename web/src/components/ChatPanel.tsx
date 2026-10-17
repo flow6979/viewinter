@@ -177,12 +177,31 @@ export function ChatPanel({
     send(input)
   }
 
+  // Cleared chat kept for a few seconds so a mis-click can be undone
+  const [undo, setUndo] = useState<{ messages: ChatMessage[]; startedAt: number | null } | null>(null)
+  useEffect(() => {
+    if (!undo) return
+    const t = window.setTimeout(() => setUndo(null), 6000)
+    return () => window.clearTimeout(t)
+  }, [undo])
+
   function clear() {
     abortRef.current?.abort()
+    setUndo({ messages, startedAt })
     setMessages([])
+    setNoted({})
     setStartedAt(null)
     writeLocal(storeKey, [])
     writeLocal(`${storeKey}.start`, null)
+  }
+
+  function restore() {
+    if (!undo) return
+    setMessages(undo.messages)
+    setStartedAt(undo.startedAt)
+    writeLocal(storeKey, undo.messages)
+    writeLocal(`${storeKey}.start`, undo.startedAt)
+    setUndo(null)
   }
 
   function startMock() {
@@ -216,6 +235,14 @@ export function ChatPanel({
   if (mode === 'mock' && !messages.length) {
     return (
       <div className="panel-body empty">
+        {undo && (
+          <div className="undo-bar" role="status">
+            <span>{tr('Interview saaf ho gaya', 'Interview cleared')}</span>
+            <button className="link small" onClick={restore}>
+              {tr('Wapas lao', 'Undo')}
+            </button>
+          </div>
+        )}
         <p>
           {lang === 'en' ? (
             <>
@@ -248,6 +275,14 @@ export function ChatPanel({
         </div>
       )}
       <div className="messages">
+        {undo && !messages.length && (
+          <div className="undo-bar" role="status">
+            <span>{mode === 'mock' ? tr('Interview saaf ho gaya', 'Interview cleared') : tr('Chat saaf ho gayi', 'Chat cleared')}</span>
+            <button className="link small" onClick={restore}>
+              {tr('Wapas lao', 'Undo')}
+            </button>
+          </div>
+        )}
         {!messages.length && (
           <div className="chat-quick">
             {QUICK[lang][page.kind].map((q) => (
@@ -317,12 +352,13 @@ export function ChatPanel({
             }
           }}
         />
-        <div className="row end">
+        <div className="composer-bar">
           {messages.length > 0 && (
-            <button type="button" className="link small" onClick={clear}>
-              {mode === 'mock' ? tr('Naya interview', 'New interview') : tr('Chat saaf karo', 'Clear chat')}
+            <button type="button" className="ghost-btn new-chat" onClick={clear} disabled={busy} title={mode === 'mock' ? tr('Naya interview shuru karo', 'Start a new interview') : tr('Chat saaf karke naya shuru karo', 'Clear this chat and start fresh')}>
+              <Icon name="plus" size={14} /> {mode === 'mock' ? tr('Naya interview', 'New interview') : tr('Nayi chat', 'New chat')}
             </button>
           )}
+          <span className="composer-gap" />
           {voice.supported && (
             <MicButton listening={voice.listening} disabled={busy} onStart={voice.start} onStop={() => voice.stopAndKeep((t) => setInput((v) => `${v} ${t}`.trim()))} />
           )}

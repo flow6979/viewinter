@@ -1662,3 +1662,14 @@ a.btn { text-decoration: none; }
 @keyframes mic-pulse { from { transform: scale(0.85); opacity: 0.9; } to { transform: scale(1.35); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .mic-pulse { animation: none; } }
 .composer .row.end { align-items: center; }
+
+/* Ask AI composer toolbar: New chat on the left, mic + Send on the right */
+.composer-bar { display: flex; align-items: center; gap: 8px; }
+.composer-gap { flex: 1; }
+.new-chat { padding: 5px 10px; border: 1px solid var(--line); border-radius: 99px; font-size: 0.8rem; color: var(--muted); }
+.new-chat:hover { color: var(--ink); border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); background: var(--surface-2); }
+.new-chat:disabled { opacity: 0.5; cursor: default; }
+.undo-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; align-self: stretch; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-size: 0.86rem; animation: undo-in 0.2s ease-out; }
+.undo-bar .link { color: var(--ai); font-weight: 600; text-decoration: none; }
+@keyframes undo-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .undo-bar { animation: none; } }
