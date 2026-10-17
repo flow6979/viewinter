@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { localize, type Page } from '../content'
 import { useLang, useTr, type Lang } from '../i18n'
-import { interviewerPrompt, streamGemini, tutorPrompt, type ChatMessage } from '../gemini'
+import { NO_TEX, interviewerPrompt, longJson, streamGemini, tutorPrompt, type ChatMessage } from '../gemini'
+import { newNoteId, useAddNote } from '../notes'
+import { Icon } from './Icon'
 import { readLocal, writeLocal } from '../store'
 import { Markdown } from './Markdown'
 
@@ -38,6 +40,24 @@ const QUICK: Record<Lang, Record<Page['kind'], string[]>> = {
   },
 }
 
+/** Turns one Ask AI exchange into a short revision note (heading + summarised body) */
+function notePrompt(pageTitle: string, question: string, answer: string, lang: Lang) {
+  return `A candidate studying "${pageTitle}" for interviews asked a question and got the answer below. Turn it into ONE quick-revision note.
+Return only JSON: {"title": string, "body": string}
+- title: 3-8 words naming the exact concept (not "Answer" or "Summary").
+- body: Markdown to revise in 30 seconds and understand later:
+  - first line: **Gist:** one sentence
+  - 3-6 bullets with the key points (facts, numbers, trade-offs, steps)
+  - when useful: **Example:** one line, and **Say it in the interview:** one sentence
+  - keep a mermaid diagram (labels in double quotes) or code only if essential, and keep it short
+Write in ${lang === 'en' ? 'clear, simple English' : 'simple Hinglish (Roman Hindi + English tech terms)'}. ${NO_TEX}
+
+Question: ${question}
+
+Answer:
+${answer}`
+}
+
 const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
 export function ChatPanel({
@@ -45,11 +65,14 @@ export function ChatPanel({
   mode,
   hasKey,
   onOpenSettings,
+  onOpenNotes,
 }: {
   page: Page
   mode: Mode
   hasKey: boolean
   onOpenSettings: () => void
+  /** switches the side panel to Notes */
+  onOpenNotes?: () => void
 }) {
   const { lang } = useLang()
   const tr = useTr()
@@ -64,9 +87,28 @@ export function ChatPanel({
   const [now, setNow] = useState(Date.now())
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const addNote = useAddNote()
+  // Message index → note being made / made / failed
+  const [noted, setNoted] = useState<Record<number, 'adding' | 'added' | string>>({})
+
+  async function toNote(i: number) {
+    const answer = messages[i]?.text
+    const question = [...messages.slice(0, i)].reverse().find((m) => m.role === 'user')?.text ?? ''
+    if (!answer || noted[i] === 'adding') return
+    setNoted((n) => ({ ...n, [i]: 'adding' }))
+    try {
+      const r = await longJson<{ title?: string; body?: string }>(notePrompt(page.title, question, answer, lang))
+      if (!r?.body?.trim()) throw new Error(tr('AI ne khaali note diya', 'The AI returned an empty note'))
+      await addNote(page.slug, { id: newNoteId(), title: (r.title ?? '').trim() || question.slice(0, 60), body: r.body.trim(), ai: true, at: Date.now() }, tr('Mere notes', 'My notes'))
+      setNoted((n) => ({ ...n, [i]: 'added' }))
+    } catch (e) {
+      setNoted((n) => ({ ...n, [i]: (e as Error).message || 'error' }))
+    }
+  }
 
   useEffect(() => {
     setMessages(readLocal(storeKey, []))
+    setNoted({})
     setStartedAt(readLocal(`${storeKey}.start`, null))
     setError('')
     setStreaming('')
@@ -195,13 +237,32 @@ export function ChatPanel({
             ))}
           </div>
         )}
-        {messages
-          .filter((m, i) => !(mode === 'mock' && i === 0))
-          .map((m, i) => (
+        {messages.map((m, i) =>
+          mode === 'mock' && i === 0 ? null : (
             <div key={i} className={`msg ${m.role}`}>
               {m.role === 'model' ? <Markdown text={m.text} showAllCode /> : m.text}
+              {m.role === 'model' && mode === 'ask' && (
+                <div className="msg-actions">
+                  {noted[i] === 'added' ? (
+                    <span className="note-added small">
+                      ✓ {tr('Notes me add ho gaya', 'Added to notes')}
+                      {onOpenNotes && (
+                        <button className="link small" onClick={onOpenNotes}>
+                          {tr('Dekho', 'View')}
+                        </button>
+                      )}
+                    </span>
+                  ) : (
+                    <button className="ghost-btn small" onClick={() => toNote(i)} disabled={noted[i] === 'adding'}>
+                      <Icon name="pen" size={13} /> {noted[i] === 'adding' ? tr('Note ban raha hai…', 'Making a note…') : tr('Notes me daalo', 'Add to notes')}
+                    </button>
+                  )}
+                  {noted[i] && noted[i] !== 'added' && noted[i] !== 'adding' && <span className="error small">{noted[i]}</span>}
+                </div>
+              )}
             </div>
-          ))}
+          ),
+        )}
         {busy && <div className="msg model">{streaming ? <Markdown text={streaming} showAllCode /> : <span className="muted">{tr('soch raha hai…', 'thinking…')}</span>}</div>}
         {error && (
           <div className="error small">

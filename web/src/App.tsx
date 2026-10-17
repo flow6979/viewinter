@@ -129,9 +129,13 @@ export function App() {
 
   useEffect(() => {
     document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'sharedList' ? 'Shared list · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : view === 'company' ? 'Company prep · Viewinter' : view === 'about' ? 'About · Viewinter' : view === 'stats' ? 'Stats · Viewinter' : view.startsWith('interview') ? 'Mock interview · Viewinter' : 'Viewinter'
+  }, [page, view, lang])
+
+  // A new page starts at the top; switching language keeps the reader's place (see i18n.tsx)
+  useEffect(() => {
     document.querySelector('.main')?.scrollTo(0, 0)
     window.scrollTo(0, 0)
-  }, [page, view, lang])
+  }, [page?.slug, view])
 
   const done = allItems.filter((i) => progress[i.id]).length
   const overall = pct(done, allItems.length)
@@ -294,7 +298,7 @@ export function App() {
             </div>
             {effectiveTab === 'notes' && <NotesPanel slug={page.slug} onLogin={() => setShowAuth(true)} />}
             {effectiveTab !== 'notes' && (
-              <ChatPanel key={effectiveTab} page={page} mode={effectiveTab} hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} />
+              <ChatPanel key={effectiveTab} page={page} mode={effectiveTab} hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} onOpenNotes={() => setTab('notes')} />
             )}
           </aside>
         )}
