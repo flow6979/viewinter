@@ -4,6 +4,7 @@ import { useLang, useTr, type Lang } from '../i18n'
 import { NO_TEX, interviewerPrompt, longJson, streamGemini, tutorPrompt, type ChatMessage } from '../gemini'
 import { newNoteId, useAddNote } from '../notes'
 import { Icon } from './Icon'
+import { MicButton, useDictation } from './MicButton'
 import { readLocal, writeLocal } from '../store'
 import { Markdown } from './Markdown'
 
@@ -40,6 +41,18 @@ const QUICK: Record<Lang, Record<Page['kind'], string[]>> = {
   },
 }
 
+/** Diagrams in an answer, exactly as drawn (```mermaid blocks) */
+const diagramsIn = (md: string) => md.match(/```mermaid\s*\n[\s\S]*?```/g) ?? []
+
+/** Puts the diagrams right after the note's first paragraph (the gist), so the picture comes first */
+function withDiagrams(body: string, diagrams: string[]) {
+  const fresh = diagrams.filter((d) => !body.includes(d.trim()))
+  if (!fresh.length) return body
+  const cut = body.indexOf('\n\n')
+  const block = fresh.join('\n\n')
+  return cut < 0 ? `${body}\n\n${block}` : `${body.slice(0, cut)}\n\n${block}${body.slice(cut)}`
+}
+
 /** Turns one Ask AI exchange into a short revision note (heading + summarised body) */
 function notePrompt(pageTitle: string, question: string, answer: string, lang: Lang) {
   return `A candidate studying "${pageTitle}" for interviews asked a question and got the answer below. Turn it into ONE quick-revision note.
@@ -49,7 +62,8 @@ Return only JSON: {"title": string, "body": string}
   - first line: **Gist:** one sentence
   - 3-6 bullets with the key points (facts, numbers, trade-offs, steps)
   - when useful: **Example:** one line, and **Say it in the interview:** one sentence
-  - keep a mermaid diagram (labels in double quotes) or code only if essential, and keep it short
+  - do NOT include mermaid diagrams: the answer's diagrams are added to the note as they are
+  - keep code only if it is essential, and keep it short
 Write in ${lang === 'en' ? 'clear, simple English' : 'simple Hinglish (Roman Hindi + English tech terms)'}. ${NO_TEX}
 
 Question: ${question}
@@ -88,6 +102,10 @@ export function ChatPanel({
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const addNote = useAddNote()
+  // Voice: what is heard so far is shown in the box; a pause sends it (anything typed before goes in front)
+  const inputRef = useRef(input)
+  inputRef.current = input
+  const voice = useDictation((spoken) => send(`${inputRef.current} ${spoken}`.trim()))
   // Message index → note being made / made / failed
   const [noted, setNoted] = useState<Record<number, 'adding' | 'added' | string>>({})
 
@@ -99,7 +117,9 @@ export function ChatPanel({
     try {
       const r = await longJson<{ title?: string; body?: string }>(notePrompt(page.title, question, answer, lang))
       if (!r?.body?.trim()) throw new Error(tr('AI ne khaali note diya', 'The AI returned an empty note'))
-      await addNote(page.slug, { id: newNoteId(), title: (r.title ?? '').trim() || question.slice(0, 60), body: r.body.trim(), ai: true, at: Date.now() }, tr('Mere notes', 'My notes'))
+      // Diagrams are the best part for revision: carry them over verbatim instead of trusting the summary
+      const body = withDiagrams(r.body.trim().replace(/```mermaid[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim(), diagramsIn(answer))
+      await addNote(page.slug, { id: newNoteId(), title: (r.title ?? '').trim() || question.slice(0, 60), body, ai: true, at: Date.now() }, tr('Mere notes', 'My notes'))
       setNoted((n) => ({ ...n, [i]: 'added' }))
     } catch (e) {
       setNoted((n) => ({ ...n, [i]: (e as Error).message || 'error' }))
@@ -264,6 +284,7 @@ export function ChatPanel({
           ),
         )}
         {busy && <div className="msg model">{streaming ? <Markdown text={streaming} showAllCode /> : <span className="muted">{tr('soch raha hai…', 'thinking…')}</span>}</div>}
+        {voice.error && <div className="error small">{voice.error}</div>}
         {error && (
           <div className="error small">
             {error}{' '}
@@ -279,8 +300,15 @@ export function ChatPanel({
           id={`chat-${mode}-${page.slug}`}
           aria-label={mode === 'mock' ? tr('Interviewer ko jawab', 'Reply to the interviewer') : tr('AI se sawal', 'Question for AI')}
           rows={2}
-          value={input}
-          placeholder={mode === 'mock' ? tr('Interviewer ko jawab do…', 'Reply to the interviewer…') : tr('Is page ke baare me poochho…', 'Ask about this page…')}
+          value={voice.listening ? `${input} ${voice.interim}`.trim() : input}
+          readOnly={voice.listening}
+          placeholder={
+            voice.listening
+              ? tr('Bolo… ruk jaoge to bhej dega', 'Speak… it sends when you pause')
+              : mode === 'mock'
+                ? tr('Interviewer ko jawab do… (ya mic dabake bolo)', 'Reply to the interviewer… (or tap the mic and speak)')
+                : tr('Is page ke baare me poochho… (ya mic dabake bolo)', 'Ask about this page… (or tap the mic and speak)')
+          }
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -294,6 +322,9 @@ export function ChatPanel({
             <button type="button" className="link small" onClick={clear}>
               {mode === 'mock' ? tr('Naya interview', 'New interview') : tr('Chat saaf karo', 'Clear chat')}
             </button>
+          )}
+          {voice.supported && (
+            <MicButton listening={voice.listening} disabled={busy} onStart={voice.start} onStop={() => voice.stopAndKeep((t) => setInput((v) => `${v} ${t}`.trim()))} />
           )}
           {busy ? (
             <button type="button" className="btn small" onClick={() => abortRef.current?.abort()}>

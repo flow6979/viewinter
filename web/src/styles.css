@@ -1652,3 +1652,13 @@ a.btn { text-decoration: none; }
 .msg-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .msg-actions .ghost-btn { padding: 4px 8px; font-size: 0.8rem; }
 .note-added { display: inline-flex; align-items: center; gap: 8px; color: var(--ai); font-weight: 600; }
+
+/* Voice input (mic next to Send) */
+.mic-btn { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.mic-btn:hover { border-color: var(--ai); color: var(--ai); }
+.mic-btn:disabled { opacity: 0.5; cursor: default; }
+.mic-btn.on { background: var(--ai); border-color: var(--ai); color: #fff; }
+.mic-pulse { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--ai); animation: mic-pulse 1.4s ease-out infinite; pointer-events: none; }
+@keyframes mic-pulse { from { transform: scale(0.85); opacity: 0.9; } to { transform: scale(1.35); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .mic-pulse { animation: none; } }
+.composer .row.end { align-items: center; }
