@@ -1,5 +1,5 @@
 import type React from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { allItems, pageBySlug } from './content'
 import { useStore, readLocal, writeLocal } from './store'
 import { OPEN_SETTINGS_EVENT, useGemini } from './gemini'
@@ -142,10 +142,12 @@ export function App() {
   const effectiveTab: Tab = tab === 'mock' && page?.kind !== 'question' ? 'ask' : tab
   const showNav = desktop ? !navHidden : true
   const showPanel = !!page && (desktop ? !panelHidden : true)
+  // The panel slides over the page instead of taking a column, so opening/closing never re-flows the article
   const gridStyle = desktop
     ? ({
-        gridTemplateColumns: `${showNav ? navW : 0}px minmax(0, 1fr) ${showPanel ? panelW : 0}px`,
+        gridTemplateColumns: `${showNav ? navW : 0}px minmax(0, 1fr)`,
         '--panel-offset': `${showPanel ? panelW : 0}px`,
+        '--panel-w': `${panelW}px`,
       } as React.CSSProperties)
     : undefined
   const toggleNav = () => (desktop ? setNavHidden((h) => !h) : setNavOpen((o) => !o))
@@ -161,6 +163,32 @@ export function App() {
   }, [desktop])
   const togglePanel = () => (desktop ? setPanelHidden((h) => !h) : setPanelOpen((o) => !o))
   const panelVisible = desktop ? showPanel : panelOpen
+  const closePanel = useCallback(() => (desktop ? setPanelHidden(true) : setPanelOpen(false)), [desktop])
+  // Panel content stays mounted until the slide-out finishes, then unmounts (notes save on unmount)
+  const [panelMounted, setPanelMounted] = useState(panelVisible)
+  useEffect(() => {
+    if (panelVisible) return setPanelMounted(true)
+    const t = window.setTimeout(() => setPanelMounted(false), 320)
+    return () => window.clearTimeout(t)
+  }, [panelVisible])
+  // Click anywhere outside the panel (or press Escape) to close it; dialogs opened from it don't count
+  useEffect(() => {
+    if (!panelVisible) return
+    const keep = '.side-panel, .panel-toggle, .fab, .modal-backdrop, [role="dialog"]'
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null
+      if (t?.isConnected && !t.closest(keep)) closePanel()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('.modal-backdrop')) closePanel()
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [panelVisible, closePanel])
 
   return (
     <CodeLangContext.Provider value={langCtx}>
@@ -278,8 +306,10 @@ export function App() {
           </ErrorBoundary>
         </main>
 
-        {showPanel && page && (
-          <aside className={`side-panel ${panelOpen ? 'open' : ''}`}>
+        {page && (
+          <aside className={`side-panel ${panelVisible ? 'open' : ''}`} aria-hidden={!panelVisible}>
+            {panelMounted && (
+            <>
             {desktop && <Resizer side="left" width={panelW} {...PANEL} onChange={setPanelW} label={tr('Panel ki width', 'Panel width')} />}
             <div className="tabs" role="tablist">
               {(['notes', 'ask', ...(page.kind === 'question' ? ['mock'] : [])] as Tab[]).map((t) => (
@@ -289,7 +319,7 @@ export function App() {
               ))}
               <button
                 className="icon-btn panel-close"
-                onClick={() => (desktop ? setPanelHidden(true) : setPanelOpen(false))}
+                onClick={closePanel}
                 aria-label={tr('Panel band karo', 'Close panel')}
                 title={tr('Panel band karo', 'Close panel')}
               >
@@ -299,6 +329,8 @@ export function App() {
             {effectiveTab === 'notes' && <NotesPanel slug={page.slug} onLogin={() => setShowAuth(true)} />}
             {effectiveTab !== 'notes' && (
               <ChatPanel key={effectiveTab} page={page} mode={effectiveTab} hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} onOpenNotes={() => setTab('notes')} />
+            )}
+            </>
             )}
           </aside>
         )}

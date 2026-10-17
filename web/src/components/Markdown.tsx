@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
+import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Mermaid } from './Mermaid'
@@ -20,64 +21,66 @@ function starred(children: ReactNode): ReactNode {
   ]
 }
 
-export function Markdown({ text, showAllCode = false }: { text: string; showAllCode?: boolean }) {
+// Defined once: if these were created inside the component, React would see new element types on every
+// render and rebuild every code block and diagram (they blinked whenever anything on the page changed)
+const PLUGINS = [remarkGfm]
+const COMPONENTS: Components = {
+  // Fenced blocks are handled in `pre`; this only sees inline code
+  code({ className, children, ...rest }) {
+    return (
+      <code className={className} {...rest}>
+        {children}
+      </code>
+    )
+  },
+  pre({ node }) {
+    const first = node?.children?.[0]
+    const cls = first && 'properties' in first ? (first.properties?.className as string[] | undefined) : undefined
+    const lang = cls?.find((c) => c.startsWith('language-'))?.slice('language-'.length)
+    const text =
+      first && 'children' in first
+        ? first.children.map((c) => ('value' in c ? String(c.value) : '')).join('').replace(/\n$/, '')
+        : ''
+    return <Fenced lang={lang} code={text} />
+  },
+  a({ href = '', children }) {
+    const internal = resolveMdLink(href)
+    if (internal) return <a href={internal}>{children}</a>
+    // In-app paths like /viewinter/agents/labs/rag stay in the same tab
+    if (href?.startsWith(BASE)) return <a href={href}>{children}</a>
+    return (
+      <a href={href} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    )
+  },
+  // "⭐" in headings marks the most-asked sections; show it as a quiet accent star instead of an emoji
+  h2({ children }) {
+    return <h2>{starred(children)}</h2>
+  },
+  h3({ children }) {
+    return <h3>{starred(children)}</h3>
+  },
+  table({ children }) {
+    return (
+      <div className="table-wrap">
+        <table>{children}</table>
+      </div>
+    )
+  },
+}
+
+export const Markdown = memo(function Markdown({ text, showAllCode = false }: { text: string; showAllCode?: boolean }) {
   return (
     <ShowAllCodeContext.Provider value={showAllCode}>
     <div className="md">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // Fenced blocks are handled in `pre`; this only sees inline code
-          code({ className, children, ...rest }) {
-            return (
-              <code className={className} {...rest}>
-                {children}
-              </code>
-            )
-          },
-          pre({ node }) {
-            const first = node?.children?.[0]
-            const cls = first && 'properties' in first ? (first.properties?.className as string[] | undefined) : undefined
-            const lang = cls?.find((c) => c.startsWith('language-'))?.slice('language-'.length)
-            const text =
-              first && 'children' in first
-                ? first.children.map((c) => ('value' in c ? String(c.value) : '')).join('').replace(/\n$/, '')
-                : ''
-            return <Fenced lang={lang} code={text} />
-          },
-          a({ href = '', children }) {
-            const internal = resolveMdLink(href)
-            if (internal) return <a href={internal}>{children}</a>
-            // In-app paths like /viewinter/agents/labs/rag stay in the same tab
-            if (href?.startsWith(BASE)) return <a href={href}>{children}</a>
-            return (
-              <a href={href} target="_blank" rel="noreferrer">
-                {children}
-              </a>
-            )
-          },
-          // "⭐" in headings marks the most-asked sections; show it as a quiet accent star instead of an emoji
-          h2({ children }) {
-            return <h2>{starred(children)}</h2>
-          },
-          h3({ children }) {
-            return <h3>{starred(children)}</h3>
-          },
-          table({ children }) {
-            return (
-              <div className="table-wrap">
-                <table>{children}</table>
-              </div>
-            )
-          },
-        }}
-      >
+      <ReactMarkdown remarkPlugins={PLUGINS} components={COMPONENTS}>
         {deTex(text)}
       </ReactMarkdown>
     </div>
     </ShowAllCodeContext.Provider>
   )
-}
+})
 
 function Fenced({ lang, code }: { lang?: string; code: string }) {
   const visible = useVisibleCode(lang)

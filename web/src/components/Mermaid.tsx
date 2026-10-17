@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 let counter = 0
+// Finished SVGs by theme + code: a diagram that is mounted again paints at once instead of flashing empty
+const rendered = new Map<string, string>()
+const cacheKey = (code: string) => `${isDark() ? 'd' : 'l'}|${code}`
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null
 
 function loadMermaid() {
@@ -45,7 +48,16 @@ export function Mermaid({ code }: { code: string }) {
     return () => obs.disconnect()
   }, [])
 
+  // Seen before (same code, same theme): show it before the browser paints, skip the async render
+  const cached = useRef(false)
+  useLayoutEffect(() => {
+    const svg = rendered.get(cacheKey(code))
+    cached.current = !!svg
+    if (svg && ref.current) ref.current.innerHTML = svg
+  }, [code, themeTick])
+
   useEffect(() => {
+    if (cached.current && attempt === 0) return
     let cancelled = false
     loadMermaid().then(async (mermaid) => {
       if (cancelled) return
@@ -60,6 +72,8 @@ export function Mermaid({ code }: { code: string }) {
       })
       try {
         const { svg } = await mermaid.render(`mmd-${++counter}`, themed(code))
+        if (rendered.size > 200) rendered.clear()
+        rendered.set(cacheKey(code), svg)
         if (!cancelled && ref.current) {
           ref.current.innerHTML = svg
           setError(null)
