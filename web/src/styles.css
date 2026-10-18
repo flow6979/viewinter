@@ -1726,3 +1726,5 @@ a.btn { text-decoration: none; }
 .article-notes-group .note-title { padding-top: 9px; padding-bottom: 9px; font-weight: 500; font-size: 0.88rem; color: color-mix(in srgb, var(--ink) 85%, var(--muted)); }
 .article-notes-group .note.open .note-title { color: var(--ink); }
 .article-notes-group.open .article-notes-head .plan-track, .article-notes-group.open .article-notes-count { background: var(--bg); }
+/* Open note: the purple strip gives way to the neon border; the extra 2px keeps the text from shifting */
+.article-notes-group .note.open { border-left: 1px solid color-mix(in srgb, var(--ai) 22%, var(--line)); padding-left: 2px; }
