@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
-import { Bytes, arrayRemove, arrayUnion, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { Bytes, arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, increment, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { track } from './analytics'
 import { auth, db, firebaseEnabled } from './firebase'
 import { pack, unpack } from './codec'
@@ -53,6 +53,8 @@ interface Store {
   toggle: (id: string, done: boolean) => void
   loadNote: (slug: string) => Promise<string>
   saveNote: (slug: string, text: string) => Promise<void>
+  /** Every stored note document (one per article), for the "My notes" page */
+  listNotes: () => Promise<{ slug: string; text: string }[]>
   logout: () => Promise<void>
 }
 
@@ -188,6 +190,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [user],
   )
 
+  const listNotes = useCallback(async () => {
+    if (user && db) {
+      const snap = await getDocs(collection(db, 'users', user.uid, 'notes'))
+      return Promise.all(snap.docs.map(async (d) => ({ slug: d.id, text: await unpack(d.data()) })))
+    }
+    const out: { slug: string; text: string }[] = []
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k?.startsWith('hld.note.')) out.push({ slug: k.slice('hld.note.'.length), text: readLocal(k, '') })
+      }
+    } catch {
+      /* storage blocked */
+    }
+    return out
+  }, [user])
+
   const saveProfile = useCallback(
     async (p: Profile) => {
       setProfile(p)
@@ -227,8 +246,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, authReady, progress, profile, saveProfile, quiz, answerQuiz, starQuiz, toggle, loadNote, saveNote, logout }),
-    [user, authReady, progress, profile, saveProfile, quiz, answerQuiz, starQuiz, toggle, loadNote, saveNote, logout],
+    () => ({ user, authReady, progress, profile, saveProfile, quiz, answerQuiz, starQuiz, toggle, loadNote, saveNote, listNotes, logout }),
+    [user, authReady, progress, profile, saveProfile, quiz, answerQuiz, starQuiz, toggle, loadNote, saveNote, listNotes, logout],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

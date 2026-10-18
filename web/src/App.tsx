@@ -11,6 +11,7 @@ import { PageView, type ReadMode } from './components/PageView'
 import { Quiz } from './components/Quiz'
 import { Resume } from './components/Resume'
 import { Lists } from './components/Lists'
+import { MyNotes } from './components/MyNotes'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Company } from './company/Company'
 import { About } from './components/About'
@@ -55,6 +56,7 @@ function useRoute() {
   if (parts[0] === 'company') return { view: 'company' as const, slug: 'company' }
   if (parts[0] === 'practice') return { view: 'practice' as const, slug: 'practice', problem: parts[1] }
   if (parts[0] === 'lists') return { view: 'lists' as const, slug: 'lists' }
+  if (parts[0] === 'notes') return { view: 'notes' as const, slug: 'notes' }
   if (parts[0] === 'list' && parts[1]) return { view: 'sharedList' as const, slug: 'lists', shareId: parts[1] }
   if (parts[0] === 'resume') return { view: 'resume' as const, slug: 'resume' }
   if (parts[0] === 'plan') return { view: 'plan' as const, slug: 'plan' }
@@ -128,7 +130,7 @@ export function App() {
   useEffect(() => writeLocal('hld.mode', readMode), [readMode])
 
   useEffect(() => {
-    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'sharedList' ? 'Shared list · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : view === 'company' ? 'Company prep · Viewinter' : view === 'about' ? 'About · Viewinter' : view === 'stats' ? 'Stats · Viewinter' : view.startsWith('interview') ? 'Mock interview · Viewinter' : 'Viewinter'
+    document.title = page ? `${localize(page, lang).title} · Viewinter` : view === 'quiz' ? 'Quiz · Viewinter' : view === 'plan' ? 'Plan · Viewinter' : view === 'resume' ? 'Resume · Viewinter' : view === 'lists' ? 'My lists · Viewinter' : view === 'notes' ? 'My notes · Viewinter' : view === 'sharedList' ? 'Shared list · Viewinter' : view === 'practice' ? 'Practice · Viewinter' : view === 'company' ? 'Company prep · Viewinter' : view === 'about' ? 'About · Viewinter' : view === 'stats' ? 'Stats · Viewinter' : view.startsWith('interview') ? 'Mock interview · Viewinter' : 'Viewinter'
   }, [page, view, lang])
 
   // A new page starts at the top; switching language keeps the reader's place (see i18n.tsx)
@@ -269,6 +271,7 @@ export function App() {
           {view === 'plan' && <Planner />}
           {view === 'quiz' && <Quiz hasKey={hasKey} onOpenSettings={() => setShowSettings(true)} />}
           {view === 'lists' && <Lists />}
+          {view === 'notes' && <MyNotes onLogin={() => setShowAuth(true)} />}
           {view === 'sharedList' && 'shareId' in route && <SharedListView id={route.shareId} />}
           {view === 'company' && <Company />}
           {view === 'about' && <About />}

@@ -6,8 +6,9 @@ import { newNoteId, useNotes, type Note } from '../notes'
 import { Markdown } from './Markdown'
 import { Icon } from './Icon'
 
-/** Notes for one article: a list of headings; open one to read or edit its body; drag or use ↑ ↓ to reorder */
-export function NotesPanel({ slug, onLogin }: { slug: string; onLogin: () => void }) {
+/** Notes for one article: a list of headings; open one to read or edit its body; drag or use ↑ ↓ to reorder.
+ *  `general` is the "My notes" page's own notes, not tied to any article. */
+export function NotesPanel({ slug, onLogin, general }: { slug: string; onLogin: () => void; general?: boolean }) {
   const { user } = useStore()
   const tr = useTr()
   const { notes, status, change } = useNotes(slug, tr('Mere notes', 'My notes'))
@@ -84,8 +85,14 @@ export function NotesPanel({ slug, onLogin }: { slug: string; onLogin: () => voi
       ) : notes.length === 0 ? (
         <div className="notes-empty">
           <Icon name="pen" size={20} />
-          <p>{tr('Is article ke notes yahan banenge: har note ki heading, kholo to poori baat.', 'Your notes for this article live here: a heading per note, open it for the details.')}</p>
-          <p className="muted small">{tr('Tip: Ask AI ke kisi bhi jawab pe "Notes me daalo" dabao, AI usse revision note bana dega.', 'Tip: press "Add to notes" on any Ask AI answer and it becomes a revision note.')}</p>
+          {general ? (
+            <p>{tr('Jo kisi ek article ka nahi, wo yahan likho: interview experiences, doubts, formulas, kuch bhi.', 'Write anything that is not about one article here: interview experiences, doubts, formulas, anything.')}</p>
+          ) : (
+            <>
+              <p>{tr('Is article ke notes yahan banenge: har note ki heading, kholo to poori baat.', 'Your notes for this article live here: a heading per note, open it for the details.')}</p>
+              <p className="muted small">{tr('Tip: Ask AI ke kisi bhi jawab pe "Notes me daalo" dabao, AI usse revision note bana dega.', 'Tip: press "Add to notes" on any Ask AI answer and it becomes a revision note.')}</p>
+            </>
+          )}
         </div>
       ) : (
         <ol className="note-items">

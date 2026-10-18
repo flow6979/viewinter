@@ -186,6 +186,10 @@ export function Sidebar({ current, onNavigate }: { current: string; onNavigate: 
         <Icon name="list" size={17} />
         {tr('Meri lists', 'My lists')}
       </a>
+      <a href={href('notes')} className={`side-item home ${current === 'notes' ? 'active' : ''}`}>
+        <Icon name="pen" size={17} />
+        {tr('Mere notes', 'My notes')}
+      </a>
       <a href={href('resume')} className={`side-item home ${current === 'resume' ? 'active' : ''}`}>
         <Icon name="file" size={17} />
         {tr('Resume se sawal', 'Resume questions')}
