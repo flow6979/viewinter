@@ -1717,3 +1717,12 @@ a.btn { text-decoration: none; }
 }
 @keyframes neon-run { to { --neon-a: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .note.open::before { animation: none; background: var(--ai); opacity: 0.6; } }
+
+/* Article notes: the article row is the heading, its notes sit under it in a lighter, purple-tinted style */
+.article-notes-group.open .article-notes-head { background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.article-notes-group.open .article-notes-title { font-weight: 700; }
+.article-notes-group.open .note-items { padding-top: 12px; }
+.article-notes-group .note { background: color-mix(in srgb, var(--ai) 6%, var(--bg)); border-color: color-mix(in srgb, var(--ai) 14%, var(--line)); border-left: 3px solid color-mix(in srgb, var(--ai) 55%, transparent); }
+.article-notes-group .note-title { padding-top: 9px; padding-bottom: 9px; font-weight: 500; font-size: 0.88rem; color: color-mix(in srgb, var(--ink) 85%, var(--muted)); }
+.article-notes-group .note.open .note-title { color: var(--ink); }
+.article-notes-group.open .article-notes-head .plan-track, .article-notes-group.open .article-notes-count { background: var(--bg); }
