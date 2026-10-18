@@ -147,81 +147,82 @@ function ArticleNotes() {
 
   return (
     <section className="article-notes">
-      <div className="notes-bar">
-        <b>
+      <div className="article-notes-bar">
+        <span className="muted small">
           {total} {tr('notes', 'notes')} · {groups.length} {tr('articles', 'articles')}
-        </b>
+        </span>
+        <label className="article-notes-search">
+          <Icon name="search" size={15} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tr('Notes me dhoondho…', 'Search your notes…')} aria-label={tr('Notes me dhoondho', 'Search notes')} />
+        </label>
       </div>
-      <input
-        className="side-filter article-notes-search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder={tr('Notes me dhoondho…', 'Search your notes…')}
-        aria-label={tr('Notes me dhoondho', 'Search notes')}
-      />
       {shown.length === 0 && <p className="muted small">{tr('Kuch nahi mila.', 'Nothing found.')}</p>}
-      {shown.map((g) => {
-        // Collapsed until the article is clicked; a search opens every match
-        const groupOpen = openGroups.has(g.slug) || !!f
-        return (
-          <article key={g.slug} className={`list-card article-notes-group ${groupOpen ? 'open' : ''}`}>
-            <div className="article-notes-head">
-              <button className="article-notes-toggle" onClick={() => toggleGroup(g.slug)} aria-expanded={groupOpen}>
-                <span className="article-notes-title">{g.title}</span>
-                {g.kind && <span className="plan-track">{g.kind}</span>}
-                <span className="muted small mono">{g.notes.length}</span>
-                <span className="caret" aria-hidden="true">
-                  {groupOpen ? '▾' : '▸'}
-                </span>
-              </button>
-              {g.href && (
-                <a className="icon-btn" href={g.href} title={tr('Article kholo', 'Open the article')} aria-label={tr(`${g.title} kholo`, `Open ${g.title}`)}>
-                  <Icon name="arrow" size={14} />
-                </a>
-              )}
-            </div>
-            {groupOpen && (
-              <ol className="note-items">
-                {g.notes.map((n) => {
-                  const key = `${g.slug}/${n.id}`
-                  const isOpen = open.has(key) || !!f
-                  return (
-                    <li key={key} className={`note ${isOpen ? 'open' : ''}`}>
-                      <div className="note-head">
-                        <button className="note-title" onClick={() => toggle(key)} aria-expanded={isOpen}>
-                          <span className="note-title-text">{n.title || <span className="muted">{tr('Bina heading', 'Untitled')}</span>}</span>
-                          {n.ai && <span className="note-ai">✦ AI</span>}
-                          <span className="note-chev" aria-hidden="true">
-                            ▾
-                          </span>
-                        </button>
-                      </div>
-                      {isOpen && (
-                        <div className="note-body">
-                          {n.body.trim() ? (
-                            <div className="note-md">
-                              <Markdown text={n.body} showAllCode />
+      {shown.length > 0 && (
+        <div className="article-notes-list">
+          {shown.map((g) => {
+            // Collapsed until the article is clicked; a search opens every match
+            const groupOpen = openGroups.has(g.slug) || !!f
+            return (
+              <article key={g.slug} className={`article-notes-group ${groupOpen ? 'open' : ''}`}>
+                <div className="article-notes-head">
+                  <button className="article-notes-toggle" onClick={() => toggleGroup(g.slug)} aria-expanded={groupOpen}>
+                    <span className="article-notes-chev" aria-hidden="true">
+                      ▸
+                    </span>
+                    <span className="article-notes-title">{g.title}</span>
+                    {g.kind && <span className="plan-track">{g.kind}</span>}
+                    <span className="article-notes-count mono">{g.notes.length}</span>
+                  </button>
+                  {g.href && (
+                    <a className="icon-btn" href={g.href} title={tr('Article kholo', 'Open the article')} aria-label={tr(`${g.title} kholo`, `Open ${g.title}`)}>
+                      <Icon name="arrow" size={15} />
+                    </a>
+                  )}
+                </div>
+                {groupOpen && (
+                  <ol className="note-items">
+                    {g.notes.map((n) => {
+                      const key = `${g.slug}/${n.id}`
+                      const isOpen = open.has(key) || !!f
+                      return (
+                        <li key={key} className={`note ${isOpen ? 'open' : ''}`}>
+                          <div className="note-head">
+                            <button className="note-title" onClick={() => toggle(key)} aria-expanded={isOpen}>
+                              <span className="note-title-text">{n.title || <span className="muted">{tr('Bina heading', 'Untitled')}</span>}</span>
+                              {n.ai && <span className="note-ai">✦ AI</span>}
+                              <span className="note-chev" aria-hidden="true">
+                                ▾
+                              </span>
+                            </button>
+                          </div>
+                          {isOpen && (
+                            <div className="note-body">
+                              {n.body.trim() ? (
+                                <div className="note-md">
+                                  <Markdown text={n.body} showAllCode />
+                                </div>
+                              ) : (
+                                <p className="muted small">{tr('Abhi khaali hai.', 'Empty for now.')}</p>
+                              )}
+                              {g.href && (
+                                <div className="note-actions">
+                                  <a className="ghost-btn" href={g.href}>
+                                    <Icon name="pen" size={13} /> {tr('Article pe edit karo', 'Edit on the article')}
+                                  </a>
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <p className="muted small">{tr('Abhi khaali hai.', 'Empty for now.')}</p>
                           )}
-                          {g.href && (
-                            <div className="note-actions">
-                              <a className="ghost-btn" href={g.href}>
-                                <Icon name="pen" size={13} /> {tr('Article pe edit karo', 'Edit on the article')}
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
-              </ol>
-            )}
-          </article>
-        )
-      })}
+                        </li>
+                      )
+                    })}
+                  </ol>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }
