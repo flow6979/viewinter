@@ -86,7 +86,7 @@ export function NotesPanel({ slug, onLogin, general }: { slug: string; onLogin: 
         <div className="notes-empty">
           <Icon name="pen" size={20} />
           {general ? (
-            <p>{tr('Jo kisi ek article ka nahi, wo yahan likho: interview experiences, doubts, formulas, kuch bhi.', 'Write anything that is not about one article here: interview experiences, doubts, formulas, anything.')}</p>
+            <p>{tr('Abhi koi note nahi hai. "Naya note" dabao aur likhna shuru karo.', 'No notes yet. Press "New note" to start writing.')}</p>
           ) : (
             <>
               <p>{tr('Is article ke notes yahan banenge: har note ki heading, kholo to poori baat.', 'Your notes for this article live here: a heading per note, open it for the details.')}</p>
