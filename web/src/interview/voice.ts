@@ -153,6 +153,24 @@ const RecognitionCtor = (): (new () => Recognition) | undefined => {
 }
 export const canListen = () => !!RecognitionCtor()
 
+const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
+/**
+ * Joins two pieces of recognised speech. Android Chrome often sends a piece that already contains
+ * the earlier text ("it is" then "it is very easy"), or sends the same piece twice; keep it once.
+ */
+export function mergeHeard(a: string, b: string): string {
+  const x = a.trim()
+  const y = b.trim()
+  if (!y) return x
+  if (!x) return y
+  const nx = norm(x)
+  const ny = norm(y)
+  if (ny.startsWith(nx)) return y
+  if (nx.endsWith(ny) || nx.startsWith(ny)) return x
+  return `${x} ${y}`
+}
+
 /**
  * Speech → text. `onFinal` gets the full utterance after ~1.6 s of silence (auto-send),
  * `interim` is what is being heard right now.
@@ -165,6 +183,10 @@ export function useListener(onFinal: (text: string) => void, lang: string) {
   const want = useRef(false)
   const paused = useRef(false)
   const buffer = useRef('')
+  // Text heard in earlier recognition sessions, and the first result of this session not yet sent
+  const before = useRef('')
+  const from = useRef(0)
+  const seen = useRef(0)
   const timer = useRef<number | undefined>(undefined)
   const finalCb = useRef(onFinal)
   finalCb.current = onFinal
@@ -172,6 +194,8 @@ export function useListener(onFinal: (text: string) => void, lang: string) {
   const flush = useCallback(() => {
     const text = buffer.current.trim()
     buffer.current = ''
+    before.current = ''
+    from.current = seen.current
     setInterim('')
     if (text) finalCb.current(text)
   }, [])
@@ -186,14 +210,22 @@ export function useListener(onFinal: (text: string) => void, lang: string) {
     r.continuous = true
     r.interimResults = true
     r.lang = lang
+    // This session's text is rebuilt from e.results on every event instead of appended, because
+    // Android re-sends old results and makes each one repeat the one before
+    before.current = buffer.current
+    from.current = 0
+    seen.current = 0
     r.onresult = (e) => {
+      let finals = ''
       let live = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = from.current; i < e.results.length; i++) {
         const res = e.results[i]
-        if (res.isFinal) buffer.current += ` ${res[0].transcript}`
-        else live += res[0].transcript
+        if (res.isFinal) seen.current = i + 1
+        if (res.isFinal) finals = mergeHeard(finals, res[0].transcript)
+        else live = mergeHeard(live, res[0].transcript)
       }
-      setInterim(`${buffer.current} ${live}`.trim())
+      buffer.current = mergeHeard(before.current, finals)
+      setInterim(mergeHeard(buffer.current, live))
       window.clearTimeout(timer.current)
       timer.current = window.setTimeout(flush, 1600)
     }
