@@ -40,6 +40,7 @@ const SECTION_OF: Record<Page['kind'], Section | null> = {
   cs: 'cs',
   rag: 'rag',
   dsa: 'dsa',
+  ai: 'agents',
   agent: 'agents',
   // Behavioral answers are personal stories, not right/wrong options, so no MCQ quiz
   beh: null,

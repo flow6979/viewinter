@@ -1,7 +1,7 @@
 import { parse as parseYaml } from 'yaml'
 import { href } from './router'
 
-export type Kind = 'topic' | 'question' | 'lld' | 'lldp' | 'java' | 'db' | 'cs' | 'beh' | 'rag' | 'dsa' | 'agent'
+export type Kind = 'topic' | 'question' | 'lld' | 'lldp' | 'java' | 'db' | 'cs' | 'beh' | 'rag' | 'dsa' | 'ai' | 'agent'
 
 export interface ChecklistItem {
   id: string
@@ -54,6 +54,7 @@ const csFiles = import.meta.glob('../../content/07-cs/*.md', { query: '?raw', im
 const behavioralFiles = import.meta.glob('../../content/08-behavioral/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const ragFiles = import.meta.glob('../../content/09-rag/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const dsaFiles = import.meta.glob('../../content/10-dsa/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const agenticFiles = import.meta.glob('../../content/11-agentic/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 // English mirrors live in content-en/ with the same paths; missing files fall back to Hinglish
 const enFiles = import.meta.glob(['../../content-en/0*/*.md', '../../content-en/1*/*.md'], {
@@ -133,6 +134,8 @@ export const cs = build(csFiles, 'cs')
 export const behavioral = build(behavioralFiles, 'beh')
 export const rag = build(ragFiles, 'rag')
 export const dsa = build(dsaFiles, 'dsa')
+/** Agentic AI concept pages (content/11-agentic); the labs below are separate 'agent' pages */
+export const agentic = build(agenticFiles, 'ai')
 
 // ---- Agentic AI (the labs that used to be the separate Agent Lab site) ----
 type T2 = { hi: string; en: string }
@@ -287,7 +290,7 @@ export function agentPageFor(path: string): Page {
   return match ?? agentGeneral
 }
 
-export const allPages = [...topics, ...questions, ...lld, ...lldProblems, ...java, ...db, ...cs, ...behavioral, ...rag, ...dsa, ...agentPages]
+export const allPages = [...topics, ...questions, ...lld, ...lldProblems, ...java, ...db, ...cs, ...behavioral, ...rag, ...dsa, ...agentic, ...agentPages]
 export const pageBySlug = new Map(allPages.map((p) => [p.slug, p]))
 
 const enBySlug = new Map<string, Page>(build(enFiles, 'topic').map((p) => [p.slug, p] as const))
@@ -321,7 +324,7 @@ export const allItems = allPages.flatMap((p) => p.checklist)
 
 export function route(p: Pick<Page, 'kind' | 'slug' | 'path'>): string {
   if (p.kind === 'agent') return href(p.path ?? '/agents')
-  const prefix: Record<Exclude<Kind, 'agent'>, string> = { topic: 'topic', question: 'q', lld: 'lld', lldp: 'lldp', java: 'java', db: 'db', cs: 'cs', beh: 'behavioral', rag: 'rag', dsa: 'dsa' }
+  const prefix: Record<Exclude<Kind, 'agent'>, string> = { topic: 'topic', question: 'q', lld: 'lld', lldp: 'lldp', java: 'java', db: 'db', cs: 'cs', beh: 'behavioral', rag: 'rag', dsa: 'dsa', ai: 'ai' }
   return href(`${prefix[p.kind as Exclude<Kind, 'agent'>]}/${p.slug}`)
 }
 
@@ -357,6 +360,7 @@ const REVISION_HEADINGS: Record<Kind, RegExp> = {
   beh: /^## ⭐/,
   rag: /^## ⭐/,
   dsa: /^## ⭐/,
+  ai: /^## ⭐/,
   agent: /^$/,
 }
 

@@ -1,5 +1,5 @@
 import { href } from '../router'
-import { agentPages, behavioral, cs, db, dsa, java, rag, lld, lldProblems, localize, questions, route, topics, type Page } from '../content'
+import { agentic, agentPages, behavioral, cs, db, dsa, java, rag, lld, lldProblems, localize, questions, route, topics, type Page } from '../content'
 import { useStore } from '../store'
 import { useLang, useTr } from '../i18n'
 import { groupStats, pageStats } from '../progress'
@@ -39,7 +39,7 @@ export function Dashboard() {
     ['Behavioral', behavioral],
     ['DSA', dsa],
     ['RAG', rag],
-    ['Agentic AI', agentPages],
+    ['Agentic AI', [...agentic, ...agentPages]],
   ]
   const everything = subjects.flatMap(([, p]) => p)
   const all = groupStats(everything, progress)

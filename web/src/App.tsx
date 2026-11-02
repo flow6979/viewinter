@@ -64,7 +64,7 @@ function useRoute() {
     const p = `/${parts.join('/')}`
     return { view: 'agents' as const, slug: agentPageFor(p).slug, path: p }
   }
-  if (['topic', 'q', 'lld', 'lldp', 'java', 'db', 'cs', 'behavioral', 'rag', 'dsa'].includes(parts[0]) && parts[1]) return { view: 'page' as const, slug: parts[1] }
+  if (['topic', 'q', 'lld', 'lldp', 'java', 'db', 'cs', 'behavioral', 'rag', 'dsa', 'ai'].includes(parts[0]) && parts[1]) return { view: 'page' as const, slug: parts[1] }
   return { view: 'home' as const, slug: '' }
 }
 

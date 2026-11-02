@@ -1,6 +1,6 @@
 import { href } from '../router'
 import { useEffect, useState } from 'react'
-import { agentPages, behavioral, cs, db, java, lld, lldProblems, localize, questions, rag, dsa, route, topics, type Page } from '../content'
+import { agentic, agentPages, behavioral, cs, db, java, lld, lldProblems, localize, questions, rag, dsa, route, topics, type Page } from '../content'
 import { readLocal, useStore, writeLocal } from '../store'
 import { useLang, useTr } from '../i18n'
 import { groupStats, pageStats } from '../progress'
@@ -54,7 +54,15 @@ const SECTIONS: Section[] = [
   { id: 'beh', label: 'Behavioral', icon: 'chat', subs: [{ pages: behavioral }] },
   { id: 'dsa', label: 'DSA · C++', icon: 'code', subs: [{ pages: dsa }] },
   { id: 'rag', label: 'RAG', icon: 'search', subs: [{ pages: rag }] },
-  { id: 'agents', label: 'Agentic AI', icon: 'bot', subs: [{ pages: agentPages }] },
+  {
+    id: 'agents',
+    label: 'Agentic AI',
+    icon: 'bot',
+    subs: [
+      { label: { hi: 'Concepts', en: 'Concepts' }, pages: agentic },
+      { label: { hi: 'Labs', en: 'Labs' }, pages: agentPages },
+    ],
+  },
 ]
 
 function Item({ page, active }: { page: Page; active: boolean }) {

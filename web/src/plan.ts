@@ -1,7 +1,7 @@
 // Personal study plan: turns "days left + what I'm preparing + hours per day" into a day-by-day list.
 // Deterministic (no LLM): same inputs and progress always give the same plan, and finished pages
 // drop out, so the plan re-balances itself every day from today.
-import { agentPages, behavioral, cs, rag, dsa, db, java, lld, lldProblems, pageBySlug, questions, topics, type Page } from './content'
+import { agentic, agentPages, behavioral, cs, rag, dsa, db, java, lld, lldProblems, pageBySlug, questions, topics, type Page } from './content'
 
 export type Track = 'hld' | 'lld' | 'java' | 'db' | 'cs' | 'beh' | 'rag' | 'dsa' | 'agents'
 export type Level = 'junior' | 'mid' | 'senior'
@@ -18,7 +18,7 @@ export interface PlanInput {
   only?: string[]
 }
 
-const TRACK_OF: Record<Page['kind'], Track> = { topic: 'hld', question: 'hld', lld: 'lld', lldp: 'lld', java: 'java', db: 'db', cs: 'cs', beh: 'beh', rag: 'rag', dsa: 'dsa', agent: 'agents' }
+const TRACK_OF: Record<Page['kind'], Track> = { topic: 'hld', question: 'hld', lld: 'lld', lldp: 'lld', java: 'java', db: 'db', cs: 'cs', beh: 'beh', rag: 'rag', dsa: 'dsa', ai: 'agents', agent: 'agents' }
 
 export interface PlanItem {
   page: Page
@@ -81,11 +81,11 @@ const RAG_P1 = ['01-what-is-rag', '02-semantic-search', '03-chunking', '04-hybri
 const RAG_P2 = ['09-production-rag-api', '08-rag-evaluation', '07-advanced-retrieval', '06-pageindex']
 const DSA_P1 = ['04-patterns-cheatsheet', '03-stl', '05-arrays-hashing-prefix', '06-two-pointers-sliding-window', '07-binary-search', '11-trees', '13-graphs', '15-dp']
 const DSA_P2 = ['01-cpp-basics', '08-greedy-intervals', '09-stack-queue-monotonic', '10-recursion-backtracking', '12-heaps-priority-queue', '14-dsu']
-const AGENT_P1 = ['agents-map', 'agents-react', 'agents-rag']
-const AGENT_P2 = ['agents-prod', 'agents-multi', 'agents-comm', 'agents-web']
+const AGENT_P1 = ['01-agent-foundations', '02-langgraph-core', '03-workflow-patterns', '04-agent-patterns', 'agents-react', '13-agentic-interview-qa']
+const AGENT_P2 = ['05-memory-context', '07-tools-mcp-a2a', '09-agent-evals', '08-guardrails', '10-agent-observability', '11-cost-latency', '12-agents-in-production', 'agents-rag', 'agents-prod']
 
 // Reading time × factor = study time (questions need practice, labs need running)
-const FACTOR: Record<Page['kind'], number> = { topic: 3, question: 2.5, lld: 2, lldp: 2.5, java: 1.5, db: 1.5, cs: 1.5, beh: 2, rag: 2, dsa: 3, agent: 2 }
+const FACTOR: Record<Page['kind'], number> = { topic: 3, question: 2.5, lld: 2, lldp: 2.5, java: 1.5, db: 1.5, cs: 1.5, beh: 2, rag: 2, dsa: 3, ai: 2, agent: 2 }
 
 function tiers(track: Track, level: Level): string[][] {
   if (track === 'hld') {
@@ -106,7 +106,7 @@ function tiers(track: Track, level: Level): string[][] {
   if (track === 'rag') return [RAG_P1, RAG_P2, rag.map((p) => p.slug).filter((s) => !RAG_P1.includes(s) && !RAG_P2.includes(s))]
   if (track === 'db') return [DB_P1, DB_P2, db.map((p) => p.slug).filter((s) => !DB_P1.includes(s) && !DB_P2.includes(s))]
   if (track === 'java') return [JAVA_P1, JAVA_P2, java.map((p) => p.slug).filter((s) => !JAVA_P1.includes(s) && !JAVA_P2.includes(s))]
-  return [AGENT_P1, AGENT_P2, agentPages.map((p) => p.slug).filter((s) => !AGENT_P1.includes(s) && !AGENT_P2.includes(s))]
+  return [AGENT_P1, AGENT_P2, [...agentic, ...agentPages].map((p) => p.slug).filter((s) => !AGENT_P1.includes(s) && !AGENT_P2.includes(s))]
 }
 
 /** Round-robin across tracks inside each priority so no single subject eats the whole week */
