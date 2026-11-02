@@ -86,6 +86,23 @@ def check_input(text: str) -> tuple[bool, str]:
   3. **Exfiltration channel** (HTTP request, email bhejna, markdown image render, link)
 - Teeno saath = data chori possible. Design rule: **kam se kam ek leg kaat do.**
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant W as Seller web page
+    participant G as Tool guard
+    U->>A: Is seller page ka summary do
+    A->>W: fetch_page(url)
+    W-->>A: Text me hidden instruction
+    A->>G: http_get(evil URL + payout data)
+    Note over G: Egress allowlist exfil leg kaat deta hai
+    G-->>A: Blocked, domain allowed nahi
+    A-->>U: Sirf summary, data bahar nahi gaya
+```
+
+Hidden instruction fetched page ke saath andar aati hai; agent use maan bhi leta hai, par tool guard outbound call block kar deta hai, to trifecta ka exfiltration leg kat jaata hai.
+
 | Mitigation | Kaise kaam karta hai | Trade-off |
 |---|---|---|
 | Dual-LLM / quarantine | Privileged LLM tools chalata hai par untrusted text kabhi nahi dekhta; quarantined LLM untrusted text padhta hai par tools nahi chala sakta, sirf variables return karta hai | Complex, kuch tasks impossible |
@@ -114,6 +131,19 @@ def check_input(text: str) -> tuple[bool, str]:
 - **PII leakage:** output me doosre customer ka phone/PAN/Aadhaar to nahi?
 - **Business rules:** code me: amount ≤ limit, sirf allowed currencies, valid order_id.
 - Streaming me output guard mushkil: chunked checks ya sentence-level buffering.
+
+```mermaid
+flowchart LR
+    P["Refund prompt"] --> L["LLM call"]
+    L --> V["Pydantic validation"]
+    V -->|valid| B["Business rules check"]
+    B -->|pass| OK["Decision return karo"]
+    V -->|invalid| E["Error message jodo"]
+    E -->|retry, max 2| L
+    E -->|retries khatam| H["Human queue fallback"]
+```
+
+Valid output schema aur business rules se guzarta hai; invalid output error ke saath model ko wapas jaata hai, aur 2 retries fail hone pe infinite loop ki jagah human queue me chala jaata hai.
 
 ```python
 from pydantic import BaseModel, Field, ValidationError
@@ -263,6 +293,25 @@ app = g.compile(checkpointer=InMemorySaver())  # interrupt ke liye checkpointer 
 - `interrupt` ke baad node **shuru se re-run** hota hai, isliye interrupt se pehle side effects mat karo.
 - LangChain 1.x me `create_agent` ke saath `HumanInTheLoopMiddleware` aur `PIIMiddleware` jaise built-in middleware bhi milte hain; same idea, kam code.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant G as LangGraph app
+    participant C as Checkpointer
+    participant R as Reviewer
+    participant P as Refund API
+    U->>G: ORD12345678 ka 7200 refund
+    G->>G: input_guard, phir agent node
+    G->>C: Interrupt pe state save
+    G-->>R: Approval request, amount 7200
+    R->>G: Command resume approve
+    G->>C: Thread t1 ka state load
+    G->>P: Idempotency key ke saath refund
+    G-->>U: Refund initiated
+```
+
+Run `interrupt` pe rukta hai, reviewer ke jawab tak state checkpointer me rehti hai, aur refund API resume ke baad hi call hoti hai, isliye pause se pehle koi side effect nahi hota.
+
 **Interview tip:** "Guardrail ko graph node banane se wo traceable, testable aur bypass-proof ho jaata hai, kyunki routing code karta hai, model nahi."
 
 **Common galti:** interrupt wale node me pehle refund API call karna, phir interrupt. Resume pe double refund.
@@ -320,6 +369,22 @@ app = g.compile(checkpointer=InMemorySaver())  # interrupt ke liye checkpointer 
 - **Risk-based:** read-only FAQ pe light guards; money/action flows pe heavy.
 - **Streaming:** output guard ke liye sentence buffering; time-to-first-token pe asar dekho.
 - Har guard ka **precision/recall aur false positive rate** track karo; zyada blocking = users naraz.
+
+```mermaid
+flowchart LR
+    Q["User query"] --> IC["Injection check 20ms"]
+    Q --> TC["Topic check 15ms"]
+    Q --> LG["Llama Guard 150ms"]
+    Q --> M["Main LLM call, speculative"]
+    IC --> J["Results join karo"]
+    TC --> J
+    LG --> J
+    M --> J
+    J -->|sab pass| R["Response stream karo"]
+    J -->|koi fail| D["Discard aur refuse"]
+```
+
+Saare guards aur main LLM call saath shuru hote hain, to extra latency sabse slow guard jitni hoti hai, sum nahi; koi guard fail ho to bana hua answer phenk diya jaata hai.
 
 ```python
 import asyncio

@@ -179,6 +179,20 @@ g.add_conditional_edges("replan", should_end, ["execute", END])
 - Evaluator-optimizer (workflow) se farak: yahan actor ek **agent** hai, aur reflections **episodes ke across** memory me jaati hain.
 - Signal grounded ho to hi kaam karta hai (tests, compiler, retrieval check). Sirf "khud se socho kya galat hua" = model apni galti dobara confirm karta hai.
 - Graph shape: `actor` → `evaluate` → fail pe `reflect` → `actor`, max attempts guard ke saath. Reflections `Store` me (long-term memory, dekho [Memory & Context Engineering](05-memory-context.md)).
+
+```mermaid
+flowchart LR
+    T["Task"] --> A["Actor attempt"]
+    A --> E{"Evaluate: tests"}
+    E -->|pass| D["Done"]
+    E -->|max attempts| F["Fallback"]
+    E -->|fail| R["Reflect on failure"]
+    R --> M[("Store: reflections")]
+    M -->|reflections in prompt| A
+```
+
+Grounded signal (tests) fail hone pe reflection Store me jaati hai aur agle attempt ke prompt me wapas aati hai.
+
 - **Failure modes:** ungrounded critique, reflection loops jo kuch nahi badalte, purani irrelevant reflections context bharti hain.
 
 **Interview tip:** "Reflection tabhi value deta hai jab feedback external aur verifiable ho. Code agents me test results best signal hain."
@@ -213,6 +227,22 @@ flowchart TD
 
 - Supervisor ek agent hai jiske tools = `transfer_to_<agent>`. Tool `Command(goto=..., graph=Command.PARENT)` return karta hai, jo parent graph me us agent node pe le jaata hai.
 - Workers kaam karke **wapas supervisor** ke paas aate hain (edge `worker → supervisor`). Prebuilt: `langgraph-supervisor` ka `create_supervisor`.
+
+```mermaid
+sequenceDiagram
+    participant U as Seller
+    participant S as Supervisor
+    participant P as Pricing agent
+    participant A as Ads agent
+    U->>S: Cut price and boost ads for SKU
+    S->>P: transfer_to_pricing
+    P-->>S: price updated, back to supervisor
+    S->>A: transfer_to_ads
+    A-->>S: campaign boosted
+    S-->>U: Both done, summary
+```
+
+Supervisor `transfer_to_<agent>` tool se kaam deta hai; har worker kaam karke control supervisor ko wapas deta hai.
 
 ```python
 from typing import Annotated
@@ -252,6 +282,24 @@ app = g.compile()
 ### Swarm / handoffs
 
 - Koi central router nahi. Active agent khud `transfer_to_X` call karta hai; checkpointer yaad rakhta hai **kaunsa agent active hai**, to user ka agla message seedha usi ke paas jaata hai.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Booking agent
+    participant P as Payments agent
+    participant CP as Checkpointer
+    U->>B: Book Goa hotel for 2 nights
+    B-->>U: Room held, pay now?
+    U->>B: Pay with UPI
+    B->>P: transfer_to_payments
+    P->>CP: active agent is payments
+    P-->>U: UPI request sent
+    U->>P: Paid, send invoice
+    P-->>U: Invoice sent
+```
+
+Swarm me central router nahi hota; checkpointer active agent yaad rakhta hai, isliye agla user message seedha payments agent ko jaata hai.
 
 ```python
 from langgraph_swarm import create_handoff_tool, create_swarm

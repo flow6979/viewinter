@@ -6,6 +6,7 @@ import { readLocal, writeLocal } from '../store'
 import { TopicProblems } from '../dsa/PracticeView'
 import { useLang, useTr } from '../i18n'
 import { Markdown } from './Markdown'
+import { AnimateDiagramsContext } from './Mermaid'
 import { Icon, type IconName } from './Icon'
 import { Checklist } from './Checklist'
 import { LangToggle, type CodeLang } from './CodeBlock'
@@ -81,7 +82,7 @@ export function PageView({
   }[page.kind]
 
   return (
-    <article className="page">
+    <article className={`page kind-${page.kind}`}>
       {tabbed && (
         <nav className="subtabs" aria-label="Sections">
           {tabs.map((p) => (
@@ -145,7 +146,9 @@ export function PageView({
           </button>
         </section>
       ) : (
-        <Markdown text={body} showAllCode={page.kind !== 'lld'} />
+        <AnimateDiagramsContext.Provider value={page.kind === 'ai'}>
+          <Markdown text={body} showAllCode={page.kind !== 'lld'} />
+        </AnimateDiagramsContext.Provider>
       )}
       {page.kind === 'dsa' && <TopicProblems topic={page.slug} />}
       <Checklist page={page} />

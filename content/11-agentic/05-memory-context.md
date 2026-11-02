@@ -23,6 +23,19 @@ Is page pe: agent ki **short-term memory** (ek thread ke andar), **long-term mem
 - LLM khud **stateless** hai. "Memory" hamesha hamara code hai jo har call me context me sahi cheez daalta hai.
 - Memory ka asli sawal: **kya save karein, kab save karein, kab wapas laayein, kab bhool jaayein.**
 
+```mermaid
+flowchart LR
+    U["User message"] --> A["Agent node"]
+    CP[("Checkpointer: thread")] -->|thread messages| A
+    ST[("Store: user memories")] -->|search relevant| A
+    A --> L["LLM call"]
+    L --> R["Reply"]
+    A -->|save state| CP
+    A -->|save new fact| ST
+```
+
+Har call pe hamara code thread state (checkpointer) aur user memories (Store) se context bharta hai; LLM khud kuch yaad nahi rakhta.
+
 ## ⭐ Short-term memory: checkpointer aur thread state
 
 **Ek line me:** checkpointer har super-step ke baad graph state ko `thread_id` ke against save karta hai, isliye agla message usi thread me continue hota hai.
@@ -75,6 +88,22 @@ graph.invoke({"messages": [("user", "Mera order late hai")]}, cfg)
 ## ⭐ Summarization node
 
 **Ek line me:** jab history lambi ho jaaye, purane messages ka running summary banao aur unhe state se hata do; latest kuch turns verbatim rakho.
+
+```mermaid
+flowchart LR
+    H["40 messages in state"] --> SP{"Over token budget?"}
+    SP -->|yes| OLD["Older 34 messages"]
+    SP -->|yes| KEEP["Last 6 verbatim"]
+    OLD --> S["LLM: update summary"]
+    PS["Previous summary"] --> S
+    S --> NS["Running summary field"]
+    OLD -->|RemoveMessage| DEL["Removed from state"]
+    NS --> CTX["Next LLM context"]
+    KEEP --> CTX
+    SP -->|no| CTX
+```
+
+Purane messages pichli summary ke saath running summary me fold hote hain, aur latest turns verbatim rehte hain.
 
 ```python
 from langchain_core.messages import RemoveMessage, SystemMessage
@@ -185,6 +214,19 @@ graph.invoke({"messages": [("user", "Mera portfolio summary do")]},
 - Extractor ko **existing memories** bhi do taaki wo insert/update/delete decide kare, sirf append nahi.
 - Common hybrid: explicit "yaad rakhna" requests hot path me, baaki implicit facts background me.
 
+```mermaid
+flowchart LR
+    U["User: remember I am veg"] --> A["Agent"]
+    A -->|hot path save_memory| ST[("Store")]
+    A --> R["Reply"]
+    R --> I["Conversation idle 10 min"]
+    I --> X["Background extractor"]
+    ST -->|existing memories| X
+    X -->|add update delete| ST
+```
+
+Explicit "remember this" hot path pe turant save hota hai; baaki facts idle hone ke baad background extractor existing memories dekh ke consolidate karta hai.
+
 **LangMem in brief:** LangChain ki library jo ye kaam deta hai: `create_manage_memory_tool` / `create_search_memory_tool` (hot path tools jo Store use karte), `create_memory_store_manager` (background extraction + consolidation), aur prompt optimizer (procedural memory). Mem0, Zep jaise managed options bhi hain.
 
 **Interview tip:** "Default background extraction, debounced, kyunki latency aur quality dono better. Hot path sirf jab user explicitly bole ya next turn me hi memory chahiye."
@@ -242,6 +284,23 @@ flowchart LR
 - **Cache tod-ne wale bugs:** system prompt me timestamp (`Aaj 14:32:07 hai`), tools ka random order, per-request user name sabse upar, history ko beech me edit karna (trimming bhi prefix badalta hai).
 - Agent loops me caching sabse zyada faayda deta hai: har step pe same lamba prefix + thoda naya.
 
+```mermaid
+sequenceDiagram
+    participant A as Agent loop
+    participant P as LLM provider
+    A->>P: Step 1 - tools, system, history
+    Note over P: Prefix processed and cached
+    P-->>A: tool call, full price
+    A->>P: Step 2 - same prefix plus tool result
+    Note over P: Prefix match, cache hit
+    P-->>A: tool call, prefix at 0.1x
+    A->>P: Step 3 - timestamp changed in system
+    Note over P: Prefix mismatch, cache miss
+    P-->>A: full price again
+```
+
+Agent loop ka har step same prefix bhejta hai, isliye cache hit hota hai; system prompt me ek timestamp badla to poora prefix miss.
+
 **Interview tip:** "Main dynamic cheezein (date, user memory) system prompt ke end me ya latest message me daalta hoon taaki tools + static instructions ka prefix cached rahe. Cache hit rate ko metric ki tarah track karta hoon."
 
 **Common galti:** summarization/trimming se har turn prefix badal dena, phir sochna caching kaam kyun nahi kar rahi.
@@ -263,6 +322,19 @@ flowchart LR
   - Write time pe consolidate: naya fact aaye to similar purani memory dhoondo, LLM se decide karao `UPDATE / DELETE / NOOP / ADD`.
   - Read time pe: latest wins, aur explicit user statement > inferred fact.
   - Critical data (bank account, address) memory se nahi, **source-of-truth API** se lo. Memory sirf hint.
+
+```mermaid
+flowchart LR
+    N["New fact: ICICI account"] --> S["Search similar memories"]
+    S --> O["Old: HDFC account"]
+    O --> L{"LLM decides"}
+    L -->|UPDATE| U[("Store: ICICI, updated_at")]
+    L -->|ADD| A2["Insert new item"]
+    L -->|DELETE| D["Remove stale"]
+    L -->|NOOP| K["Keep as is"]
+```
+
+Write time pe naya fact purani similar memories se compare hota hai, aur LLM ADD / UPDATE / DELETE / NOOP decide karta hai.
 
 **Interview tip:** "Memory ek cache hai, source of truth nahi. Transactional facts hamesha API se, memory sirf personalization ke liye."
 

@@ -179,6 +179,20 @@ g.add_conditional_edges("replan", should_end, ["execute", END])
 - Difference from evaluator-optimizer (workflow): here the actor is an **agent**, and reflections go into memory **across episodes**.
 - It works only if the signal is grounded (tests, compiler, retrieval check). Plain "think about what went wrong" = the model re-confirms its own mistake.
 - Graph shape: `actor` → `evaluate` → on fail `reflect` → `actor`, with a max-attempts guard. Reflections go in the `Store` (long-term memory, see [Memory & Context Engineering](05-memory-context.md)).
+
+```mermaid
+flowchart LR
+    T["Task"] --> A["Actor attempt"]
+    A --> E{"Evaluate: tests"}
+    E -->|pass| D["Done"]
+    E -->|max attempts| F["Fallback"]
+    E -->|fail| R["Reflect on failure"]
+    R --> M[("Store: reflections")]
+    M -->|reflections in prompt| A
+```
+
+When the grounded signal (tests) fails, the reflection goes into the Store and comes back in the next attempt's prompt.
+
 - **Failure modes:** ungrounded critique, reflection loops that change nothing, old irrelevant reflections filling the context.
 
 **Interview tip:** "Reflection adds value only when feedback is external and verifiable. For code agents, test results are the best signal."
@@ -213,6 +227,22 @@ flowchart TD
 
 - The supervisor is an agent whose tools are `transfer_to_<agent>`. The tool returns `Command(goto=..., graph=Command.PARENT)`, which moves to that agent's node in the parent graph.
 - Workers do their job and come **back to the supervisor** (edge `worker → supervisor`). Prebuilt: `create_supervisor` from `langgraph-supervisor`.
+
+```mermaid
+sequenceDiagram
+    participant U as Seller
+    participant S as Supervisor
+    participant P as Pricing agent
+    participant A as Ads agent
+    U->>S: Cut price and boost ads for SKU
+    S->>P: transfer_to_pricing
+    P-->>S: price updated, back to supervisor
+    S->>A: transfer_to_ads
+    A-->>S: campaign boosted
+    S-->>U: Both done, summary
+```
+
+The supervisor delegates through `transfer_to_<agent>` tools; each worker does its job and hands control back to the supervisor.
 
 ```python
 from typing import Annotated
@@ -252,6 +282,24 @@ app = g.compile()
 ### Swarm / handoffs
 
 - No central router. The active agent itself calls `transfer_to_X`; the checkpointer remembers **which agent is active**, so the user's next message goes straight to it.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Booking agent
+    participant P as Payments agent
+    participant CP as Checkpointer
+    U->>B: Book Goa hotel for 2 nights
+    B-->>U: Room held, pay now?
+    U->>B: Pay with UPI
+    B->>P: transfer_to_payments
+    P->>CP: active agent is payments
+    P-->>U: UPI request sent
+    U->>P: Paid, send invoice
+    P-->>U: Invoice sent
+```
+
+A swarm has no central router; the checkpointer remembers the active agent, so the user's next message goes straight to the payments agent.
 
 ```python
 from langgraph_swarm import create_handoff_tool, create_swarm

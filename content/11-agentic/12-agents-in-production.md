@@ -56,6 +56,28 @@ flowchart LR
 - LangGraph `durability` mode: `"exit"` (sirf end pe save, fast), `"async"` (default, background me save), `"sync"` (har step ke baad save ho, phir aage; sabse safe).
 - **Temporal-style durability (brief):** Temporal workflow ka har activity result event history me log karta hai; crash pe workflow replay hota hai aur completed activities dobara nahi chalti. Bahut lambe, multi-day, money-moving workflows me log Temporal ke andar LLM calls ko activities bana dete hain. LangGraph checkpointer step-level durability deta hai, Temporal stronger workflow guarantees (timers, signals, versioning).
 
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as API
+    participant Q as Run queue
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+    participant P as Postgres checkpointer
+    C->>A: Quarterly tax report shuru karo
+    A-->>C: run_id r9
+    A->>Q: Run r9 enqueue
+    Q->>W1: r9 uthao
+    W1->>P: Step 3 ke baad checkpoint
+    Note over W1: Step 4 ke beech worker crash
+    Q->>W2: r9 redeliver
+    W2->>P: Last checkpoint load
+    W2->>W2: Idempotency key ke saath step 4 dobara
+    W2-->>C: Progress stream aur final report
+```
+
+Client ke paas sirf `run_id` hota hai; worker mare to doosra worker last checkpoint se run uthata hai aur sirf adhoora step dobara chalata hai.
+
 **Interview tip:** "Background run + checkpointer + idempotent nodes = crash-safe agent. Main bataunga ki resume pe kaunsa node dobara chalega aur uske side effects kaise safe hain."
 
 **Common galti:** maan lena ki checkpointer exactly-once deta hai. Wo step-level resume deta hai; node ke andar ka external call dobara ho sakta hai.
@@ -157,6 +179,20 @@ async def chat(thread_id: str, body: dict, user=Depends(current_user)):
 - **Circuit breaker:** ek tool/provider lagatar fail ho raha hai to kuch der use band karo, fast-fail + fallback; har request 30s wait na kare.
 - **Graceful degradation:** sab fail ho to "abhi problem hai, human agent se jod raha hoon", aur run ka state bacha rahe.
 
+```mermaid
+flowchart LR
+    REQ["LLM call"] --> P["Primary provider"]
+    P -->|ok| OUT["Response"]
+    P -->|429 ya 5xx| BO["Jitter ke saath backoff"]
+    BO -->|retry| P
+    BO -->|retries khatam| CB["Circuit breaker open"]
+    CB --> F["Fallback model"]
+    F -->|ok| OUT
+    F -->|wo bhi down| H["Human handoff, state saved"]
+```
+
+Transient errors pe kuch spaced-out retries hote hain; provider down hi rahe to breaker khulta hai aur traffic fallback model pe jaata hai, aakhri step human handoff.
+
 ```python
 from langgraph.types import RetryPolicy
 from langchain.agents import create_agent
@@ -235,6 +271,19 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Release flow:** offline eval suite (golden set) → **shadow** (naya version real traffic pe chalta hai, response user ko nahi jaata, compare hota hai; sirf read-only tools ke saath!) → **canary** (1–5% users) → full rollout. Har gate pe evals + online metrics.
 - Rollback ek config flip hona chahiye (assistant/config version), redeploy nahi.
 
+```mermaid
+flowchart LR
+    CH["Prompt ya model change"] --> OE["Offline eval suite"]
+    OE -->|pass| SH["Shadow, write tools off"]
+    SH --> CN["1 se 5 pct pe canary"]
+    CN --> MO["Online metrics check"]
+    MO -->|healthy| FULL["Full rollout"]
+    MO -->|regression| RB["Config flip se rollback"]
+    OE -->|fail| CH
+```
+
+Har stage pichhla gate pass hone ke baad hi change ko zyada real traffic dikhata hai, aur canary pe regression config flip se undo hota hai, redeploy se nahi.
+
 | Cheez | Version kaise | Gate |
 |---|---|---|
 | Prompt | registry / git hash | offline evals |
@@ -257,6 +306,23 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Context packet:** summary, user intent, actions + tool results, pending decision, `thread_id` link to trace.
 - Escalation rate ek core metric hai: bahut kam = agent galat cases bhi khud handle kar raha hai; bahut zyada = agent ka value kam.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant T as Ticket system
+    participant H as Human agent
+    U->>A: Teesri baar human maanga
+    A->>A: Trigger match, run interrupt
+    A->>T: Context packet ke saath ticket
+    T->>H: Summary, actions, thread_id
+    A-->>U: Connect kar rahe hain, dohrana nahi padega
+    H->>A: Decision ke saath resume
+    A-->>U: Support ne refund approve kiya
+```
+
+Run khatam nahi, pause hota hai: human ko poora context packet milta hai, aur uska decision usi thread ko resume karta hai, to user ko kuch dohrana nahi padta.
+
 **Interview tip:** escalation ko failure nahi, design feature bolo, aur uska metric (escalation rate, resolution after handoff) batao.
 
 **Common galti:** handoff pe sirf "connecting you to an agent" bolna aur context na bhejna; user ko sab dobara likhna padta hai.
@@ -272,6 +338,18 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Patterns:** ReAct loop, evaluator-optimizer (tests as verifier), human approval for destructive commands.
 - **Hard parts:** context (repo bada, sab context me nahi aata, isliye search + file summaries), edit reliability (exact string/diff edits), sandbox security, infinite fix-test loops (step budget), long runs ka cost.
 
+```mermaid
+flowchart LR
+    T["Developer ka task"] --> L["Agent LLM loop"]
+    L --> S["search_code, read_file"]
+    S --> E["edit_file as diff"]
+    E --> R["Sandbox me run_tests"]
+    R -->|tests fail| L
+    R -->|tests pass| AP["Human diff review"]
+```
+
+Tests verifier ka kaam karte hain: failure feedback ban ke loop me wapas jaata hai, aur iterations pe cap endless fix-test cycle rokta hai.
+
 ### 2. Customer-support agent (Swiggy order-issue bot)
 - **Architecture:** intent router → specialised subgraphs (missing item, late order, refund, payment) → tools (`get_order`, `get_rider_eta`, `issue_refund` with idempotency) → policy check → reply; escalation node.
 - **Patterns:** routing, mostly **workflow** with LLM at decision points, HITL for high-value refunds, RAG on policy docs.
@@ -286,6 +364,19 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Architecture:** schema retrieval (relevant tables + column docs + sample queries) → SQL generation → validate (parse, read-only, LIMIT, cost estimate) → execute on read replica → on error, self-correct loop → chart/answer.
 - **Patterns:** RAG over schema/semantic layer, evaluator-optimizer (DB error as feedback), tool sandboxing.
 - **Hard parts:** ambiguous business metrics ("active user" ki definition, semantic layer se solve), wrong-but-runs SQL (silent errors, eval with gold queries), row-level permissions, expensive queries (timeouts, read-only role).
+
+```mermaid
+flowchart LR
+    Q["Business question"] --> SR["Schema retrieval"]
+    SR --> G["SQL generate karo"]
+    G --> V["Validate: read-only, LIMIT"]
+    V --> X[("Read replica")]
+    X --> A["Answer aur chart"]
+    V -->|invalid| G
+    X -->|DB error| G
+```
+
+Validation aur DB errors self-correction ke liye generator ko wapas jaate hain, aur execution sirf read replica pe hota hai.
 
 | Agent | Main pattern | Sabse mushkil |
 |---|---|---|

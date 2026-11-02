@@ -42,6 +42,23 @@ Ye page agent ka bill aur speed control karna sikhata hai: token economics, mode
 - Retries, self-reflection loops, critic agents, multi-agent handoffs: har ek naya LLM call.
 - Bade tool results (raw JSON, poore web pages) context me pade rehte hain.
 
+```mermaid
+sequenceDiagram
+    participant A as Agent loop
+    participant L as LLM
+    participant T as Tools
+    A->>L: Step 1, input 4.5k tokens
+    L-->>A: Tool call get_holdings
+    A->>T: get_holdings
+    T-->>A: Result 1.5k tokens jodta hai
+    A->>L: Step 2, input 6k tokens
+    Note over A,L: Har step pe poora context dobara jaata hai
+    A->>L: Step 6, input 12k tokens
+    L-->>A: Final answer, 700 tokens
+```
+
+LLM stateless hai, isliye har step prefix aur poori badhti history dobara bhejta hai; aise hi 6 steps 49.5k input tokens tak pahunch jaate hain.
+
 ```python
 def task_cost(steps, prefix=4000, query=500, per_step=1500, out_step=300,
               out_final=700, p_in=3.0, p_out=15.0, p_cache=0.30, cache=True):
@@ -72,6 +89,19 @@ print(task_cost(6, cache=False), task_cost(6))  # ~0.1815, ~0.1275
 - **Cascading (try-then-escalate):** chhota model answer karta hai, phir check: structured confidence, verifier, schema validation, ya tool error. Fail → bada model.
 - **Per-step routing:** agent ke andar bhi: planning aur final synthesis bada model, extraction/summarize/classify chhota model.
 - Saving typically 40–70% jab traffic ka bada hissa simple ho. Trade-off: router ki galti (hard query chhote model pe) quality girati hai, aur cascade me escalation ka latency double lagta hai.
+
+```mermaid
+flowchart LR
+    Q["User query"] --> R["Router: small model"]
+    R -->|simple| S["Small model jawab deta hai"]
+    S --> C["Confidence aur schema check"]
+    C -->|pass| OUT["User ko reply"]
+    C -->|fail| L["Large model pe escalate"]
+    R -->|complex| L
+    L --> OUT
+```
+
+Simple queries small model pe hi ruk jaati hain; sirf failed checks ya complex route hui queries large model ka paisa deti hain, 40–70% saving yahin se aati hai.
 
 ```python
 from typing import Literal, TypedDict
@@ -138,6 +168,19 @@ app = g.compile()
 - Threshold low = zyada hits par galat answers; high = kam hits. Eval set pe tune karo, aur TTL + invalidation (policy change pe flush) rakho.
 - Agents me poore answer ki jagah **plan ya sub-step** cache karna aksar safe hota hai.
 
+```mermaid
+flowchart LR
+    Q["User query"] --> E["Query embed karo"]
+    E --> V[("Vector cache, user scoped")]
+    V --> SIM["Similarity check"]
+    SIM -->|0.95 ya upar| HIT["Cached answer return"]
+    SIM -->|threshold se neeche| AG["Agent chalao"]
+    AG --> ST["TTL ke saath answer store"]
+    ST --> V
+```
+
+Hit pe poori LLM call bachti hai; miss pe agent chalta hai aur naya answer TTL ke saath store hota hai, isliye threshold aur scope key hi saving aur risk dono decide karte hain.
+
 **3. Tool-result caching:**
 - Read-only, deterministic tools (product info, FX rate, docs search) ka result `(tool, normalized_args)` key pe TTL ke saath.
 - Write tools (payment, cancel order) kabhi cache nahi. Wahan [idempotency](../01-topics/10-idempotency-retries.md) chahiye, cache nahi.
@@ -184,6 +227,23 @@ graph = builder.compile(cache=InMemoryCache())  # prod me Redis-backed cache
 **Ek line me:** user ko do cheez feel hoti hain: **TTFT** (pehla token kab dikha) aur **total latency** (kaam kab poora hua); agents me total latency = sum of sequential LLM + tool calls, isliye streaming aur parallelism zaroori.
 
 > **Example:** Swiggy ka "mera order late kyun hai" agent 4 steps me 9 second leta hai. Agar 9 second blank screen rahe to user app band kar deta hai. Agar "Order dhoondh raha hoon... rider ki location check kar raha hoon..." dikhe aur final answer stream ho, to wahi 9 second theek lagte hain.
+
+```mermaid
+sequenceDiagram
+    participant U as User UI
+    participant A as Agent
+    participant L as LLM
+    U->>A: Mera order late kyun hai?
+    A-->>U: Step event, order dhundh rahe hain
+    A->>L: Classify aur tools call
+    A-->>U: Step event, rider location check
+    A->>L: Final answer, streamed
+    L-->>U: Pehla token lagbhag 2s pe
+    L-->>U: Baaki tokens
+    A-->>U: 9s pe done
+```
+
+Total time abhi bhi 9 second hai, par user ko pehle second me progress aur lagbhag 2 second tak text dikh jaata hai, to wait kaafi chhota lagta hai.
 
 | Metric | Kya hai | Kaun control karta hai |
 |---|---|---|
@@ -272,6 +332,19 @@ async def stream_run(graph, question: str, thread_id: str):
 - **Per-user / per-tenant spend limits:** Redis counter (daily $), limit pe graceful message ya chhota model. [Rate limiting](../01-topics/11-rate-limiting.md) jaisa hi, bas unit tokens/$ hai.
 - **Timeouts:** har LLM call (client timeout), har tool, aur poore run pe (`asyncio.timeout`).
 - Limit hit hone pe **graceful exit**: partial answer + "aage human se baat karein", na ki 500 error.
+
+```mermaid
+flowchart TD
+    REQ["Nayi request"] --> UC["User daily spend check"]
+    UC -->|cap ke andar| ST["Agent step"]
+    ST --> BC["Steps, tokens, time check"]
+    BC -->|task done| ANS["Answer aur cost record"]
+    BC -->|budget ke andar| ST
+    BC -->|limit hit| GX["Graceful exit, human handoff"]
+    UC -->|cap ke upar| MSG["Daily limit message"]
+```
+
+Spend cap run shuru hone se pehle check hota hai aur step, token, time budget har step ke baad, isliye runaway loop bill ki jagah graceful message pe khatam hota hai.
 
 ```python
 import asyncio

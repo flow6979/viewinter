@@ -71,6 +71,20 @@ flowchart LR
 - **Argument accuracy alag check karo:** sahi tool, galat `order_id` = fail. Args match: exact, ignore, ya custom matcher (case-insensitive city).
 - Tool calls ko messages se extract karo (OpenAI format ya LangChain messages); `agentevals` dono leta hai.
 
+```mermaid
+flowchart LR
+    Q["Order ORD1 late, refund karo"] --> A1["Agent: get_order"]
+    A1 --> A2["Agent: check_delay"]
+    A2 --> A3["Agent: issue_refund"]
+    A3 --> CMP["Trajectories compare karo"]
+    RF["Reference: get_order, issue_refund"] --> CMP
+    CMP -->|strict| F1["Fail: extra step"]
+    CMP -->|superset| P1["Pass: required tools call hue"]
+    CMP -->|subset| F2["Fail: check_delay reference me nahi"]
+```
+
+Ek hi actual trajectory match mode ke hisaab se pass ya fail hoti hai, isliye mode wahi chuno jo tumhe chahiye: safety, completeness ya exact order.
+
 ```python
 import json
 from agentevals.trajectory.match import create_trajectory_match_evaluator
@@ -153,6 +167,20 @@ print(judge(outputs=agent_msgs))   # {'key': 'trajectory_accuracy', 'score': Tru
 - **Calibration:** 100–200 examples pe humans label karo (domain expert), judge chalao, **agreement** measure karo: accuracy, Cohen's kappa, ya TPR/TNR. Target ~85–90%+ agreement, warna rubric/prompt fix karo.
 - Judge ko bhi version karo (model + prompt); judge badla to baseline dobara.
 
+```mermaid
+flowchart LR
+    I["Input + agent output"] --> J["Rubric wala judge LLM"]
+    J --> RS["Pehle reasoning"]
+    RS --> V["PASS ya FAIL verdict"]
+    H["Human labels, 100 se 200"] --> AG["Agreement check"]
+    V --> AG
+    AG -->|85 se 90 percent plus| USE["Scale pe judge use karo"]
+    AG -->|target se neeche| FIX["Rubric aur prompt fix"]
+    FIX --> J
+```
+
+Judge ke verdicts pehle human labels se compare hote hain; agreement kaafi high ho tabhi scale pe bharosa karo, warna rubric wapas fix hone jaata hai.
+
 ```python
 from openevals.llm import create_llm_as_judge
 
@@ -223,6 +251,19 @@ def agreement(examples, human_labels):
 - **User feedback signals:** explicit (thumbs, rating) sparse hota hai; implicit zyada: rephrase, "agent se baat karni hai", abandonment, copy action, retry.
 - Online evaluator (reference-free judge) sampled traces pe; low score traces → review queue → dataset. Detail: [AI Observability](10-agent-observability.md).
 
+```mermaid
+flowchart LR
+    CH["Prompt ya model change"] --> OFF["Golden set pe offline evals"]
+    OFF -->|pass| CAN["5 se 10 pct traffic pe A/B"]
+    CAN --> ON["Sampled traces pe online judge"]
+    ON --> FB["User feedback signals"]
+    FB --> RQ["Low score review queue"]
+    RQ --> DS["Golden dataset badhta hai"]
+    DS --> OFF
+```
+
+Offline evals release ko gate karte hain, online evals live traffic dekhte hain, aur online mile failures agle offline run ke liye golden set me wapas aate hain.
+
 **Interview tip:** "Offline evals ship karne ka gate hai, online evals 'kya prod me sach me kaam kar raha hai' ka jawab."
 
 **Common galti:** sirf thumbs-down pe depend karna; 1–2% users hi feedback dete hain.
@@ -283,6 +324,25 @@ def test_agent_regression():
 - Stop conditions: goal pura, max turns (e.g. 10), ya user frustrated.
 - Tools ko mock/sandbox karo; τ-bench isi style ka public benchmark hai (user simulator + tools + DB state check).
 - Final check ideally **state-based**: DB me sahi booking bani?
+
+```mermaid
+sequenceDiagram
+    participant S as Simulated user
+    participant A as Agent
+    participant T as Mock tools and DB
+    participant J as Judge
+    S->>A: Delhi se Goa, 14 Dec book karo
+    A->>S: Date aur budget confirm karein?
+    S->>A: Sorry, 15 Dec, 8000 ke andar
+    A->>T: search_flights, phir book
+    T-->>A: Booking B77 created
+    A->>S: Book ho gaya, reference B77
+    S->>A: DONE
+    J->>T: DB me booking state check
+    J->>J: Poori conversation grade karo
+```
+
+Simulator sahi date tabhi batata hai jab agent poochta hai, aur judge agent ke words nahi, DB state me booking check karta hai.
 
 ```python
 def simulate(agent, persona: str, goal: str, max_turns: int = 8):

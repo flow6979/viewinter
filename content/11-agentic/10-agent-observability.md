@@ -181,6 +181,25 @@ def get_prices(symbols: list[str]) -> dict:
 - Exporter (OTLP) aur `TracerProvider` app startup pe configure karo; Langfuse aur Phoenix dono OTLP endpoint accept karte hain.
 - Short-lived jobs (Lambda, scripts) me end pe **flush** karo, warna spans gum.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant G as Agent graph
+    participant S as OTel SDK
+    participant C as OTel Collector
+    participant B as Backend
+    U->>G: ORD1 refund karo
+    G->>S: Span invoke_agent refund-agent
+    G->>S: Span chat gpt-4.1-mini
+    G->>S: Span execute_tool issue_refund
+    G-->>U: Answer stream hua
+    S->>C: OTLP pe batch export
+    C->>C: PII redact, tail sample
+    C->>B: Rakhe gaye spans forward
+```
+
+Request chalte waqt har node aur tool ek span emit karta hai; SDK unhe background me batch me export karta hai, isliye user tracing ka wait nahi karta.
+
 **Interview tip:** "Framework callbacks se 80% coverage free milti hai; baaki custom tools aur business steps pe main manual spans lagata hoon."
 
 **Common galti:** tracing synchronous blocking mode me chalana; tracing backend slow hua to agent bhi slow. SDKs background batching karte hain, wahi use karo.
@@ -220,6 +239,20 @@ def get_prices(symbols: list[str]) -> dict:
 - Trace ko **eval case** me convert karo (LangSmith/Langfuse me "add to dataset"), fix ke baad wahi case regression test.
 - LangGraph me checkpoint se **replay/time-travel**: failed state se dobara chalao, prompt badal ke compare.
 
+```mermaid
+flowchart LR
+    S["Slow ya galat run"] --> T["Trace tree kholo"]
+    T --> F["Pehla kharab span dhundo"]
+    F --> SIG["Trace signal match karo"]
+    SIG --> RC["Root cause"]
+    RC --> FX["Targeted fix"]
+    FX --> EC["Trace ko eval case banao"]
+    EC --> RR["Evals re-run"]
+    RR -->|abhi bhi fail| F
+```
+
+Debugging us pehle span se shuru hoti hai jiska output galat hua, aur har fixed trace eval case ban jaata hai taaki wahi bug wapas na aaye.
+
 **Interview tip:** "Debugging ka pehla sawal: kaunsa span pehla tha jahan output galat hua? Uske upar sab sahi tha, to bug wahi hai."
 
 **Common galti:** final answer dekh ke prompt badalna, bina trace dekhe ki galti retrieval me thi.
@@ -241,6 +274,21 @@ def get_prices(symbols: list[str]) -> dict:
   - Quality drop: judge pass rate, thumbs-down rate, escalation rate threshold se neeche.
   - Provider side: model version change, latency spikes, 429s.
 - Alerts ko **versions** se jodo (prompt v8 deploy ke baad drop), taaki rollback decision fast ho.
+
+```mermaid
+flowchart LR
+    TR["Prod traces"] --> CC["100 pct pe code checks"]
+    TR --> SM["5 se 10 pct sample"]
+    SM --> JD["Online judge: groundedness"]
+    CC --> MT["Metrics store"]
+    JD --> MT
+    MT --> TH["Quality SLO se compare"]
+    TH -->|90 pct se neeche| AL["On-call ko page"]
+    AL --> VR["Version tag check"]
+    VR --> RB["Prompt roll back"]
+```
+
+Saste code checks har trace pe, mehnga judge sirf sample pe; dono ek metric me jaate hain, breach pe on-call page hota hai jo version tag dekh ke rollback karta hai.
 
 **Interview tip:** "Main quality ko bhi SLO ki tarah treat karta hoon: groundedness pass rate 90% se neeche gaya to page, bilkul latency jaise."
 
@@ -279,6 +327,20 @@ flowchart LR
 - **Retention:** full payload traces 14–30 days, aggregated metrics 1 saal+, eval datasets (redacted) long-term.
 - **PII policy:** redaction before export, data residency (India me data for DPDP/RBI), access control on trace UI, deletion requests support, encryption.
 - Sensitive flows (payments, health) me prompt content log hi mat karo, sirf metadata aur hashes.
+
+```mermaid
+flowchart LR
+    R["Finished trace"] --> D{"Tail sampler"}
+    D -->|error ya slow| K["100 pct rakho"]
+    D -->|low score ya thumbs down| K
+    D -->|healthy| S["5 se 10 pct rakho"]
+    K --> RD["PII redact"]
+    S --> RD
+    RD --> ST[("Trace store, 14 se 30 din")]
+    ST --> AG["Aggregated metrics, 1 saal plus"]
+```
+
+Sampler trace khatam hone ke baad decide karta hai, isliye har interesting trace bachti hai, healthy traffic patla hota hai, aur store se pehle sab redact hota hai.
 
 **Interview tip:** "Errors aur bure scores ko 100% rakhta hoon, healthy traffic ko sample. Isse cost control me aur debugging data bhi milta hai."
 

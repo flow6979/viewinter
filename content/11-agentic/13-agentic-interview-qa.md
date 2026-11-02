@@ -147,6 +147,27 @@ flowchart LR
 - **Cost/latency:** intent + extraction chhote model pe, reply bada model ya same mid-size; prompt cache for policy text; parallel fetch (order + rider + restaurant); p95 < 5s, streaming.
 - **Failure modes:** provider down → fallback model → canned flows + human; order API down → circuit breaker + "thodi der me update"; double refund → idempotency key; fraud ring → per-user limits + abuse score; double-texting → interrupt strategy.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant R as Intent router
+    participant S as Missing item subgraph
+    participant O as Order API
+    participant P as Policy engine
+    participant F as Refund tool
+    U->>R: Mere order me paneer missing hai
+    R->>S: Intent missing_item
+    S->>O: get_order ORD1
+    O-->>S: Items, paid 240
+    S->>P: ORD1 pe 120 refund ho sakta hai?
+    P-->>S: Limit ke andar, allowed
+    S->>F: Idempotency key ke saath issue_refund
+    F-->>S: refund_ok
+    S-->>U: 120 refund hua, reply streamed
+```
+
+LLM sirf intent pakadta hai aur reply likhta hai; refund ka decision code wale policy engine se aata hai, aur refund call idempotency key ke saath jaati hai.
+
 **Interview tip:** khud bolo "policy engine code me hai, LLM sirf samjhaata hai". Ye sabse strong signal hai.
 
 **Common galti:** refund decision LLM pe chhod dena, ya escalation path ka zikr hi na karna.
@@ -183,6 +204,27 @@ flowchart TD
 - **Cost/latency:** researchers chhote/mid model, planner + writer bada; max sub-questions (e.g. 5), per-run token budget, tool-result cache; progress events stream ("3/5 sub-questions done").
 - **Failure modes:** search API rate limit → backoff + queue; ek researcher hang → timeout, partial report; loop never satisfied → max reflection rounds; context overflow → summaries only; crash → resume from checkpoint.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as Planner
+    participant R as Researchers
+    participant W as Writer
+    participant C as Critic
+    U->>P: Quick commerce unit economics report
+    P-->>U: run_id, progress stream shuru
+    P->>R: 5 sub-questions parallel me
+    R-->>P: Compressed notes aur source URLs
+    P->>W: Aggregated notes
+    W->>C: Citations ke saath draft
+    C-->>P: Gap mila, ek aur sub-question
+    P->>R: Gap research karo
+    R-->>W: Extra notes
+    W-->>U: Final cited report
+```
+
+Researchers raw pages nahi, compressed notes lautate hain, aur critic run ko planner pe sirf limited baar wapas bhej sakta hai, phir report ship hoti hai.
+
 **Interview tip:** stopping criteria aur budget pehle bolo; deep research ka sabse bada risk unbounded cost hai.
 
 **Common galti:** sab raw pages writer ke context me daal dena, jisse 200k tokens aur lost-in-the-middle.
@@ -217,6 +259,24 @@ flowchart LR
 - **Evals:** historical PRs with known bugs (recall), human-labelled comment usefulness (precision), comment acceptance/resolution rate online, false-positive rate.
 - **Cost/latency:** big PR → chunk by file, skip generated/vendor files, cache file summaries, chhota model for style, bada for security/correctness; target < 5 min, background run.
 - **Failure modes:** huge PR → summary-only mode; noisy comments → developers ignore (precision > recall); duplicate comments across reviewers → aggregator dedupe; sandbox escape → isolated microVM.
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub
+    participant O as Orchestrator
+    participant RV as Reviewers
+    participant AG as Aggregator
+    participant SB as Sandbox
+    GH->>O: Diff ke saath PR webhook
+    O->>RV: Chunks aur repo rules, parallel me
+    RV-->>AG: Candidate comments
+    AG->>AG: Dedupe aur rank
+    AG->>SB: Linters aur tests se verify
+    SB-->>AG: Confirmed findings
+    AG->>GH: Top comments post, advisory
+```
+
+Reviewers parallel me candidates banate hain, par post sirf wahi hote hain jo aggregator dedupe kare aur sandbox confirm kare, isse precision high rehti hai.
 
 **Interview tip:** "Precision recall se zyada important hai; ek baar dev ne bot ko noisy maan liya to sab ignore." Ye product sense dikhata hai.
 
@@ -262,6 +322,18 @@ flowchart LR
 
 - Har stage pe ek line me decision + trade-off bolo, phir aage badho.
 - Numbers: cost per task, p95 latency, steps per task, escalation rate.
+
+```mermaid
+flowchart LR
+    A["0 se 5 min: Clarify"] --> B["5 se 10: Requirements"]
+    B --> C["10 se 20: Architecture"]
+    C --> D["20 se 30: Deep dive"]
+    D --> E["30 se 38: Evals aur ops"]
+    E --> F["38 se 43: Failure modes"]
+    F --> G["43 se 45: Recap"]
+```
+
+Round ek pipeline ki tarah: diagram 20 minute tak ban jaaye, aur recap se pehle evals aur failure modes ko apna slot zaroor mile.
 
 **Interview tip:** 20 minute ke andar diagram board pe hona chahiye; uske baad interviewer deep dive chunta hai.
 

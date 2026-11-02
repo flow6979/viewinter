@@ -39,6 +39,22 @@ This page covers what happens when retrieval is no longer a fixed pipeline but a
 - **Query rewriting:** "what's its fee?" → resolved from the conversation into "Zerodha Coin direct mutual fund fee". Without rewriting, pronouns and follow-ups make retrieval fail.
 - **Decomposition / multi-hop:** "What is the expense ratio of the AMC whose fund is largest in my portfolio?" → hop 1: portfolio API, hop 2: search that fund's factsheet.
 - **Source routing:** from tool descriptions the agent chooses `search_policy_docs` vs `query_orders_db` vs `web_search`.
+
+```mermaid
+flowchart LR
+    Q["User query"] --> A{"Agent: retrieve?"}
+    A -->|no| ANS["Answer directly"]
+    A -->|yes| RW["Rewrite and split"]
+    RW --> V["search_policy_docs"]
+    RW --> L["get_ledger API"]
+    V --> A2["Agent combines"]
+    L --> A2
+    A2 -->|enough| F["Grounded answer"]
+    A2 -->|need another hop| RW
+```
+
+The agent first decides whether to retrieve, rewrites/splits the query and sends it to the right sources, and takes another hop if needed.
+
 - **Guard rails:** max retrieval calls (e.g. 4), every result token-capped, and make "nothing found" an explicit result so the agent doesn't hallucinate.
 
 ```python
@@ -168,6 +184,21 @@ app = g.compile()
   3. An LLM summary for every community.
 - **Local search:** find the query's entities in the graph and put their neighbours, relations and linked chunks into context. "Which Razorpay partners used feature X?"
 - **Global search:** map-reduce over community summaries. "What are the main themes across this year's incident reports?" Vector RAG fails here because the answer is not in any single chunk.
+
+```mermaid
+flowchart LR
+    C["Chunks"] --> X["LLM extract entities"]
+    X --> G[("Knowledge graph")]
+    G --> CD["Leiden communities"]
+    CD --> CS["Community summaries"]
+    Q1["Local question"] --> G
+    G -->|neighbours and chunks| LA["Local answer"]
+    Q2["Global question"] --> CS
+    CS -->|map-reduce| GA["Global answer"]
+```
+
+The first half is indexing (expensive, done once); a local query is answered from graph neighbours, a global query by map-reduce over community summaries.
+
 - **When it's worth it:** multi-hop relational questions, "summarize the whole corpus" questions, connected data (contracts, org charts, fraud rings).
 - **When it isn't:** simple factual lookups, a fast-changing corpus. Indexing is **very expensive** (LLM calls on every chunk) and incremental updates are hard. Cheaper options: LazyGraphRAG, or text-to-Cypher over an existing graph DB (Neo4j).
 
@@ -189,6 +220,21 @@ app = g.compile()
 - **Read-only role:** the DB user has only `SELECT`, only on allowed schemas/views; **row-level security** for tenant isolation. Writing "don't DELETE" in the prompt is not security.
 - **Query validation:** parse the SQL (sqlglot), allow exactly one `SELECT` statement, block denied tables, inject `LIMIT`, check cost with `EXPLAIN`, set a statement timeout.
 - **Self-correction:** on an error, return the error message to the agent (max 2–3 tries).
+
+```mermaid
+flowchart LR
+    Q["Analyst question"] --> SR["Schema retrieval"]
+    SR --> GEN["LLM writes SQL"]
+    GEN --> V{"Validate: sqlglot"}
+    V -->|ok| EX[("Read-only replica")]
+    EX --> SUM["Summarize rows"]
+    SUM --> A["Answer"]
+    V -->|blocked table| GEN
+    EX -->|SQL error| GEN
+```
+
+Every SQL query is validated before it runs; a validation or DB error goes back to the agent (max 2–3 tries).
+
 - **Result summarization:** don't give 10,000 rows to the LLM. Aggregates, top-N, or offload to a file + preview.
 - **Semantic layer:** if metrics (`late_order_pct`) are predefined, the agent should use them; more accurate and consistent than raw SQL.
 - **API tools:** where an API exists, don't use SQL. The API already enforces business rules, auth and rate limits. Give the tool typed args and a concise response.
@@ -259,6 +305,26 @@ flowchart LR
   - At query time, **pre-filter** by the authenticated user's groups (vector DB metadata filter). Post-filtering after top-k hurts recall and risks leakage.
   - User identity comes from the trusted session, not from LLM tool args.
   - An ACL change (an employee leaves a team) should also trigger re-indexing.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant S as Session auth
+    participant A as Agent
+    participant R as Retriever
+    participant V as Vector DB
+    U->>S: Login
+    S-->>A: user_id and acl_groups
+    U->>A: Question
+    A->>R: search query
+    R->>V: query with acl_groups pre-filter
+    V-->>R: Only allowed chunks
+    R-->>A: top-k allowed chunks
+    A-->>U: Answer from allowed data
+```
+
+ACL groups come from the trusted session and become a pre-filter inside retrieval; the LLM never receives an unauthorized chunk.
+
 - **PII handling:**
   - Detect + redact/mask at ingestion (e.g. Presidio). Aadhaar, PAN, card numbers, phone.
   - Where PII is needed (a KYC agent), use tokenization and strict ACLs; mask it in logs/traces.

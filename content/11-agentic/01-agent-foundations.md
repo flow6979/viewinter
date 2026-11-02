@@ -42,6 +42,22 @@ Agent kya hai, agent loop (ReAct) kaise chalta hai, tool calling ka exact messag
 
 > **Example:** Zerodha Kite assistant: "Meri portfolio me sabse zyada loss wala stock kaunsa hai aur uska aaj ka price?" Step 1: `get_holdings()`. Observe: 12 stocks with P&L. Reason: sabse bada loss IDEA. Step 2: `get_quote("IDEA")`. Observe: price. Step 3: final answer.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant L as LLM
+    participant T as Kite tools
+    U->>L: Biggest loss stock and its price?
+    L->>T: get_holdings
+    T-->>L: 12 stocks with P and L
+    Note over L: Reason - biggest loss is IDEA
+    L->>T: get_quote IDEA
+    T-->>L: Current price
+    L-->>U: Final answer with price
+```
+
+Zerodha example ka trace: har tool result observation banke LLM ke paas wapas jaata hai, aur agla step LLM khud chunta hai.
+
 - **Perceive:** user input + pichhle observations context me.
 - **Reason:** model decide karta hai: tool chahiye ya answer ready.
 - **Act:** tool call emit (name + JSON args).
@@ -152,6 +168,23 @@ print(d.eligible, d.amount_inr)                       # typed Pydantic object
 > **Example:** Flipkart seller assistant ke tools: `search_orders(status, date_from)`, `get_inventory(sku)`, `update_price(sku, new_price)`. "Kal ke cancelled orders dikhao" → model `search_orders(status="cancelled", date_from="2026-11-01")` emit karta hai.
 
 - **Model execute nahi karta.** Wo sirf intent + args deta hai. Auth, validation, rate limit tumhare code me.
+
+```mermaid
+sequenceDiagram
+    participant A as Your app
+    participant L as LLM API
+    participant T as Tool code
+    A->>L: messages plus tool schemas
+    L-->>A: tool_use search_orders with args
+    A->>A: Validate args and auth
+    A->>T: Run search_orders
+    T-->>A: Order rows
+    A->>L: tool_result with same id
+    L-->>A: Final text answer
+```
+
+Model sirf `tool_use` block deta hai; args validate karna, tool chalana aur same id ke saath `tool_result` wapas bhejna tumhare app ka kaam hai.
+
 - **Description = prompt.** Model tool isi se choose karta hai. Kab use karo, kab nahi, args ka format, examples likho.
 - **Schema tight rakho:** `enum`, `required`, formats. Kam aur clear params better.
 
@@ -164,6 +197,21 @@ print(d.eligible, d.amount_inr)                       # typed Pydantic object
 | Parallel off | `parallel_tool_calls=False` | `disable_parallel_tool_use: true` | order-dependent tools |
 
 - **Parallel tool calls:** ek turn me multiple calls (e.g. 3 cities ka weather). Independent ho to concurrently chalao (`asyncio.gather`), saare results **ek hi** next message me bhejo.
+
+```mermaid
+flowchart LR
+    L["LLM turn"] -->|3 tool calls| F["App fan-out"]
+    F --> W1["weather Delhi"]
+    F --> W2["weather Mumbai"]
+    F --> W3["weather Bengaluru"]
+    W1 --> M["One results message"]
+    W2 --> M
+    W3 --> M
+    M --> L2["Next LLM turn"]
+```
+
+Ek turn me aaye independent calls concurrently chalao, aur saare results ek hi next message me wapas bhejo.
+
 - **Tool errors = observations:** exception crash mat karo. Clear error message wapas do ("order_id format ORD-XXXX hona chahiye") taaki model self-correct kare. Retry count limit karo.
 
 ```python
@@ -215,6 +263,25 @@ for call in msg.tool_calls:          # [{'name': 'get_inventory', 'args': {...},
 **Ek line me:** jab steps pehle se pata hon to **workflow** (deterministic, sasta, testable); jab path input pe depend kare aur pehle se enumerate na ho sake, tab **agent**.
 
 > **Example:** Zomato restaurant onboarding: document extract → validate FSSAI → create listing. Steps fixed, workflow. Vs "customer ki complaint resolve karo": kabhi refund, kabhi re-delivery, kabhi fraud check. Path unknown, agent.
+
+```mermaid
+flowchart LR
+    subgraph WF["Workflow: code decides"]
+        D1["Extract docs"] --> D2["Validate FSSAI"]
+        D2 --> D3["Create listing"]
+    end
+    subgraph AG["Agent: LLM decides"]
+        C1["Complaint"] --> LL["LLM picks step"]
+        LL -->|refund| R["Refund tool"]
+        LL -->|redeliver| RD["Re-delivery tool"]
+        LL -->|suspicious| FR["Fraud check"]
+        R --> LL
+        FR --> LL
+        LL -->|done| DONE["Reply"]
+    end
+```
+
+Workflow me path code me fixed hai; agent me LLM har step pe agla tool chunta hai aur result dekh ke loop karta hai.
 
 | Sawal | Haan → | Nahi → |
 |---|---|---|

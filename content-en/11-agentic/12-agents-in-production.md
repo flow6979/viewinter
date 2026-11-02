@@ -56,6 +56,28 @@ flowchart LR
 - LangGraph `durability` modes: `"exit"` (save only at the end, fast), `"async"` (default, saves in the background), `"sync"` (saves after each step before moving on; safest).
 - **Temporal-style durability (brief):** Temporal logs every activity result in the workflow's event history; after a crash the workflow replays and completed activities do not run again. For very long, multi-day, money-moving workflows, teams wrap LLM calls as activities inside Temporal. The LangGraph checkpointer gives step-level durability; Temporal gives stronger workflow guarantees (timers, signals, versioning).
 
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as API
+    participant Q as Run queue
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+    participant P as Postgres checkpointer
+    C->>A: Start quarterly tax report
+    A-->>C: run_id r9
+    A->>Q: Enqueue run r9
+    Q->>W1: Pick r9
+    W1->>P: Checkpoint after step 3
+    Note over W1: Worker crashes during step 4
+    Q->>W2: Redeliver r9
+    W2->>P: Load last checkpoint
+    W2->>W2: Re-run step 4 with idempotency key
+    W2-->>C: Progress stream and final report
+```
+
+The client only holds a `run_id`; when a worker dies, another one picks up the run from the last checkpoint and re-runs only the unfinished step.
+
 **Interview tip:** "Background run + checkpointer + idempotent nodes = crash-safe agent. I will say which node re-runs on resume and how its side effects stay safe."
 
 **Common mistake:** assuming the checkpointer gives exactly-once. It gives step-level resume; an external call inside a node can happen again.
@@ -157,6 +179,20 @@ async def chat(thread_id: str, body: dict, user=Depends(current_user)):
 - **Circuit breaker:** if a tool/provider keeps failing, stop using it for a while, fail fast + fallback; do not make every request wait 30s.
 - **Graceful degradation:** if everything fails, "we are having trouble, connecting you to a human agent", and the run's state is preserved.
 
+```mermaid
+flowchart LR
+    REQ["LLM call"] --> P["Primary provider"]
+    P -->|ok| OUT["Response"]
+    P -->|429 or 5xx| BO["Backoff with jitter"]
+    BO -->|retry| P
+    BO -->|retries exhausted| CB["Circuit breaker opens"]
+    CB --> F["Fallback model"]
+    F -->|ok| OUT
+    F -->|also down| H["Human handoff, state saved"]
+```
+
+Transient errors get a few spaced-out retries; if the provider stays down, the breaker opens and traffic moves to the fallback model, with a human handoff as the last step.
+
 ```python
 from langgraph.types import RetryPolicy
 from langchain.agents import create_agent
@@ -235,6 +271,19 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Release flow:** offline eval suite (golden set) → **shadow** (the new version runs on real traffic, its response does not reach the user, it is compared; read-only tools only!) → **canary** (1–5% of users) → full rollout. Evals + online metrics at every gate.
 - Rollback should be a config flip (assistant/config version), not a redeploy.
 
+```mermaid
+flowchart LR
+    CH["Prompt or model change"] --> OE["Offline eval suite"]
+    OE -->|pass| SH["Shadow, write tools off"]
+    SH --> CN["Canary on 1 to 5 pct"]
+    CN --> MO["Online metrics check"]
+    MO -->|healthy| FULL["Full rollout"]
+    MO -->|regression| RB["Rollback via config flip"]
+    OE -->|fail| CH
+```
+
+Each stage exposes the change to more real traffic only after the previous gate passes, and a regression at canary is undone with a config flip, not a redeploy.
+
 | Thing | How to version | Gate |
 |---|---|---|
 | Prompt | registry / git hash | offline evals |
@@ -257,6 +306,23 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Context packet:** summary, user intent, actions + tool results, pending decision, `thread_id` link to the trace.
 - Escalation rate is a core metric: too low = the agent is handling cases it should not; too high = the agent adds little value.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant T as Ticket system
+    participant H as Human agent
+    U->>A: Third request for a human
+    A->>A: Trigger matched, interrupt run
+    A->>T: Create ticket with context packet
+    T->>H: Summary, actions taken, thread_id
+    A-->>U: Connecting you, no need to repeat
+    H->>A: Resume with decision
+    A-->>U: Refund approved by support
+```
+
+The run is paused, not ended: the human gets the full context packet, and their decision resumes the same thread so the user never repeats themselves.
+
 **Interview tip:** present escalation as a design feature, not a failure, and name its metrics (escalation rate, resolution after handoff).
 
 **Common mistake:** saying only "connecting you to an agent" at handoff without sending context; the user has to type everything again.
@@ -272,6 +338,18 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Patterns:** ReAct loop, evaluator-optimizer (tests as verifier), human approval for destructive commands.
 - **Hard parts:** context (the repo is big and does not fit, hence search + file summaries), edit reliability (exact string/diff edits), sandbox security, infinite fix-test loops (step budget), cost of long runs.
 
+```mermaid
+flowchart LR
+    T["Task from developer"] --> L["Agent LLM loop"]
+    L --> S["search_code, read_file"]
+    S --> E["edit_file as diff"]
+    E --> R["run_tests in sandbox"]
+    R -->|tests fail| L
+    R -->|tests pass| AP["Human reviews diff"]
+```
+
+Tests act as the verifier: a failure goes back into the loop as feedback, and a cap on iterations stops an endless fix-test cycle.
+
 ### 2. Customer-support agent (Swiggy order-issue bot)
 - **Architecture:** intent router → specialised subgraphs (missing item, late order, refund, payment) → tools (`get_order`, `get_rider_eta`, `issue_refund` with idempotency) → policy check → reply; escalation node.
 - **Patterns:** routing, mostly a **workflow** with the LLM at decision points, HITL for high-value refunds, RAG on policy docs.
@@ -286,6 +364,19 @@ agent.invoke({"messages": [("user", "Last week ke settlements")]},
 - **Architecture:** schema retrieval (relevant tables + column docs + sample queries) → SQL generation → validate (parse, read-only, LIMIT, cost estimate) → execute on a read replica → on error, self-correct loop → chart/answer.
 - **Patterns:** RAG over schema/semantic layer, evaluator-optimizer (DB error as feedback), tool sandboxing.
 - **Hard parts:** ambiguous business metrics (definition of "active user", solved with a semantic layer), SQL that is wrong but runs (silent errors, eval with gold queries), row-level permissions, expensive queries (timeouts, read-only role).
+
+```mermaid
+flowchart LR
+    Q["Business question"] --> SR["Schema retrieval"]
+    SR --> G["Generate SQL"]
+    G --> V["Validate: read-only, LIMIT"]
+    V --> X[("Read replica")]
+    X --> A["Answer and chart"]
+    V -->|invalid| G
+    X -->|DB error| G
+```
+
+Validation and DB errors are fed back to the generator as self-correction, while execution only ever touches a read replica.
 
 | Agent | Main pattern | Hardest part |
 |---|---|---|

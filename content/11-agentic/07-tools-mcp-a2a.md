@@ -51,6 +51,20 @@ def list_settlements(from_date: str, to_date: str, status: Literal["processed", 
 
 - **Problem:** 100+ tool schemas = 20–50k tokens har call pe, cost upar, aur accuracy neeche (similar tools me confusion).
 - **Tool RAG:** har tool ka naam + description + example queries embed karo; user query pe top-k tools search; sirf unhe `bind_tools`. Agent ke paas ek `search_tools` meta-tool bhi ho sakta hai taaki wo khud aur tools maange.
+
+```mermaid
+flowchart LR
+    Q["User query"] --> E["Embed query"]
+    E --> I[("Tool index: 120 tools")]
+    I --> K["Top-k tools"]
+    K --> B["bind_tools subset"]
+    B --> A["Agent LLM"]
+    A -->|needs more| ST["search_tools meta-tool"]
+    ST --> I
+```
+
+Har query ke liye sirf relevant top-k tools bind hote hain; agent ko aur chahiye to `search_tools` se maang leta hai.
+
 - **Hierarchical routing:** pehle domain classify (payments / orders / KYC), phir us domain ke tools. Ya har domain ka **sub-agent** apne tools ke saath.
 - **Caching ka dhyaan:** tools prompt ke shuru me hote hain; har turn tool set badalna prefix cache todta hai. Tool set ko per-session stable rakho, ya tools ko deferred load karo.
 - Measure karo: tool-selection accuracy (sahi tool top-k me tha?) alag metric hai.
@@ -76,6 +90,26 @@ def list_settlements(from_date: str, to_date: str, status: Literal["processed", 
 
 - **Client features** (server client se maang sakta): **sampling** (server host ke LLM se completion maange), **elicitation** (user se extra input maange), **roots** (kaunse folders/URIs pe kaam karna allowed).
 - **Wire format:** JSON-RPC 2.0. Lifecycle: `initialize` (capabilities negotiate) → `tools/list` → `tools/call` → notifications (`tools/list_changed`).
+
+```mermaid
+sequenceDiagram
+    participant H as Host agent
+    participant C as MCP client
+    participant S as MCP server
+    H->>C: connect server
+    C->>S: initialize with capabilities
+    S-->>C: server capabilities
+    C->>S: tools/list
+    S-->>C: tool schemas
+    C-->>H: tools added to LLM
+    H->>C: LLM chose get_holdings
+    C->>S: tools/call get_holdings
+    S-->>C: result content
+    S--)C: notification tools/list_changed
+```
+
+`initialize` handshake ke baad client tools list karta hai, LLM ki choice pe `tools/call` bhejta hai; tool set badle to server notification bhejta hai.
+
 - **Transports:**
 
 | | stdio | Streamable HTTP |
@@ -162,6 +196,23 @@ async def build():
 **Ek line me:** remote MCP server ek **OAuth 2.1 protected resource** hai; aur MCP tools third-party code + third-party text hain, isliye unhe untrusted maano.
 
 - **Auth flow (spec):** server `401` + protected resource metadata deta hai → client authorization server dhoondta hai → OAuth 2.1 with **PKCE** → access token jo **sirf us server ke liye** issue ho (resource indicators / audience).
+
+```mermaid
+sequenceDiagram
+    participant C as MCP client
+    participant S as MCP server
+    participant AS as Auth server
+    C->>S: request without token
+    S-->>C: 401 plus resource metadata
+    C->>AS: discover and authorize with PKCE
+    AS-->>C: access token for this server only
+    C->>S: request with bearer token
+    S->>S: validate audience and scopes
+    S-->>C: tool result
+```
+
+Server 401 se auth server batata hai; client PKCE ke saath sirf usi server ke liye token leta hai, aur server audience + scopes check karta hai.
+
 - **No token passthrough:** MCP server ko mila token seedha downstream API ko forward mat karo; server apna alag token use kare (confused deputy se bachav).
 - **Least privilege scopes:** "read holdings" aur "place order" alag scopes. Over-broad scopes (`repo:*`, full Gmail) = ek prompt injection me poora account.
 - **Security risks:**
@@ -253,6 +304,18 @@ sequenceDiagram
 - **Network egress control:** default **no network**; zarurat ho to allow-list proxy (sirf `pypi.org`, internal API). Warna data exfiltration aur crypto-mining.
 - **Secrets:** sandbox me koi cloud creds/env secrets nahi. Files sirf jo task ke liye mount ki.
 - **Lifecycle:** per-session sandbox, task ke baad destroy; state chahiye to explicit files.
+
+```mermaid
+flowchart LR
+    L["LLM writes code"] --> SB["Fresh microVM sandbox"]
+    SB --> RUN["Run with CPU, mem, time limits"]
+    RUN -->|allow-list only| P["Egress proxy"]
+    RUN --> O["Capped output and files"]
+    O --> L2["Result to LLM"]
+    O --> X["Destroy sandbox"]
+```
+
+Har session ka fresh sandbox: limits ke andar run, network sirf allow-list proxy se, output capped, phir sandbox destroy.
 
 ```python
 import subprocess, tempfile, pathlib

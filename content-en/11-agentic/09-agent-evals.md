@@ -71,6 +71,20 @@ flowchart LR
 - **Check argument accuracy separately:** right tool, wrong `order_id` = fail. Args match: exact, ignore, or a custom matcher (case-insensitive city).
 - Extract tool calls from messages (OpenAI format or LangChain messages); `agentevals` accepts both.
 
+```mermaid
+flowchart LR
+    Q["Order ORD1 late, refund it"] --> A1["Agent: get_order"]
+    A1 --> A2["Agent: check_delay"]
+    A2 --> A3["Agent: issue_refund"]
+    A3 --> CMP["Compare trajectories"]
+    RF["Reference: get_order, issue_refund"] --> CMP
+    CMP -->|strict| F1["Fail: extra step"]
+    CMP -->|superset| P1["Pass: required tools called"]
+    CMP -->|subset| F2["Fail: check_delay not in reference"]
+```
+
+The same actual trajectory passes or fails depending on the match mode, which is why the mode must match what you care about: safety, completeness or exact order.
+
 ```python
 import json
 from agentevals.trajectory.match import create_trajectory_match_evaluator
@@ -153,6 +167,20 @@ print(judge(outputs=agent_msgs))   # {'key': 'trajectory_accuracy', 'score': Tru
 - **Calibration:** have humans (domain experts) label 100–200 examples, run the judge, and measure **agreement**: accuracy, Cohen's kappa, or TPR/TNR. Aim for ~85–90%+ agreement, otherwise fix the rubric/prompt.
 - Version the judge too (model + prompt); if the judge changes, re-run the baseline.
 
+```mermaid
+flowchart LR
+    I["Input + agent output"] --> J["Judge LLM with rubric"]
+    J --> RS["Reasoning first"]
+    RS --> V["PASS or FAIL verdict"]
+    H["Human labels, 100 to 200"] --> AG["Agreement check"]
+    V --> AG
+    AG -->|85 to 90 percent plus| USE["Use judge at scale"]
+    AG -->|below target| FIX["Fix rubric and prompt"]
+    FIX --> J
+```
+
+The judge's verdicts are compared with human labels first; only when agreement is high enough do you trust it at scale, otherwise the rubric goes back for fixing.
+
 ```python
 from openevals.llm import create_llm_as_judge
 
@@ -223,6 +251,19 @@ def agreement(examples, human_labels):
 - **User feedback signals:** explicit (thumbs, rating) is sparse; implicit is richer: rephrasing, "let me talk to an agent", abandonment, copy action, retry.
 - Run an online evaluator (reference-free judge) on sampled traces; low-score traces → review queue → dataset. Details: [AI Observability](10-agent-observability.md).
 
+```mermaid
+flowchart LR
+    CH["Prompt or model change"] --> OFF["Offline evals on golden set"]
+    OFF -->|pass| CAN["A/B on 5 to 10 pct traffic"]
+    CAN --> ON["Online judge on sampled traces"]
+    ON --> FB["User feedback signals"]
+    FB --> RQ["Low score review queue"]
+    RQ --> DS["Golden dataset grows"]
+    DS --> OFF
+```
+
+Offline evals gate the release, online evals watch live traffic, and the failures found online flow back into the golden set for the next offline run.
+
 **Interview tip:** "Offline evals are the gate to ship; online evals answer 'is it actually working in prod'."
 
 **Common mistake:** depending only on thumbs-down; only 1–2% of users give feedback.
@@ -283,6 +324,25 @@ def test_agent_regression():
 - Stop conditions: goal done, max turns (e.g. 10), or the user is frustrated.
 - Mock/sandbox the tools; τ-bench is a public benchmark in this style (user simulator + tools + DB state check).
 - The final check is ideally **state-based**: was the right booking created in the DB?
+
+```mermaid
+sequenceDiagram
+    participant S as Simulated user
+    participant A as Agent
+    participant T as Mock tools and DB
+    participant J as Judge
+    S->>A: Book Delhi to Goa, 14 Dec
+    A->>S: Confirm the date and budget?
+    S->>A: Sorry, 15 Dec, under 8000
+    A->>T: search_flights, then book
+    T-->>A: Booking B77 created
+    A->>S: Booked, reference B77
+    S->>A: DONE
+    J->>T: Check DB state for booking
+    J->>J: Grade the full conversation
+```
+
+The simulator reveals the correct date only when the agent asks, and the judge checks the booking in the DB state, not just the agent's words.
 
 ```python
 def simulate(agent, persona: str, goal: str, max_turns: int = 8):

@@ -42,6 +42,23 @@ This page teaches you to control an agent's bill and speed: token economics, mod
 - Retries, self-reflection loops, critic agents, multi-agent handoffs: each is a new LLM call.
 - Large tool results (raw JSON, full web pages) stay in the context.
 
+```mermaid
+sequenceDiagram
+    participant A as Agent loop
+    participant L as LLM
+    participant T as Tools
+    A->>L: Step 1, input 4.5k tokens
+    L-->>A: Tool call get_holdings
+    A->>T: get_holdings
+    T-->>A: Result adds 1.5k tokens
+    A->>L: Step 2, input 6k tokens
+    Note over A,L: Full context is resent on every step
+    A->>L: Step 6, input 12k tokens
+    L-->>A: Final answer, 700 tokens
+```
+
+The LLM is stateless, so every step resends the prefix plus the whole growing history; that is how 6 steps add up to 49.5k input tokens.
+
 ```python
 def task_cost(steps, prefix=4000, query=500, per_step=1500, out_step=300,
               out_final=700, p_in=3.0, p_out=15.0, p_cache=0.30, cache=True):
@@ -72,6 +89,19 @@ print(task_cost(6, cache=False), task_cost(6))  # ~0.1815, ~0.1275
 - **Cascading (try-then-escalate):** the small model answers, then a check runs: structured confidence, a verifier, schema validation, or a tool error. Fail → big model.
 - **Per-step routing:** also inside the agent: planning and final synthesis on the big model; extraction/summarize/classify on the small model.
 - Typical saving is 40–70% when most traffic is simple. Trade-off: router mistakes (a hard query on the small model) hurt quality, and an escalation in a cascade doubles latency.
+
+```mermaid
+flowchart LR
+    Q["User query"] --> R["Router: small model"]
+    R -->|simple| S["Small model answers"]
+    S --> C["Confidence and schema check"]
+    C -->|pass| OUT["Reply to user"]
+    C -->|fail| L["Escalate to large model"]
+    R -->|complex| L
+    L --> OUT
+```
+
+Simple queries stop at the small model; only failed checks or queries routed as complex pay for the large model, which is where the 40–70% saving comes from.
 
 ```python
 from typing import Literal, TypedDict
@@ -138,6 +168,19 @@ app = g.compile()
 - Low threshold = more hits but wrong answers; high = fewer hits. Tune it on an eval set, and keep TTL + invalidation (flush on policy change).
 - In agents, caching a **plan or sub-step** instead of the full answer is often safer.
 
+```mermaid
+flowchart LR
+    Q["User query"] --> E["Embed query"]
+    E --> V[("Vector cache, scoped by user")]
+    V --> SIM["Similarity check"]
+    SIM -->|0.95 or above| HIT["Return cached answer"]
+    SIM -->|below threshold| AG["Run the agent"]
+    AG --> ST["Store answer with TTL"]
+    ST --> V
+```
+
+A hit skips the whole LLM call; a miss runs the agent and stores the new answer with a TTL, so the threshold and the scope key decide both savings and risk.
+
 **3. Tool-result caching:**
 - Results of read-only, deterministic tools (product info, FX rate, docs search) keyed on `(tool, normalized_args)` with a TTL.
 - Never cache write tools (payment, cancel order). Those need [idempotency](../01-topics/10-idempotency-retries.md), not a cache.
@@ -184,6 +227,23 @@ graph = builder.compile(cache=InMemoryCache())  # Redis-backed cache in prod
 **In one line:** users feel two things: **TTFT** (when the first token shows up) and **total latency** (when the job is done); in agents, total latency = the sum of sequential LLM + tool calls, so streaming and parallelism are essential.
 
 > **Example:** Swiggy's "why is my order late" agent takes 9 seconds over 4 steps. 9 seconds of blank screen and the user closes the app. If it shows "Finding your order... checking rider location..." and then streams the final answer, the same 9 seconds feel fine.
+
+```mermaid
+sequenceDiagram
+    participant U as User UI
+    participant A as Agent
+    participant L as LLM
+    U->>A: Why is my order late?
+    A-->>U: Step event, finding your order
+    A->>L: Classify and call tools
+    A-->>U: Step event, checking rider location
+    A->>L: Final answer, streamed
+    L-->>U: First token at about 2s
+    L-->>U: Remaining tokens
+    A-->>U: Done at 9s
+```
+
+Total time is still 9 seconds, but the user sees progress within the first second and text by about 2 seconds, so the wait feels much shorter.
 
 | Metric | What it is | What controls it |
 |---|---|---|
@@ -272,6 +332,19 @@ async def stream_run(graph, question: str, thread_id: str):
 - **Per-user / per-tenant spend limits:** Redis counter (daily $); at the limit, a graceful message or a smaller model. Same as [Rate limiting](../01-topics/11-rate-limiting.md), only the unit is tokens/$.
 - **Timeouts:** on every LLM call (client timeout), every tool, and the whole run (`asyncio.timeout`).
 - On hitting a limit, **exit gracefully**: partial answer + "please talk to a human", not a 500 error.
+
+```mermaid
+flowchart TD
+    REQ["New request"] --> UC["User daily spend check"]
+    UC -->|under cap| ST["Agent step"]
+    ST --> BC["Steps, tokens, time check"]
+    BC -->|task done| ANS["Answer and record cost"]
+    BC -->|within budget| ST
+    BC -->|limit hit| GX["Graceful exit, human handoff"]
+    UC -->|over cap| MSG["Daily limit message"]
+```
+
+The spend cap is checked before the run starts and the step, token and time budget after every step, so a runaway loop ends with a graceful message instead of a bill.
 
 ```python
 import asyncio

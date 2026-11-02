@@ -24,6 +24,19 @@ LangGraph builds agents as a **graph + shared state + cycles + persistence**. In
 | Use | simple pipelines | agents, long-running workflows |
 
 - **Execution model (Pregel style):** the graph runs in **supersteps**. Nodes active in one superstep run in parallel, their updates are merged by reducers, then a checkpoint is saved.
+
+```mermaid
+flowchart LR
+    S["Superstep starts"] --> A["Node A runs"]
+    S --> B["Node B runs"]
+    A --> R["Reducers merge"]
+    B --> R
+    R --> C["Checkpoint saved"]
+    C --> N["Next superstep"]
+```
+
+One superstep: active nodes run in parallel, reducers merge their updates, then a checkpoint is saved.
+
 - **Levels:** low-level `StateGraph` (full control) vs high-level `create_agent` (`langchain.agents`, LangChain 1.0), which is LangGraph underneath. The old `langgraph.prebuilt.create_react_agent` is now the deprecated path; use `create_agent`.
 
 **Interview tip:** "LangGraph is an orchestration runtime, not an LLM wrapper. I choose it for durable execution, HITL and cycles; the LLM calls can come from any SDK."
@@ -41,6 +54,22 @@ LangGraph builds agents as a **graph + shared state + cycles + persistence**. In
 - **No reducer:** the new value overwrites.
 - **`operator.add`:** concatenates lists. Required for parallel branches (fan-out).
 - **`add_messages`:** appends messages, **replaces a message with the same `id`**, deletes with `RemoveMessage(id=...)`, and converts dicts/tuples to Message objects.
+
+```mermaid
+flowchart LR
+    O["Old state"] --> RM["add_messages"]
+    U1["Update: messages"] --> RM
+    RM --> M2["messages appended"]
+    O --> RS["operator.add"]
+    U2["Worker updates: skus"] --> RS
+    RS --> S2["skus concatenated"]
+    O --> RO["No reducer"]
+    U3["Update: status"] --> RO
+    RO --> S3["status overwritten"]
+```
+
+Each key's reducer decides the merge: `messages` appends, `skus` concatenates, and `status`, with no reducer, is overwritten.
+
 - **`MessagesState`:** ready-made `{"messages": Annotated[list[AnyMessage], add_messages]}`. Extend it to add keys.
 
 ```python
@@ -80,6 +109,20 @@ class SupportState(MessagesState):                         # messages already in
 - **Normal edge:** `add_edge("a", "b")`, b always runs after a.
 - **Conditional edge:** `add_conditional_edges("a", router_fn, path_map)`. The router reads state and returns a node name (or a list, or `Send`).
 - **`Command(goto=..., update=...)`:** routing logic inside the node, no separate edge function. Annotate the return type as `Command[Literal[...]]` so the graph can be rendered/validated. `Command(graph=Command.PARENT)` hands off from a subgraph to the parent (multi-agent).
+
+```mermaid
+flowchart LR
+    S["START"] --> C["classify"]
+    C --> RF{"route fn"}
+    RF -->|refund| R["refund_flow"]
+    RF -->|food_quality| Q["quality_team"]
+    RF -->|other| E["END"]
+    R -->|Command goto small amount| A["auto_refund"]
+    R -->|Command goto large amount| O["ops_review"]
+```
+
+The conditional edge picks the route with a pure function; the `refund_flow` node returns a `Command` and does the state update + goto itself.
+
 - Multiple outgoing normal edges from one node = parallel fan-out; `Send("worker", payload)` for dynamic map-reduce (details: [Workflows](03-workflow-patterns.md)).
 
 ```python
@@ -145,6 +188,24 @@ graph = builder.compile()
 
 - **Thread:** the id of one conversation/run (`thread_id`). Each thread has its own checkpoint history.
 - **Checkpoint = `StateSnapshot`:** `values`, `next` (who runs next), `config` (with `checkpoint_id`), `metadata`, `parent_config`, `tasks`, `interrupts`.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant G as Graph
+    participant CP as Checkpointer
+    U->>G: invoke with thread_id u42
+    G->>CP: save checkpoint after superstep 1
+    G->>CP: save checkpoint after superstep 2
+    Note over G: Pod crashes
+    U->>G: invoke again, same thread_id
+    G->>CP: load latest checkpoint
+    CP-->>G: state values and next node
+    G-->>U: continue from last step
+```
+
+A checkpoint is saved after every superstep; invoke again with the same `thread_id` and the graph continues from the last checkpoint.
+
 - **Backends:**
 
 | Saver | Package | When |
@@ -190,6 +251,26 @@ graph.invoke(None, forked)                               # new branch, old histo
 - A **checkpointer is required** (state must be saved), and so is a `thread_id`.
 - On interrupt, the `invoke` result contains an `__interrupt__` key with the payload.
 - **On resume the node re-runs from the start**, not from the `interrupt()` line. So keep side effects **before** the interrupt idempotent, or put the interrupt at the start of the node.
+
+```mermaid
+sequenceDiagram
+    participant C as Caller API
+    participant G as Graph
+    participant CP as Checkpointer
+    participant H as Ops human
+    C->>G: invoke refund ORD-9
+    G->>CP: save state at interrupt
+    G-->>C: __interrupt__ payload
+    C->>H: show approval card
+    H-->>C: approved
+    C->>G: Command resume approved
+    G->>CP: load paused thread
+    Note over G: approval_gate node re-runs from start
+    G-->>C: refund issued
+```
+
+On interrupt the state is parked in the checkpoint; when `Command(resume=...)` arrives, the same node runs again from the start.
+
 - Multiple `interrupt()` calls in one node are matched by order (index); do not skip/reorder them conditionally.
 - **Static breakpoints:** `compile(interrupt_before=["tools"])`, for debugging or "stop before every tool".
 - **Editing state:** `graph.update_state(cfg, {...}, as_node="agent")`: a human fixes wrong tool args, then `invoke(None, cfg)`.

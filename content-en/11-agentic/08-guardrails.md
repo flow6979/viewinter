@@ -86,6 +86,23 @@ def check_input(text: str) -> tuple[bool, str]:
   3. An **exfiltration channel** (HTTP request, sending email, rendering a markdown image, a link)
 - All three together = data theft is possible. Design rule: **cut at least one leg.**
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant W as Seller web page
+    participant G as Tool guard
+    U->>A: Summarize this seller page
+    A->>W: fetch_page(url)
+    W-->>A: Text with hidden instruction
+    A->>G: http_get(evil URL with payout data)
+    Note over G: Egress allowlist cuts the exfil leg
+    G-->>A: Blocked, domain not allowed
+    A-->>U: Summary only, no data leaves
+```
+
+The hidden instruction rides in on the fetched page; the agent obeys it, but the tool guard blocks the outbound call, so the exfiltration leg of the trifecta is cut.
+
 | Mitigation | How it works | Trade-off |
 |---|---|---|
 | Dual-LLM / quarantine | The privileged LLM runs tools but never sees untrusted text; the quarantined LLM reads untrusted text but cannot call tools, it only returns variables | Complex, some tasks become impossible |
@@ -114,6 +131,19 @@ def check_input(text: str) -> tuple[bool, str]:
 - **PII leakage:** does the output contain another customer's phone/PAN/Aadhaar?
 - **Business rules:** in code: amount ≤ limit, only allowed currencies, valid order_id.
 - Output guards are hard with streaming: chunked checks or sentence-level buffering.
+
+```mermaid
+flowchart LR
+    P["Refund prompt"] --> L["LLM call"]
+    L --> V["Pydantic validation"]
+    V -->|valid| B["Business rules check"]
+    B -->|pass| OK["Return decision"]
+    V -->|invalid| E["Append error message"]
+    E -->|retry, max 2| L
+    E -->|retries exhausted| H["Human queue fallback"]
+```
+
+Valid output goes through schema and business rules; invalid output goes back to the model with the error, and after 2 failed retries it falls back to a human queue instead of looping forever.
 
 ```python
 from pydantic import BaseModel, Field, ValidationError
@@ -263,6 +293,25 @@ app = g.compile(checkpointer=InMemorySaver())  # interrupt needs a checkpointer
 - After `interrupt`, the node **re-runs from the start**, so do not put side effects before the interrupt.
 - LangChain 1.x `create_agent` also ships built-in middleware like `HumanInTheLoopMiddleware` and `PIIMiddleware`; same idea, less code.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant G as LangGraph app
+    participant C as Checkpointer
+    participant R as Reviewer
+    participant P as Refund API
+    U->>G: Refund 7200 for ORD12345678
+    G->>G: input_guard, then agent node
+    G->>C: Save state at interrupt
+    G-->>R: Approval request, amount 7200
+    R->>G: Command resume approve
+    G->>C: Load state for thread t1
+    G->>P: Issue refund with idempotency key
+    G-->>U: Refund initiated
+```
+
+The run pauses at `interrupt`, state sits in the checkpointer until the reviewer answers, and only after resume does the refund API get called, so there is no side effect before the pause.
+
 **Interview tip:** "Making a guardrail a graph node makes it traceable, testable and bypass-proof, because code does the routing, not the model."
 
 **Common mistake:** calling the refund API in the interrupt node first and then interrupting. On resume you get a double refund.
@@ -320,6 +369,22 @@ app = g.compile(checkpointer=InMemorySaver())  # interrupt needs a checkpointer
 - **Risk-based:** light guards on read-only FAQ; heavy guards on money/action flows.
 - **Streaming:** sentence buffering for output guards; watch the impact on time-to-first-token.
 - Track each guard's **precision/recall and false positive rate**; too much blocking = unhappy users.
+
+```mermaid
+flowchart LR
+    Q["User query"] --> IC["Injection check 20ms"]
+    Q --> TC["Topic check 15ms"]
+    Q --> LG["Llama Guard 150ms"]
+    Q --> M["Main LLM call, speculative"]
+    IC --> J["Join results"]
+    TC --> J
+    LG --> J
+    M --> J
+    J -->|all pass| R["Stream response"]
+    J -->|any fail| D["Discard and refuse"]
+```
+
+All guards and the main LLM call start together, so the added latency is roughly the slowest guard, not the sum; if any guard fails, the already-generated answer is thrown away.
 
 ```python
 import asyncio

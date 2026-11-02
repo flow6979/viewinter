@@ -42,6 +42,22 @@ What an agent is, how the agent loop (ReAct) runs, the exact message shape of to
 
 > **Example:** Zerodha Kite assistant: "Which stock in my portfolio has the biggest loss, and what is its price today?" Step 1: `get_holdings()`. Observe: 12 stocks with P&L. Reason: the biggest loss is IDEA. Step 2: `get_quote("IDEA")`. Observe: the price. Step 3: final answer.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant L as LLM
+    participant T as Kite tools
+    U->>L: Biggest loss stock and its price?
+    L->>T: get_holdings
+    T-->>L: 12 stocks with P and L
+    Note over L: Reason - biggest loss is IDEA
+    L->>T: get_quote IDEA
+    T-->>L: Current price
+    L-->>U: Final answer with price
+```
+
+The Zerodha example as a trace: every tool result goes back to the LLM as an observation, and the LLM picks the next step itself.
+
 - **Perceive:** user input + previous observations in context.
 - **Reason:** the model decides: is a tool needed, or is the answer ready.
 - **Act:** emit a tool call (name + JSON args).
@@ -152,6 +168,23 @@ print(d.eligible, d.amount_inr)                       # typed Pydantic object
 > **Example:** tools for a Flipkart seller assistant: `search_orders(status, date_from)`, `get_inventory(sku)`, `update_price(sku, new_price)`. "Show yesterday's cancelled orders" → the model emits `search_orders(status="cancelled", date_from="2026-11-01")`.
 
 - **The model does not execute anything.** It only gives intent + args. Auth, validation and rate limits live in your code.
+
+```mermaid
+sequenceDiagram
+    participant A as Your app
+    participant L as LLM API
+    participant T as Tool code
+    A->>L: messages plus tool schemas
+    L-->>A: tool_use search_orders with args
+    A->>A: Validate args and auth
+    A->>T: Run search_orders
+    T-->>A: Order rows
+    A->>L: tool_result with same id
+    L-->>A: Final text answer
+```
+
+The model only returns a `tool_use` block; validating args, running the tool and sending back a `tool_result` with the same id is your app's job.
+
 - **The description is a prompt.** The model picks tools based on it. Write when to use it, when not, the arg format, examples.
 - **Keep the schema tight:** `enum`, `required`, formats. Fewer, clearer params are better.
 
@@ -164,6 +197,21 @@ print(d.eligible, d.amount_inr)                       # typed Pydantic object
 | Parallel off | `parallel_tool_calls=False` | `disable_parallel_tool_use: true` | order-dependent tools |
 
 - **Parallel tool calls:** multiple calls in one turn (e.g. weather for 3 cities). If independent, run them concurrently (`asyncio.gather`) and send all results in **one** next message.
+
+```mermaid
+flowchart LR
+    L["LLM turn"] -->|3 tool calls| F["App fan-out"]
+    F --> W1["weather Delhi"]
+    F --> W2["weather Mumbai"]
+    F --> W3["weather Bengaluru"]
+    W1 --> M["One results message"]
+    W2 --> M
+    W3 --> M
+    M --> L2["Next LLM turn"]
+```
+
+Run independent calls from one turn concurrently, and send all results back in a single next message.
+
 - **Tool errors = observations:** do not crash on exceptions. Return a clear error message ("order_id must be in the format ORD-XXXX") so the model can self-correct. Limit the retry count.
 
 ```python
@@ -215,6 +263,25 @@ for call in msg.tool_calls:          # [{'name': 'get_inventory', 'args': {...},
 **In one line:** when the steps are known up front, use a **workflow** (deterministic, cheap, testable); when the path depends on the input and cannot be enumerated in advance, use an **agent**.
 
 > **Example:** Zomato restaurant onboarding: extract documents → validate FSSAI → create listing. Fixed steps, a workflow. Versus "resolve the customer's complaint": sometimes a refund, sometimes re-delivery, sometimes a fraud check. Unknown path, an agent.
+
+```mermaid
+flowchart LR
+    subgraph WF["Workflow: code decides"]
+        D1["Extract docs"] --> D2["Validate FSSAI"]
+        D2 --> D3["Create listing"]
+    end
+    subgraph AG["Agent: LLM decides"]
+        C1["Complaint"] --> LL["LLM picks step"]
+        LL -->|refund| R["Refund tool"]
+        LL -->|redeliver| RD["Re-delivery tool"]
+        LL -->|suspicious| FR["Fraud check"]
+        R --> LL
+        FR --> LL
+        LL -->|done| DONE["Reply"]
+    end
+```
+
+In a workflow the path is fixed in code; in an agent the LLM picks the next tool at every step and loops on the result.
 
 | Question | Yes → | No → |
 |---|---|---|

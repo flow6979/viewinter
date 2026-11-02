@@ -181,6 +181,25 @@ def get_prices(symbols: list[str]) -> dict:
 - Configure the exporter (OTLP) and `TracerProvider` at app startup; Langfuse and Phoenix both accept an OTLP endpoint.
 - In short-lived jobs (Lambda, scripts), **flush** at the end or spans are lost.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant G as Agent graph
+    participant S as OTel SDK
+    participant C as OTel Collector
+    participant B as Backend
+    U->>G: Refund ORD1
+    G->>S: Span invoke_agent refund-agent
+    G->>S: Span chat gpt-4.1-mini
+    G->>S: Span execute_tool issue_refund
+    G-->>U: Answer streamed
+    S->>C: Batch export over OTLP
+    C->>C: Redact PII, tail sample
+    C->>B: Forward kept spans
+```
+
+Each node and tool emits a span while the request runs; the SDK exports them in the background in batches, so the user never waits on tracing.
+
 **Interview tip:** "Framework callbacks give 80% coverage for free; I add manual spans on custom tools and business steps."
 
 **Common mistake:** running tracing in synchronous blocking mode; if the tracing backend is slow, the agent is slow too. SDKs batch in the background; use that.
@@ -220,6 +239,20 @@ def get_prices(symbols: list[str]) -> dict:
 - Convert the trace into an **eval case** ("add to dataset" in LangSmith/Langfuse); after the fix, the same case becomes a regression test.
 - In LangGraph, **replay/time-travel** from a checkpoint: re-run from the failed state, change the prompt and compare.
 
+```mermaid
+flowchart LR
+    S["Slow or wrong run"] --> T["Open trace tree"]
+    T --> F["Find first bad span"]
+    F --> SIG["Match trace signal"]
+    SIG --> RC["Root cause"]
+    RC --> FX["Targeted fix"]
+    FX --> EC["Save trace as eval case"]
+    EC --> RR["Re-run evals"]
+    RR -->|still failing| F
+```
+
+Debugging starts at the first span whose output went wrong, and every fixed trace becomes an eval case that guards against the same bug coming back.
+
 **Interview tip:** "The first debugging question: which was the first span where the output went wrong? Everything above it was fine, so that is where the bug is."
 
 **Common mistake:** changing the prompt after looking at the final answer, without checking the trace to see the mistake was in retrieval.
@@ -241,6 +274,21 @@ def get_prices(symbols: list[str]) -> dict:
   - Quality drop: judge pass rate, thumbs-down rate, escalation rate crossing a threshold.
   - Provider side: model version change, latency spikes, 429s.
 - Tie alerts to **versions** (drop after prompt v8 deploy) so the rollback decision is fast.
+
+```mermaid
+flowchart LR
+    TR["Prod traces"] --> CC["Code checks on 100 pct"]
+    TR --> SM["Sample 5 to 10 pct"]
+    SM --> JD["Online judge: groundedness"]
+    CC --> MT["Metrics store"]
+    JD --> MT
+    MT --> TH["Compare with quality SLO"]
+    TH -->|below 90 pct| AL["Page on-call"]
+    AL --> VR["Check version tag"]
+    VR --> RB["Roll back prompt"]
+```
+
+Cheap code checks run on every trace, the costly judge only on a sample; both feed one metric, and a breach pages on-call, who uses the version tag to roll back.
 
 **Interview tip:** "I treat quality like an SLO: if the groundedness pass rate drops below 90%, it pages, just like latency."
 
@@ -279,6 +327,20 @@ flowchart LR
 - **Retention:** full-payload traces 14–30 days, aggregated metrics 1 year+, eval datasets (redacted) long-term.
 - **PII policy:** redaction before export, data residency (data in India for DPDP/RBI), access control on the trace UI, support for deletion requests, encryption.
 - In sensitive flows (payments, health), do not log prompt content at all, only metadata and hashes.
+
+```mermaid
+flowchart LR
+    R["Finished trace"] --> D{"Tail sampler"}
+    D -->|error or slow| K["Keep 100 pct"]
+    D -->|low score or thumbs down| K
+    D -->|healthy| S["Keep 5 to 10 pct"]
+    K --> RD["Redact PII"]
+    S --> RD
+    RD --> ST[("Trace store, 14 to 30 days")]
+    ST --> AG["Aggregated metrics, 1 year plus"]
+```
+
+The sampler decides after the trace ends, so every interesting trace is kept, healthy traffic is thinned, and everything is redacted before it is stored.
 
 **Interview tip:** "I keep 100% of errors and bad scores and sample healthy traffic. That keeps cost under control and still gives me debugging data."
 

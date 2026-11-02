@@ -39,6 +39,22 @@ Is page pe: jab retrieval ek fixed pipeline nahi balki agent ka **decision** ban
 - **Query rewriting:** "uska fee kya hai?" → conversation se resolve karke "Zerodha Coin direct mutual fund ka fee". Pronouns aur follow-ups ke bina rewrite retrieval fail.
 - **Decomposition / multi-hop:** "Jis AMC ka fund mere portfolio me sabse bada hai, uska expense ratio?" → hop 1: portfolio API, hop 2: us fund ka factsheet search.
 - **Source routing:** tool descriptions se agent chunta hai `search_policy_docs` vs `query_orders_db` vs `web_search`.
+
+```mermaid
+flowchart LR
+    Q["User query"] --> A{"Agent: retrieve?"}
+    A -->|no| ANS["Answer directly"]
+    A -->|yes| RW["Rewrite and split"]
+    RW --> V["search_policy_docs"]
+    RW --> L["get_ledger API"]
+    V --> A2["Agent combines"]
+    L --> A2
+    A2 -->|enough| F["Grounded answer"]
+    A2 -->|need another hop| RW
+```
+
+Agent pehle decide karta hai retrieve karna hai ya nahi, query rewrite/split karke sahi sources pe bhejta hai, aur zarurat ho to ek aur hop leta hai.
+
 - **Guard rails:** max retrieval calls (jaise 4), har call ka result token-capped, aur "kuch nahi mila" ko explicit result banao taaki agent hallucinate na kare.
 
 ```python
@@ -168,6 +184,21 @@ app = g.compile()
   3. Har community ka LLM summary.
 - **Local search:** query ki entities graph me dhoondo, unke neighbours, relations aur linked chunks context me. "Razorpay ke kaunse partners ne X feature use kiya?"
 - **Global search:** community summaries pe map-reduce. "Is saal ke saare incident reports ke main themes kya hain?" Vector RAG yahan fail hota hai kyunki answer kisi ek chunk me nahi.
+
+```mermaid
+flowchart LR
+    C["Chunks"] --> X["LLM extract entities"]
+    X --> G[("Knowledge graph")]
+    G --> CD["Leiden communities"]
+    CD --> CS["Community summaries"]
+    Q1["Local question"] --> G
+    G -->|neighbours and chunks| LA["Local answer"]
+    Q2["Global question"] --> CS
+    CS -->|map-reduce| GA["Global answer"]
+```
+
+Pehla half indexing hai (mehenga, ek baar); local query graph neighbours se, global query community summaries pe map-reduce se answer hoti hai.
+
 - **Kab worth it:** multi-hop relational questions, "summarize the whole corpus" type questions, connected data (contracts, org charts, fraud rings).
 - **Kab nahi:** simple factual lookup, tezi se badalta corpus. Indexing **bahut mehenga** (har chunk pe LLM calls) aur incremental update mushkil. Sasta variant: LazyGraphRAG, ya existing graph DB (Neo4j) pe text-to-Cypher.
 
@@ -189,6 +220,21 @@ app = g.compile()
 - **Read-only role:** DB user ke paas sirf `SELECT`, sirf allowed schemas/views pe; **row-level security** se tenant isolation. Prompt me "DELETE mat karna" likhna security nahi hai.
 - **Query validation:** SQL ko parse karo (sqlglot), sirf ek `SELECT` statement allow, denied tables block, `LIMIT` inject, `EXPLAIN` se cost check, statement timeout.
 - **Self-correction:** error aaye to error message ke saath agent ko wapas do (max 2–3 tries).
+
+```mermaid
+flowchart LR
+    Q["Analyst question"] --> SR["Schema retrieval"]
+    SR --> GEN["LLM writes SQL"]
+    GEN --> V{"Validate: sqlglot"}
+    V -->|ok| EX[("Read-only replica")]
+    EX --> SUM["Summarize rows"]
+    SUM --> A["Answer"]
+    V -->|blocked table| GEN
+    EX -->|SQL error| GEN
+```
+
+Har SQL execute se pehle validate hota hai; validation ya DB ka error message agent ko wapas jaata hai (max 2–3 tries).
+
 - **Result summarization:** 10,000 rows LLM ko mat do. Aggregates, top-N, ya file me offload + preview.
 - **Semantic layer:** metrics (`late_order_pct`) pehle se defined ho to agent unhe use kare; raw SQL se zyada accurate aur consistent.
 - **API tools:** jahan API hai wahan SQL nahi. API business rules, auth aur rate limits already enforce karta hai. Tool ko typed args aur concise response do.
@@ -259,6 +305,26 @@ flowchart LR
   - Query time pe authenticated user ke groups se **pre-filter** (vector DB metadata filter). Post-filter top-k ke baad karne se recall girta hai aur leakage risk.
   - User identity trusted session se aaye, LLM tool args se nahi.
   - ACL change (employee team chhode) bhi re-index trigger kare.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant S as Session auth
+    participant A as Agent
+    participant R as Retriever
+    participant V as Vector DB
+    U->>S: Login
+    S-->>A: user_id and acl_groups
+    U->>A: Question
+    A->>R: search query
+    R->>V: query with acl_groups pre-filter
+    V-->>R: Only allowed chunks
+    R-->>A: top-k allowed chunks
+    A-->>U: Answer from allowed data
+```
+
+ACL groups trusted session se aate hain aur retrieval ke andar pre-filter bante hain; LLM ko unauthorized chunk kabhi milta hi nahi.
+
 - **PII handling:**
   - Ingestion pe detect + redact/mask (Presidio jaisa). Aadhaar, PAN, card numbers, phone.
   - Jahan PII chahiye (KYC agent) wahan tokenization aur strict ACL; logs/traces me masking.

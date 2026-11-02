@@ -214,6 +214,20 @@ app = g.compile()
 - Static edges tab, jab branches ki ginti fixed ho. Jab N runtime pe pata chale (e.g. 7 PDFs, 40 reviews), **`Send`** use karo.
 - Conditional edge `Send` objects ki list return karta hai; har `Send(node, payload)` us node ko **apne private input** ke saath chalata hai. Results reducer se collect hote hain.
 
+```mermaid
+flowchart LR
+    S["START"] --> F{"fan_out"}
+    F -->|Send review 1| W1["summarize"]
+    F -->|Send review 2| W2["summarize"]
+    F -->|Send review N| W3["summarize"]
+    W1 --> R["reduce: operator.add"]
+    W2 --> R
+    W3 --> R
+    R --> E["END"]
+```
+
+`Send` runtime pe N worker instances banata hai, har ek ka apna payload; reducer sab results ek key me jodta hai.
+
 ```python
 from langgraph.types import Send
 
@@ -377,6 +391,26 @@ g.add_edge("fallback", END)
 **Ek line me:** real systems me patterns nest hote hain: router ke ek branch ke andar chain, chain ke ek step me parallel, end pe evaluator loop.
 
 > **Example:** Flipkart customer support: **routing** (intent) → refund branch me **prompt chaining** (verify order → check policy → draft reply) → draft pe **evaluator** (policy compliance) → low-confidence pe human. Product-compare branch me **parallelization** (spec, reviews, price ek saath).
+
+```mermaid
+flowchart LR
+    U["Customer message"] --> R{"Intent router"}
+    R -->|refund| V["Verify order"]
+    V --> P["Check policy"]
+    P --> D["Draft reply"]
+    D --> EV{"Evaluator"}
+    EV -->|pass| OUT["Send reply"]
+    EV -->|low confidence| H["Human"]
+    EV -->|fail| D
+    R -->|compare| SP["Specs"]
+    R -->|compare| RV["Reviews"]
+    R -->|compare| PR["Price"]
+    SP --> OUT
+    RV --> OUT
+    PR --> OUT
+```
+
+Flipkart support: upar routing, refund branch me chain + evaluator loop, compare branch me parallel fan-out.
 
 - Har sub-pattern ko **subgraph** banao (compiled graph as node). Alag test, alag eval, alag owner.
 - Rule: combination tabhi jab har layer ka eval number justify kare. Har layer latency aur cost add karti hai.

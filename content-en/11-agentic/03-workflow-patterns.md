@@ -214,6 +214,20 @@ app = g.compile()
 - Use static edges when the number of branches is fixed. When N is only known at runtime (e.g. 7 PDFs, 40 reviews), use **`Send`**.
 - A conditional edge returns a list of `Send` objects; each `Send(node, payload)` runs that node with **its own private input**. A reducer collects the results.
 
+```mermaid
+flowchart LR
+    S["START"] --> F{"fan_out"}
+    F -->|Send review 1| W1["summarize"]
+    F -->|Send review 2| W2["summarize"]
+    F -->|Send review N| W3["summarize"]
+    W1 --> R["reduce: operator.add"]
+    W2 --> R
+    W3 --> R
+    R --> E["END"]
+```
+
+`Send` creates N worker instances at runtime, each with its own payload; the reducer joins all results into one key.
+
 ```python
 from langgraph.types import Send
 
@@ -377,6 +391,26 @@ g.add_edge("fallback", END)
 **In one line:** in real systems patterns nest: a chain inside one router branch, a parallel step inside a chain, an evaluator loop at the end.
 
 > **Example:** Flipkart customer support: **routing** (intent) → **prompt chaining** in the refund branch (verify order → check policy → draft reply) → **evaluator** on the draft (policy compliance) → human on low confidence. The product-compare branch uses **parallelization** (specs, reviews, price at once).
+
+```mermaid
+flowchart LR
+    U["Customer message"] --> R{"Intent router"}
+    R -->|refund| V["Verify order"]
+    V --> P["Check policy"]
+    P --> D["Draft reply"]
+    D --> EV{"Evaluator"}
+    EV -->|pass| OUT["Send reply"]
+    EV -->|low confidence| H["Human"]
+    EV -->|fail| D
+    R -->|compare| SP["Specs"]
+    R -->|compare| RV["Reviews"]
+    R -->|compare| PR["Price"]
+    SP --> OUT
+    RV --> OUT
+    PR --> OUT
+```
+
+Flipkart support: routing on top, a chain + evaluator loop in the refund branch, a parallel fan-out in the compare branch.
 
 - Make each sub-pattern a **subgraph** (a compiled graph as a node). Separate tests, separate evals, separate owners.
 - Rule: combine only when each layer's eval number justifies it. Every layer adds latency and cost.

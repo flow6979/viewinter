@@ -1,4 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { canAnimate, playDiagram } from './diagramPlayer'
+
+/** Pages that set this play their diagrams step by step (flow edges / sequence messages), like a GIF */
+export const AnimateDiagramsContext = createContext(false)
 
 let counter = 0
 // Finished SVGs by theme + code: a diagram that is mounted again paints at once instead of flashing empty
@@ -41,6 +45,28 @@ export function Mermaid({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null)
   const [themeTick, setThemeTick] = useState(0)
   const [attempt, setAttempt] = useState(0)
+  // Bumped whenever a new SVG lands in the box, so the player re-attaches to it
+  const [svgTick, setSvgTick] = useState(0)
+  const animate = useContext(AnimateDiagramsContext)
+  const [playable, setPlayable] = useState(false)
+  const [paused, setPaused] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const box = ref.current
+    if (!animate || !box) return
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0.3 })
+    io.observe(box)
+    return () => io.disconnect()
+  }, [animate])
+
+  useEffect(() => {
+    const svg = ref.current?.querySelector('svg')
+    const ok = animate && !!svg && canAnimate(svg)
+    setPlayable(ok)
+    if (!ok || paused || !visible) return
+    return playDiagram(svg!)
+  }, [animate, svgTick, paused, visible])
 
   useEffect(() => {
     const obs = new MutationObserver(() => setThemeTick((t) => t + 1))
@@ -53,7 +79,10 @@ export function Mermaid({ code }: { code: string }) {
   useLayoutEffect(() => {
     const svg = rendered.get(cacheKey(code))
     cached.current = !!svg
-    if (svg && ref.current) ref.current.innerHTML = svg
+    if (svg && ref.current) {
+      ref.current.innerHTML = svg
+      setSvgTick((t) => t + 1)
+    }
   }, [code, themeTick])
 
   useEffect(() => {
@@ -76,6 +105,7 @@ export function Mermaid({ code }: { code: string }) {
         rendered.set(cacheKey(code), svg)
         if (!cancelled && ref.current) {
           ref.current.innerHTML = svg
+          setSvgTick((t) => t + 1)
           setError(null)
         }
       } catch (e) {
@@ -108,5 +138,15 @@ export function Mermaid({ code }: { code: string }) {
       </div>
     )
   }
-  return <div className="mermaid-box" ref={ref} />
+  if (!animate) return <div className="mermaid-box" ref={ref} />
+  return (
+    <div className="mermaid-wrap">
+      <div className="mermaid-box" ref={ref} />
+      {playable && (
+        <button type="button" className="dp-toggle" onClick={() => setPaused((p) => !p)} aria-label={paused ? 'Play diagram' : 'Pause diagram'} title={paused ? 'Play' : 'Pause'}>
+          {paused ? '▶' : '❚❚'}
+        </button>
+      )}
+    </div>
+  )
 }
