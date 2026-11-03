@@ -146,7 +146,7 @@ export function PageView({
           </button>
         </section>
       ) : (
-        <AnimateDiagramsContext.Provider value={page.kind === 'ai'}>
+        <AnimateDiagramsContext.Provider value={true}>
           <Markdown text={body} showAllCode={page.kind !== 'lld'} />
         </AnimateDiagramsContext.Provider>
       )}
