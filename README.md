@@ -4,6 +4,15 @@
 
 Interview prep ek jagah: system design (HLD), LLD / design patterns aur agentic AI. Hinglish aur English dono me, progress tracking, notes, Gemini se sawal aur mock interviews ke saath.
 
+<img width="1468" height="799" alt="image" src="https://github.com/user-attachments/assets/c4366145-d53b-4ddc-b073-7dde1803cedf" />
+<img width="1468" height="799" alt="image" src="https://github.com/user-attachments/assets/ca13ebd2-950f-442b-9437-21b3be22bc4e" />
+<img width="1468" height="799" alt="image" src="https://github.com/user-attachments/assets/18ade284-ef59-41ab-8e3d-44eca9aca8f0" />
+<img width="1468" height="799" alt="image" src="https://github.com/user-attachments/assets/bf9a2704-bbf6-4020-9347-1861fb9a781d" />
+<img width="1468" height="799" alt="image" src="https://github.com/user-attachments/assets/587bb270-5d60-4729-93e7-91d7161e108c" />
+<img width="1468" height="799" alt="image" src="https://github.com/user-attachments/assets/5f115b7d-78ab-4319-b3ab-959a0b5a05dc" />
+<img width="1468" height="799" alt="image" src="https://github.com/user-attachments/assets/2396e17a-dafe-47f6-846a-bf74db64ffd9" />
+
+
 - **`content/01-topics/`**: 23 chhote topic files (caching, sharding, locks, Kafka, geospatial…). Har file 5–8 min ki hai aur batati hai ki ye kin systems me lagta hai.
 - **`content/02-questions/`**: 26 sabse zyada pooche jaane wale questions. Har ek me ye sab hai: interviewer se kya confirm karna hai, requirements, estimation, HLD + flow diagrams, deep dives, decision table (kyun chuna, kya nahi chuna aur kyun), failures, "isko aur better kaise karein", follow-up sawal, aur 2-minute recap.
 - **`content/03-lld/`**: LLD round ke liye OOP, SOLID aur Creational / Structural / Behavioral design patterns. Har pattern ka Java aur C++ code hai, aur sabse important patterns pe ⭐ laga hai.
