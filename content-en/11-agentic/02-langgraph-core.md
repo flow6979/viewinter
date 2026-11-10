@@ -16,6 +16,27 @@ In [Agent Foundations](01-agent-foundations.md) we wrote an agent as a plain `fo
 - The exact `interrupt()` timeline: pause → human → resume, and why the node runs again.
 - How to build a tool-calling agent graph by hand, with `ToolNode` and `tools_condition`.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| LangGraph | A Python library that runs an agent as a graph of steps, with saving and pausing built in. |
+| State | One shared dict that every step reads and adds its changes to. |
+| Checkpoint | A saved copy of the state after a step, so the run can continue from there later. |
+| Reducer | A small function that decides how a new value merges with the old one: append, overwrite or max. |
+| `interrupt()` | A call inside a step that pauses the whole run until a human sends an answer. |
+| `ToolNode` | A ready-made LangGraph step that runs the tools the model asked for and saves the results. |
+| Checkpointer | The component that writes checkpoints to memory, SQLite or Postgres. |
+| `thread_id` | The id of one conversation or run. All its checkpoints are saved under this id. |
+| Conditional edge | A function that reads the state and returns the name of the step to run next. |
+| `Command` | An object a step returns to update the state and pick the next step, or to resume a paused run. |
+| Superstep | One round of the graph: all ready steps run, their changes merge, then one checkpoint is saved. |
+| Subgraph | A whole compiled graph used as a single step inside a bigger graph. |
+| Store | Long-term key-value memory shared across all threads, e.g. a user's food preference. |
+| Embedding | A list of numbers that represents a text's meaning, so similar texts get similar numbers. |
+
 ## Big picture: how the LangGraph pieces fit together
 
 First you write a **state schema**: which keys exist and how each key merges. Then you add **nodes** (each node is a Python function that reads the state and returns a small update). Then **edges** say which node runs after which. `compile()` turns all of this into a runnable graph, and this is where the **checkpointer** is attached, which saves the state after every step. Then you `invoke` or `stream` the graph. In the middle, `interrupt()` can pause the graph, and it resumes with the same `thread_id`.
@@ -56,6 +77,8 @@ flowchart LR
 
 **LangChain chain vs LangGraph:**
 
+LangChain is LangGraph's sister library for calling LLMs. A LangChain "chain" (written in LCEL, the LangChain Expression Language) runs fixed steps one after another.
+
 | | LangChain chain (LCEL) | LangGraph |
 |---|---|---|
 | Shape | DAG, linear/branch | graph with cycles |
@@ -67,7 +90,7 @@ flowchart LR
 
 ### How a graph runs inside: supersteps
 
-LangGraph runs a graph in **supersteps** (Pregel style). In one superstep:
+LangGraph runs a graph in **supersteps** (Pregel style, named after Google's graph-processing system that also works in rounds). In one superstep:
 
 1. The nodes active in this round run together (in parallel). Say `fetch_price` and `fetch_stock`.
 2. Both return their updates: `{"skus": ["FK-1"]}` and `{"skus": ["FK-2"]}`.
@@ -146,7 +169,7 @@ flowchart LR
 
 **Now the terms:**
 
-- **State schema:** `TypedDict` (fast, common), `dataclass` (defaults), or Pydantic `BaseModel` (runtime validation, a bit slower).
+- **State schema:** `TypedDict` (fast, common), `dataclass` (defaults), or Pydantic `BaseModel` (Pydantic is a Python data-validation library; runtime validation, a bit slower).
 - **Partial update:** a node **does not return the whole state**, only the keys that changed: `return {"status": "done"}`.
 - **Reducer:** a function `(old, new) -> merged`. It is attached to a key with `Annotated[type, reducer]`.
 - **No reducer:** the new value overwrites.
@@ -690,7 +713,7 @@ print(store.get(("users", "u42", "prefs"), "diet").value)            # {'value':
 - `put(namespace, key, value)` writes, `get(namespace, key)` reads.
 - Inside a node you get the store from `runtime.store`; you query it with `search`.
 
-- With embeddings, passing `index={"embed": ..., "dims": ...}` makes `search(query=...)` semantic.
+- With embeddings, passing `index={"embed": ..., "dims": ...}` makes `search(query=...)` semantic (it matches by meaning, not exact words).
 - What to remember, when to write, how to forget: [Memory & Context](05-memory-context.md).
 
 **In one line:** the Store is cross-thread key-value (+ optional semantic search) memory, organized by `namespace` tuples; the checkpointer works inside one thread, the Store across all threads.

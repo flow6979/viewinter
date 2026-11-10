@@ -15,6 +15,27 @@ Is page pe: agent cheezein kaise "yaad" rakhta hai. Ek conversation ke andar (**
 - Har step pe window me kya daalna hai aur kya bahar rakhna hai.
 - Prompt caching ka prefix kaise bachta hai, aur purani ya galat memory ko kaise sambhalte hain.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| Store | LangGraph ka long-term key-value storage jo conversations ke paar rehta hai, aksar har user ka alag hissa. |
+| Prompt caching | Prompt ka shuru wala hissa same ho to provider pichla kaam reuse karta hai. Call sasti aur fast. |
+| Thread | Ek conversation, jiski pehchaan `thread_id` hai. Uske messages aur data saath save hote hain. |
+| Checkpointer | Har graph step ke baad thread ka data memory ya DB me save karta hai, taaki agli request load kar sake. |
+| TTL | Time to live: saved item kitni der rakhna hai, uske baad wo apne aap expire. |
+| Namespace | Folder jaisa label, jaise `("memories", user_id)`, jo items ko group karta hai aur users ko alag rakhta hai. |
+| `tool_call` | Model ke reply ka hissa jo tumhare code se kehta hai: ye function in args ke saath chalao. |
+| Reducer | Node ka return kiya update state field me merge karne ka rule, jaise overwrite ki jagah append. |
+| Few-shot examples | Prompt me rakhe kuch solved examples, taaki model unka style ya steps copy kare. |
+| LangMem | LangChain ki library jisme agent memories extract, save aur search karne ke ready-made tools aur jobs hain. |
+| Embedding | Text ke matlab ko dikhane wali numbers ki list. Milte-julte matlab wale texts ke numbers paas hote hain. |
+| Semantic search | Exact words match karne ki jagah embeddings compare karke matlab se items dhoondhna. |
+| Hallucination | Model ka poore confidence se galat ya banaya hua jawab dena. |
+| PII | Personally identifiable information: wo data jisse insaan pehchana jaaye, jaise phone, card ya Aadhaar number. |
+
 ## Big picture: LLM bhoolta hai, code yaad dilata hai
 
 LLM ek API call hai, aur har call naya hai. Model ko pichli call ka kuch pata nahi. Isliye "memory" = **hamara code**, jo har call se pehle sahi cheezein jod ke prompt banata hai. Conversation thread state me (short-term), jo badhne pe trim ya summarize hoti hai. Pakke facts Store me (long-term), jo agle session me wapas aate hain. Context engineering tay karti hai window me kya jaaye, caching uske stable hisse ko sasta banati hai, aur privacy rules purani ya sensitive memory ko kaabu me rakhte hain.
@@ -125,7 +146,7 @@ sequenceDiagram
 **Ab terms:**
 - **Super-step:** graph ka ek tick. Har super-step ke baad checkpoint save hota hai.
 - **`InMemorySaver`** sirf dev/test. Production me **`PostgresSaver` / `RedisSaver`** (durable, multi-instance).
-- Checkpoint ke bonus: **resume after crash**, **human-in-the-loop** (`interrupt`), **time travel** (purane checkpoint se fork).
+- Checkpoint ke bonus: **resume after crash**, **human-in-the-loop** (`interrupt` graph ko rok deta hai jab tak koi insaan approve ya edit na kare), **time travel** (purane checkpoint se fork).
 
 Ye code chhota chat graph banata hai aur checkpointer lagata hai, taaki har `thread_id` ki history apne aap save/load ho.
 
@@ -204,7 +225,7 @@ Problem dekho: order ID "8812" (message 4) window se gir gaya. User pooche "mera
 **Ab terms:**
 - **Context window:** ek call me model jitne tokens padh sakta hai. **Token budget:** usme se kitna hum use karenge.
 - **Trimming:** purane messages LLM ke view se hatana. Info seedha kho jaati hai.
-- **Tool-call pair:** AI ka `tool_call` + uska `ToolMessage`. Ek bina doosre ke gaya to provider API error deta hai.
+- **Tool-call pair:** AI ka `tool_call` + uska `ToolMessage`. Ek bina doosre ke gaya to provider API (OpenAI, Anthropic, etc.) error deta hai.
 
 Ye `chat` node ka trimmed version hai. State nahi badalta, sirf LLM ko jaane wali list chhoti karta hai.
 
@@ -333,7 +354,7 @@ builder.add_edge("summarize", END)
 - **Semantic** ke do shapes:
   - **Profile:** ek JSON document jo update hota rehta hai (`{"language": "hi", "risk": "low"}`). Simple, par concurrent updates me conflict.
   - **Collection:** bahut saare chhote items, search se laaye jaate. Recall better, par duplicates aur contradictions manage karne padte.
-- **Episodic:** successful trajectories ko few-shot examples ki tarah dynamically select karo.
+- **Episodic:** successful trajectories (pichhli run ke recorded steps) ko few-shot examples ki tarah dynamically select karo.
 - **Procedural:** feedback se agent apna system prompt refine kar sakta hai (LangMem ka prompt optimizer). Risky, review ke bina prod me mat lagao.
 
 **Interview tip:** "Main pehle decide karta hoon kaunsi memory chahiye. 80% B2C assistants ko sirf semantic profile chahiye. Episodic tab jab task repeatable ho, procedural tab jab behaviour per-user customize karna ho."
@@ -421,7 +442,7 @@ graph.invoke({"messages": [("user", "Mera portfolio summary do")]},
 - `user_id` `runtime.context` se aata hai jo hamara server set karta hai. LLM ise badal nahi sakta.
 - Thread `t-fri` naya hai, phir bhi facts aaye kyunki Store thread se bandha nahi.
 
-- Production: `PostgresStore` (pgvector) ya `RedisStore`. `InMemoryStore` restart pe khaali.
+- Production: `PostgresStore` (pgvector, embedding search ke liye Postgres extension) ya `RedisStore`. `InMemoryStore` restart pe khaali.
 
 **Common galti:** sab users ki memories ek namespace me daal ke sirf query se filter karna. Ek bug aur ek user ka data doosre ke prompt me.
 
@@ -588,7 +609,7 @@ flowchart LR
 - **Privacy:**
   - Per-user namespace, trusted `user_id`, cross-tenant search ka test.
   - PII (card, Aadhaar, OTP, passwords) memory me **save hi mat karo**. Extractor prompt + regex filter dono se roko.
-  - User ko "meri memories dikhao / delete karo" ka control do. DPDP/GDPR "right to erasure" me memory store, vector index, backups, aur summaries sab cover hon.
+  - User ko "meri memories dikhao / delete karo" ka control do. DPDP (India ka data protection law) / GDPR (EU ka) "right to erasure" me memory store, vector index, backups, aur summaries sab cover hon.
 - **Staleness:**
   - **TTL (time to live):** volatile facts (current city, open ticket) pe short, stable preferences pe lamba. LangGraph store backends TTL support karte hain (config me default TTL, read pe refresh).
   - Har memory pe `created_at`, `updated_at`, `source`. Prompt me "as of" date ke saath dikhao.

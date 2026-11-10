@@ -15,6 +15,27 @@ This page teaches you how to control an agent's bill and speed. In a demo the ag
 - The timeline of the same run: TTFT, tool waits, and sequential vs parallel.
 - Budgets (max steps, spend cap, timeout), batch APIs, and when to fine-tune.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| Step | One turn of the agent loop: one LLM call, plus any tool it asks for. |
+| Model routing | Sending each request to a cheap or a strong model, based on how hard it is. |
+| TTFT | Time To First Token: how long until the first word of the answer appears. |
+| Streaming | Sending the answer to the user piece by piece as it is generated, not all at the end. |
+| Stateless | The model remembers nothing between calls, so every call must resend everything. |
+| System prompt | Fixed instructions sent at the start of every call: role, rules, output format. |
+| Tool schema | A tool's name, description and argument format, sent to the model so it knows how to call it. |
+| Reasoning tokens | Hidden step-by-step thinking some models write before answering; billed like output. |
+| Prompt caching | The provider reuses work on a prompt start it saw recently and bills those tokens much cheaper. |
+| Semantic cache | Returns a stored answer when a new question means nearly the same as an old one. |
+| Embedding | A list of numbers that captures a text's meaning; similar texts get nearby numbers. |
+| LangGraph | A Python library that builds an agent as a graph of steps (nodes) sharing one state object. |
+| Superstep | One round where LangGraph runs every node that is ready, in parallel, before moving on. |
+| Prompt injection | Text hidden in input or tool data that tricks the model into ignoring its instructions. |
+
 ## Big picture: the whole page at a glance
 
 Think of your electricity bill: **units × rate**. An agent's bill works the same way: **steps × tokens per step × price per token**. Every lever shrinks one of these three. Caching and routing lower the **price**. Trimming lowers **tokens per step**. Better tools and workflows lower the number of **steps**. Latency is tied to steps too: each step = one LLM call's wait + one tool's wait. Streaming and parallel tools make that wait shorter, or feel less bad. Budgets act like a fuse: if something goes wrong, the bill does not reach a thousand dollars.
@@ -267,7 +288,7 @@ graph = builder.compile(cache=InMemoryCache())  # Redis-backed cache in prod
 
 **Interview tip:** "Context is a budget: system + tools + memory + retrieved + history. I set a cap for each bucket."
 
-**Common mistake:** while trimming, keeping the AI tool_call message but dropping its ToolMessage (or the reverse). The provider rejects the request.
+**Common mistake:** while trimming, keeping the AI tool_call message (the model's request to run a tool) but dropping its ToolMessage, which holds that tool's result (or the reverse). The provider rejects the request.
 
 ## Reducing steps
 
@@ -330,7 +351,7 @@ Illustrative small-model price: $0.30/1M input, $1.20/1M output, cached $0.03/1M
 
 > **Example:** a Swiggy support bot. 70% of queries are simple, like "where is my order" or "refund status". A small model is enough. Multi-issue cases like "wrong item came, got half a refund, and the coupon was also deducted" go to the big model.
 
-- **Routing (upfront):** a classifier (small LLM, or embedding + logistic regression, or rules) decides the request's difficulty/intent, then picks the right model or subgraph.
+- **Routing (upfront):** a classifier (small LLM, or embedding + logistic regression (a simple, cheap classic classifier), or rules) decides the request's difficulty/intent, then picks the right model or subgraph.
 - **Cascading (try-then-escalate):** the small model answers, then a check runs: structured confidence, verifier, schema validation, or tool error. Fail → big model.
 - **Per-step routing:** inside the agent too: big model for planning and final synthesis, small model for extraction/summarize/classify (the example above).
 - Typical saving is 40–70% when most traffic is simple. Trade-off: router mistakes (a hard query on the small model) lower quality, and escalation in a cascade doubles latency.
@@ -407,7 +428,7 @@ app = g.compile()
 - **Cascading:** try the small model first, go to the big one if it fails.
 - **Escalation:** sending from the small model to the big model.
 
-**Interview tip:** "I evaluate the router too, with a confusion matrix (simple sent to complex = wasted money, complex sent to simple = quality loss). The second mistake costs more, so I bias the threshold that way."
+**Interview tip:** "I evaluate the router too, with a confusion matrix, a table of predicted vs correct labels (simple sent to complex = wasted money, complex sent to simple = quality loss). The second mistake costs more, so I bias the threshold that way."
 
 **Common mistake:** using a big model as the router, which wipes out the saving. Or not defining any escalation signal.
 
@@ -494,7 +515,7 @@ The three tools ran together, so the wait was only 1.3s. The user saw progress i
 | Metric | What it is | What controls it |
 |---|---|---|
 | TTFT | request to first token | prompt size, prompt cache, model size, queueing |
-| TPOT / tokens per sec | time per token | model size, provider load |
+| TPOT (time per output token) / tokens per sec | time per token | model size, provider load |
 | Total latency | the whole task | steps × (TTFT + output tokens × TPOT) + tool time |
 
 **Levers:**
@@ -557,7 +578,7 @@ async def stream_run(graph, question: str, thread_id: str):
 
 1. Each listing: 800 input + 100 output tokens, on a small model ($0.30 / $1.20 per 1M, illustrative).
 2. Online cost: 5,00,000 × (800 × 0.30 + 100 × 1.20) / 1M = 5,00,000 × $0.00036 = **$180 per night**.
-3. All requests go into one JSONL file, each line with a `custom_id` (the listing id).
+3. All requests go into one JSONL file (one JSON request per line), each line with a `custom_id` (the listing id).
 4. Upload the file to the batch API. The provider processes it within 24 hours.
 5. In the morning, a results file arrives. Each result maps back to its listing by `custom_id`.
 6. Batch discount ~50%: **~$90 per night**. About $33,000 saved in a year.

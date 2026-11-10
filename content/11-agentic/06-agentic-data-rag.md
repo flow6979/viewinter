@@ -15,6 +15,27 @@ Is page pe: jab retrieval ek fixed pipeline nahi balki agent ka **decision** ban
 - GraphRAG ek chhote entity graph pe multi-hop sawal kaise solve karta hai.
 - Ingestion, ACL, PII aur synthetic eval data production me kyun zaroori hain.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| RAG | Retrieval-augmented generation: pehle relevant documents lao, prompt me daalo, phir model se jawab likhwao. |
+| ACL | Access control list: kaunse users ya groups ek data ko dekh sakte hain. |
+| PII | Personally identifiable information: wo data jisse insaan pehchana jaaye, jaise naam, phone, PAN ya card number. |
+| Eval | Baar baar chalne wala test: expected answers ke saath fixed sawal, jisse system ko score karte hain. |
+| Grounded | Jawab ka har claim retrieved text me hai, model ne khud nahi banaya. |
+| Vector search | Sawal se matlab me sabse milte stored texts dhoondhna, unki embeddings compare karke (aage ki rows dekho). |
+| Chunk | Document ka chhota hissa, kuch paragraph ka, jo ek unit ki tarah store aur search hota hai. |
+| Embedding | Text ke matlab ko dikhane wali numbers ki list. Milte-julte matlab wale texts ke numbers paas hote hain. |
+| BM25 | Purana keyword-ranking formula, search engine jaisa: matching words se documents ko score karta hai. |
+| Reranking | Ek doosra, zyada dhyan se dekhne wala model top search results ko dobara score karke order badalta hai. |
+| Hallucination | Model ka poore confidence se galat ya banaya hua jawab dena, jaise docs me na hone wala number. |
+| Structured output | Model ko free text ki jagah fixed shape (jaise `{"relevant": true}`) me jawab dene pe majboor karna. |
+| Prompt injection | Fetch kiye content (web page, doc) me chhupe instructions jo model ko hijack karne ki koshish karte hain. |
+| Fine-tuning | Existing model ko apne examples pe aur train karna, taaki wo ek kaam me better ho. |
+
 ## Big picture: sawal se grounded jawab tak
 
 User ka sawal aata hai. Agent pehle tay karta hai: retrieval chahiye ya nahi, aur kahan se. Text docs ke liye vector/hybrid search, aur laaye gaye docs ko grade karke kachra hatana (CRAG). Numbers aur tables ke liye SQL. Relations aur poore corpus ke themes ke liye GraphRAG. Ye sab sources ek ingestion pipeline se bharte hain, jo har chunk pe ACL aur PII rules lagati hai. Aur poore system ko synthetic + real eval set se test karte hain.
@@ -38,7 +59,7 @@ flowchart LR
 | Topic | Ek line | Detail |
 |---|---|---|
 | RAG kya hai | retrieve → augment prompt → generate | [What is RAG](../09-rag/01-what-is-rag.md) |
-| Embeddings, semantic search | meaning ko vector me, ANN se nearest | [Semantic search](../09-rag/02-semantic-search.md) |
+| Embeddings, semantic search | meaning ko vector me, ANN (approximate nearest neighbour search) se nearest | [Semantic search](../09-rag/02-semantic-search.md) |
 | Chunking | structure-aware chunks, overlap, parent-child | [Chunking](../09-rag/03-chunking.md) |
 | Hybrid search | BM25 + dense + RRF | [Hybrid search](../09-rag/04-hybrid-search.md) |
 | Reranking | cross-encoder se top-k precision | [Reranking](../09-rag/05-reranking.md) |
@@ -374,7 +395,7 @@ Pehla half indexing hai (mehenga, ek baar). Local query graph neighbours se, glo
 
 **Ab terms:**
 - **Entity / relation:** graph ke node (INC-42, UPI Autopay) aur edges (affected, used by).
-- **Microsoft GraphRAG pipeline:** (1) chunks se LLM entity + relationship + claims extract karta hai, (2) graph pe **Leiden** community detection, hierarchical levels, (3) har community ka LLM summary.
+- **Microsoft GraphRAG pipeline:** (1) chunks se LLM entity + relationship + claims extract karta hai, (2) graph pe **Leiden** community detection (ek algorithm jo aapas me zyada jude nodes ko group karta hai), hierarchical levels, (3) har community ka LLM summary.
 - **Local search** = entities + neighbours + linked chunks. **Global search** = community summaries pe map-reduce.
 
 | | Vector RAG | GraphRAG |
@@ -446,7 +467,7 @@ flowchart LR
 ```
 
 **Ab terms:**
-- **Schema retrieval:** poora DDL prompt me nahi. Table/column descriptions ka index, query ke hisaab se top 5–10 tables + sample rows + column meanings.
+- **Schema retrieval:** poora DDL (saare `CREATE TABLE` statements) prompt me nahi. Table/column descriptions ka index, query ke hisaab se top 5–10 tables + sample rows + column meanings.
 - **Read-only role:** DB user ke paas sirf `SELECT`, sirf allowed schemas/views pe. **Row-level security (RLS)** se tenant isolation. Prompt me "DELETE mat karna" likhna security nahi hai.
 - **Query validation:** parse (sqlglot), sirf ek `SELECT`, denied tables block, `LIMIT` inject, `EXPLAIN` se cost check, statement timeout. **Self-correction:** error agent ko wapas, max 2–3 tries.
 - **Result summarization:** 10,000 rows LLM ko mat do. Aggregates, top-N, ya file me offload + preview.
@@ -539,7 +560,7 @@ flowchart LR
 - **Parsing:** PDFs me tables, multi-column layout, headers/footers, scanned pages. Tools: Unstructured, Docling, LlamaParse, ya vision LLM. Tables ko markdown/HTML me rakho, row-wise todo mat.
 - **Metadata:** upar ke record jaise fields. Filtering aur citations isi se.
 - **Incremental re-index:** content hash per doc/chunk, sirf changed chunks re-embed. Full re-index sirf embedding model badalne pe (aur tab blue-green index).
-- **Freshness:** CDC/webhooks se near-real-time. SLA define karo ("policy change 15 min me searchable"). Prompt me `updated_at` dikhao.
+- **Freshness:** CDC (change data capture: source se inserts, updates aur deletes ka stream) ya webhooks se near-real-time. SLA define karo ("policy change 15 min me searchable"). Prompt me `updated_at` dikhao.
 - **Deletes:** sabse zyada bhoola jaata hai. Source se delete = index se delete (vector + BM25 + cache).
 - **Idempotent pipeline:** chunk ID = `hash(doc_id + chunk_index + version)`, retries safe.
 
@@ -615,7 +636,7 @@ flowchart LR
 - **Eval set generation:** simple, multi-hop, comparison, "unanswerable" ka mix. Ragas testset generator, ya custom.
 - **Agent evals:** synthetic user personas + tasks + expected tool calls/final state (jaise "refund for order X" → `get_order`, `create_refund`).
 - **Quality filters:** critique LLM se check, dedupe, difficulty balance. 10–20% human review must.
-- **Fine-tuning data:** strong model ke trajectories (distillation) → sirf successful runs → chhote model ko SFT. Query rewriter, grader, router jaise narrow tasks pe best.
+- **Fine-tuning data:** strong model ke trajectories (distillation) → sirf successful runs → chhote model ko SFT (un input-output examples pe supervised fine-tuning). Query rewriter, grader, router jaise narrow tasks pe best.
 - **Risks:** synthetic sawal real users se zyada "clean" hote hain, isliye production logs se real queries mix karo. Generator aur judge same model ho to bias.
 
 **Interview tip:** "Main 50–100 real production queries ko gold set banata hoon aur synthetic se coverage badhata hoon, khaaskar edge cases aur unanswerable questions."

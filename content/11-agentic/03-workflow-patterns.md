@@ -19,6 +19,27 @@ State, reducers, conditional edges aur checkpointing ke basics ke liye pehle [La
 - Ek hi task ko alag patterns se banane pe cost aur latency kaise badalti hai.
 - Kisi bhi product problem ke liye sahi pattern kaise justify karein.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| Reducer | Ek hi shared data field pe aaye kai updates ko merge karne ka rule, jaise overwrite ki jagah lists jodna. |
+| Conditional edge | Function jo graph ka shared data padh ke agle step ka naam lautata hai. |
+| `Send` | LangGraph object jiska matlab "ye step is input ke saath ek baar chalao". List do to kai copies chalti hain. |
+| Fan-out / fan-in | Fan-out kaam ko ek saath kai branches me baantta hai; fan-in sabka wait karke results ikattha karta hai. |
+| ReAct agent | Agent jo loop me chalta hai: model sochta hai, tool call karta hai, result padhta hai, kaam hone tak repeat. |
+| Retrieval | Apne data se relevant documents nikal ke, model ke jawab se pehle prompt me jodna. |
+| Eval | LLM output ka automated test suite, jo fixed examples pe jawabon ko score karta hai. |
+| LLM judge | Ek doosri model call jo output ko likhe hue criteria pe grade karke pass ya fail deti hai. |
+| Structured output | Model se fixed JSON shape me jawab lena, taaki tumhara code safely parse kar sake. |
+| `Command` | Step ka lautaya object jo batata hai agla step kaunsa, saath me shared data ke changes bhi de sakta hai. |
+| Confusion matrix | Predicted vs actual categories ki table, jo dikhati hai classifier kaunsi categories me confuse hota hai. |
+| Superstep | Graph ka ek round. Saare ready steps saath chalte hain, phir unke updates merge hote hain. |
+| Guardrail | Model ke aas-paas laga check jo unsafe ya rule todne wala input ya output rokta hai. |
+| Trace | Ek run ka recorded log, jisme har step ka input, output aur laga hua time dikhta hai. |
+
 ## Big picture: paanch patterns ek naksha
 
 Poore page pe ek hi product chalega: **SellerSaathi**, Flipkart sellers ke liye ek AI assistant. Hamari seller hai **Priya**, Jaipur se cotton kurte bechti hai. Har pattern me hum Priya ka ek kaam lenge aur dekhenge data kaise move hota hai.
@@ -248,7 +269,7 @@ app = g.compile()
 
 **Kab nahi:** categories overlap karti hain, ya ek message me do intents hain ("payment kab aayega aur listing kyun reject hui"). Tab parallel ya orchestrator socho.
 
-**Failure modes:** misroute (galat branch confidently), class imbalance, naye intents jo kisi bucket me fit nahi, multi-intent messages. Fix: router ka alag eval set (confusion matrix), confidence threshold, `other` bucket, aur logs se naye intents nikalna.
+**Failure modes:** misroute (galat branch confidently), class imbalance (ek category baaki sab se bahut zyada common ho), naye intents jo kisi bucket me fit nahi, multi-intent messages. Fix: router ka alag eval set (confusion matrix), confidence threshold, `other` bucket, aur logs se naye intents nikalna.
 
 **Interview tip:** "Router ek classifier hai, to main use classifier ki tarah eval karta hoon: per-class precision/recall aur confusion matrix, end-to-end eval se alag."
 
@@ -330,7 +351,7 @@ app = g.compile()
 - `add_edge([...], "aggregate")` me list di hai, matlab aggregate teeno ka wait karega.
 - Har branch sirf apna chhota prompt dekhta hai, isliye focused rehta hai.
 
-**Failure modes:** reducer bhool jana, ek branch slow ya fail hone se poora superstep atakna (timeouts + `RetryPolicy`), rate limit hit (`max_concurrency` config se cap karo), voting me correlated errors (same prompt N baar = same galti; prompts ya models badlo).
+**Failure modes:** reducer bhool jana, ek branch slow ya fail hone se poora superstep atakna (timeouts + `RetryPolicy`), rate limit hit (`max_concurrency` config se cap karo; ye limit karta hai ki ek saath kitni branches chalein), voting me correlated errors (same prompt N baar = same galti; prompts ya models badlo).
 
 **Interview tip:** "Sectioning latency ke liye, voting confidence ke liye. Shared key pe `operator.add` reducer, warna parallel writes clash karte hain."
 
@@ -464,7 +485,7 @@ flowchart LR
 - **Synthesizer:** saare findings ko ek jawab me jodne wala node.
 - Doosra classic example: **PR review bot**. Diff dekh ke orchestrator decide karta hai kaunsi files review karni hain (payments module, migration, config), har ek pe ek worker.
 
-**Kab use:** subtasks input pe depend karte hain, par ek plan + execute kaafi hai. **Kab nahi:** plan beech me badalna pade. Tab plan-and-execute with replanner lo, [next page](04-agent-patterns.md).
+**Kab use:** subtasks input pe depend karte hain, par ek plan + execute kaafi hai. **Kab nahi:** plan beech me badalna pade. Tab plan-and-execute with replanner lo (LLM plan banata hai, ek step chalata hai, phir result dekh ke plan badalta hai), [next page](04-agent-patterns.md).
 
 Ye code orchestrator se capped plan banwata hai, har task ko `Send` se worker ko deta hai, aur findings jodta hai.
 
@@ -513,7 +534,7 @@ app = g.compile()
 **Code me kya ho raha hai:**
 - `Plan` me `max_length=6` hai: LLM 20 tasks bana ke bill nahi badha sakta.
 - `assign` wahi `Send` trick hai jo map-reduce me thi. Farak sirf itna hai ki list LLM ne banayi, developer ne nahi.
-- Worker ko `{task, data}` milta hai, poori history nahi. Ye context isolation ka sasta version hai.
+- Worker ko `{task, data}` milta hai, poori history nahi. Ye context isolation ka sasta version hai (har worker ko sirf utna data dikhta hai jitna use chahiye).
 - Har worker `[area]` tag ke saath likhta hai, taaki synthesizer ko pata ho kaunsa finding kahan se aaya.
 
 **Failure modes:** over-decomposition (5 line diff ke liye 20 tasks), overlapping tasks (duplicate findings), worker ko kam context dena, synthesizer ka context overflow. Fix: plan pe `max_length` cap, task descriptions me clear boundaries, workers se short structured output, synthesizer se pehle dedupe.
@@ -679,7 +700,7 @@ Upar routing, refund branch me chain + evaluator loop, compare branch me paralle
 **Ab terms:**
 - **Subgraph:** ek compiled graph jo doosre graph me node ki tarah lagta hai. Har sub-pattern ko subgraph banao: alag test, alag eval, alag owner.
 - Rule: combination tabhi jab har layer ka eval number justify kare. Har layer latency aur cost add karti hai.
-- Debugging: LangSmith ya Langfuse trace me har node ka input/output dikhna chahiye; dekho [AI Observability](10-agent-observability.md).
+- Debugging: LangSmith ya Langfuse (dono hosted tools hain jo LLM app ke runs record karke dikhate hain) trace me har node ka input/output dikhna chahiye; dekho [AI Observability](10-agent-observability.md).
 
 **Interview tip:** "Main design ko patterns ke naam se explain karta hoon: 'top pe routing, refund branch chained hai with a gate, final pe evaluator.' Interviewer ko turant structure samajh aata hai."
 

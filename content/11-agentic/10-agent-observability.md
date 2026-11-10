@@ -16,6 +16,27 @@ AI observability matlab agent ke andar har LLM call aur tool call ko record karn
 - LangSmith, Langfuse aur plain OpenTelemetry se tracing ka code.
 - Prod dashboards, alerts, feedback loop aur sampling policy kaise design karte hain.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| tool call | Model ka tumhare code se ek function (jaise `get_order`) chalwana, apne chune hue arguments ke saath. |
+| OpenTelemetry (OTel) | Kisi bhi service se traces, metrics aur logs record karne ka open standard aur libraries ka set. |
+| Trace | Ek agent run ka poora record, user message se final answer tak, har step ke saath. |
+| Span | Trace ke andar ek step, start aur end time ke saath, jaise ek LLM call ya ek tool call. |
+| PII | Personally Identifiable Information: phone, email, address, ID number, jo bhi asli insaan tak le jaaye. |
+| Eval dataset | Saved inputs aur unke sahi jawab, har change ke baad dobara chalate hain taaki tooti cheez pakdi jaaye. |
+| APM | Application Performance Monitoring: Datadog jaise tools jo service ki speed, errors aur uptime track karte hain. |
+| Hallucination | Model poore confidence se galat ya banayi hui baat bole, jaise ek order ID jo kabhi tha hi nahi. |
+| LLM judge | Ek doosri model call jo jawab ko grade karti hai, jaise check karna ki refund policy follow hui ya nahi. |
+| System prompt | Fixed instructions jo app har user message se pehle model ko bhejta hai, jaise refund policy. |
+| Prompt version | `refund-v8` jaisa label jo batata hai ki request ke waqt system prompt ka kaunsa version live tha. |
+| Retriever | Wo step jo documents me search karke milta-julta text prompt me jodta hai (isi ko RAG kehte hain). |
+| MCP / A2A | Protocols jinse agent bahar ke tools call karta hai (MCP) ya doosre agents ko kaam deta hai (A2A). |
+| TTFT | Time To First Token: jawab ka pehla shabd user tak pahunchne me kitna time laga. |
+
 ## Big picture: poora page ek nazar me
 
 Socho agent ek flight hai. Flight ka **black box** har second record karta hai: speed, altitude, pilot ki awaaz. Crash ke baad investigator black box kholta hai aur second-by-second dekhta hai ki galti kahan hui. Agent ke liye ye black box **trace** hai. Har agent run ek trace banata hai. Uske andar har LLM call aur tool call ek **span** hota hai. Hum har span pe zaroori fields log karte hain (PII hata ke), standard naam (`gen_ai.*`) use karte hain, aur sab ek backend (LangSmith, Langfuse, Phoenix) me bhejte hain. Wahan se do kaam hote hain: ek bure run ko debug karna, aur dashboards se poore traffic ko monitor karna. Bure runs eval dataset me jaate hain, fix ship hota hai, aur loop dobara chalta hai.
@@ -129,7 +150,7 @@ Upar ka diagram wahi order dikhata hai jisme cheezein hui: run, phir LLM call 1,
 - **Session / thread:** ek chat ke multiple traces ka group. Upar `s42`. Multi-turn chat me traces isi id se jodo.
 - **Span types:** LLM/generation, tool, retriever, embedding, chain/agent node, guardrail, evaluator.
 - **Har span me:** start/end time, parent id, input, output, status, attributes (model, tokens).
-- **Distributed context:** agent doosri service (MCP server, A2A agent) ko call kare to W3C `traceparent` header aage bhejo. Tab doosri service ke spans bhi isi trace me judte hain.
+- **Distributed context:** agent doosri service (MCP server, A2A agent) ko call kare to W3C `traceparent` header (trace id le jaane wala standard HTTP header) aage bhejo. Tab doosri service ke spans bhi isi trace me judte hain.
 
 **Interview tip:** "Main trace tree me teen cheezein dekhta hoon: sabse lamba span, sabse mehenga span, aur pehla span jahan output galat hua."
 
@@ -188,7 +209,7 @@ Debugging us pehle span se shuru hoti hai jiska output galat hua. Har fixed trac
 
 - **Silent failure:** galti jisme koi error ya exception nahi aata, sirf jawab galat hota hai.
 - **Eval case:** ek saved input + expected output, jo har change pe dobara test hota hai. LangSmith/Langfuse me trace se "add to dataset".
-- **Replay / time-travel:** LangGraph checkpoint se failed state dobara chalana, prompt badal ke compare karna.
+- **Replay / time-travel:** LangGraph checkpoint (har step ke baad save hua agent state ka snapshot) se failed state dobara chalana, prompt badal ke compare karna.
 
 **Interview tip:** "Debugging ka pehla sawal: kaunsa span pehla tha jahan output galat hua? Uske upar sab sahi tha, to bug wahi hai."
 
@@ -203,7 +224,7 @@ Debugging us pehle span se shuru hoti hai jiska output galat hua. Har fixed trac
 **Example step by step:** span 2 (`get_order`) ka output trace me jaane se pehle.
 
 1. Tool ka raw result: `{"order_id": "ORD-1042", "total": 450, "phone": "98xxxxxx21", "address": "Flat 302, Andheri", "items": [...]}`.
-2. Redaction step (Presidio ya regex) exporter se pehle chalta hai. Phone aur address pakde gaye.
+2. Redaction step (Presidio, Microsoft ka open-source PII detector, ya regex) exporter se pehle chalta hai. Phone aur address pakde gaye.
 3. Trace me jo pahuncha: `{"order_id": "ORD-1042", "total": 450, "phone": "<PHONE>", "address": "<ADDRESS>", "items": [...]}`.
 4. Debug ke liye jo chahiye (total, items, price, status) sab bacha. Private data gaya hi nahi.
 5. `user_id` bhi raw nahi gaya, hash gaya: `u_hash_91`. Asli identity alag secure store me hai.
@@ -401,7 +422,7 @@ def get_order(order_id: str) -> dict:
 
 **Setup ki do baatein:**
 
-- Exporter (OTLP) aur `TracerProvider` app startup pe configure karo. Langfuse aur Phoenix dono OTLP endpoint accept karte hain.
+- Exporter (OTLP) aur `TracerProvider` (jo tracers banata hai aur jaanta hai spans kahan bhejne hain) app startup pe configure karo. Langfuse aur Phoenix dono OTLP endpoint accept karte hain.
 - Short-lived jobs (Lambda, scripts) me end pe **flush** karo, warna spans gum ho jaate hain.
 
 ```mermaid
@@ -505,7 +526,7 @@ Saste code checks har trace pe, mehnga judge sirf sample pe. Dono ek metric me j
 
 **Drift aur degradation alerts:**
 
-- Input drift: naye intents, language mix, query length (embedding clusters se).
+- Input drift: naye intents, language mix, query length (embedding clusters se, yaani queries ko matlab ke hisaab se group karke).
 - Quality drop: judge pass rate, thumbs-down rate, escalation rate threshold se neeche.
 - Provider side: model version change, latency spikes, 429s.
 - Alerts ko **versions** se jodo (prompt v8 deploy ke baad drop), taaki rollback decision fast ho.

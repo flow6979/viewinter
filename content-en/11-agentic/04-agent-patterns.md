@@ -19,6 +19,27 @@ For fixed-path patterns see [Agentic Patterns: Workflows](03-workflow-patterns.m
 - When multi-agent is worth it, with token and rupee numbers.
 - How agents should share state, and what breaks.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| LangGraph | A Python library for building LLM apps as a graph: functions are nodes, arrows decide which runs next. |
+| `Command` | A LangGraph return value that updates data and says which node should run next, in one go. |
+| Subgraph | A whole compiled graph used as a single node inside a bigger graph. |
+| Checkpointer | Saves the graph's data after each step to memory or a database, so a conversation can resume later. |
+| `messages` | The list of chat messages (user, model, tool results) sent to the model on every call. |
+| `tool_calls` | A field in the model's reply naming a function to run and its arguments; your code runs it. |
+| `ToolMessage` | The message that carries a tool's result back into `messages`, linked to the call that asked for it. |
+| Superstep | One tick of the graph: all nodes scheduled for that tick run, then their updates are applied. |
+| Middleware | Hooks that run around each model or tool call, for example to summarize history or ask a human. |
+| State | The shared dict of data that every node in the graph reads from and writes updates to. |
+| Hallucination | The model confidently stating something false or made up, such as numbers it never looked up. |
+| Reducer | A rule for merging a node's update into a state field, for example append to the list instead of overwrite. |
+| Structured output | Forcing the model to reply in a fixed shape, such as a Pydantic class, instead of free text. |
+| Span | One timed record of a single operation (a model call, a tool run) inside a trace of a request. |
+
 ## Big picture: the ladder of agent patterns
 
 An agent means: the LLM decides in a loop what to do next. On this page we climb a ladder. At the bottom, one agent runs tools in a loop (**ReAct**). On long tasks it loses its way, so we have it plan first (**plan-and-execute**). To make planning cheaper or faster there are **ReWOO** and **LLMCompiler**. For an agent to learn from its mistakes there is **Reflexion**. And when one agent has too many tools or domains, we split the work across several agents (**multi-agent**).
@@ -156,11 +177,11 @@ app = g.compile()
 - `tools_condition` checks: if the last message has `tool_calls`, go to `"tools"`, otherwise END.
 - The `tools → model` edge is the loop. For an approval step, put a new node before `tools`.
 
-**Failure modes:** tool loops (the same call again and again), wrong tool args, a hallucinated final answer without calling a tool, context bloat (large tool outputs carried into every turn). Fix: `recursion_limit`, clear "when to use" in tool descriptions, truncate/summarize tool output, Pydantic validation on args, and return tool errors as a `ToolMessage` so the model can self-correct.
+**Failure modes:** tool loops (the same call again and again), wrong tool args, a hallucinated final answer without calling a tool, context bloat (large tool outputs carried into every turn). Fix: `recursion_limit`, clear "when to use" in tool descriptions, truncate/summarize tool output, Pydantic (a Python data-validation library) validation on args, and return tool errors as a `ToolMessage` so the model can self-correct.
 
 **Interview tip:** "ReAct's cost is resending the full context on every step. So I keep tool outputs short and set a step limit."
 
-**Common mistake:** calling `create_react_agent` the current API. In 1.0 it is `create_agent`, with middleware (summarization, HITL, model fallback).
+**Common mistake:** calling `create_react_agent` the current API. In 1.0 it is `create_agent`, with middleware (summarization, HITL = human-in-the-loop approval, model fallback).
 
 ## ⭐ Plan-and-execute
 
@@ -376,7 +397,7 @@ flowchart TD
 
 ### Supervisor with handoff tools
 
-The seller says: "Cut the price of SKU K-101 by ₹50 and boost ads." Watch who has control at each step:
+The seller says: "Cut the price of SKU (product code) K-101 by ₹50 and boost ads." Watch who has control at each step:
 
 | Step | What happened | Who has control |
 |---|---|---|
@@ -538,7 +559,7 @@ app = create_swarm([booking, payments], default_active_agent="booking").compile(
 So about 3.4x the cost. It is worth it when deep research makes the seller's big decision (pricing) better. Not for FAQ-style questions: if a workflow answers an FAQ for ₹0.35 and multi-agent takes 15x tokens, then at 1 lakh queries/day the spend goes from ~₹35k/day to ~₹5 lakh/day, for an answer that is just as good.
 
 **Real data points:**
-- **Anthropic:** their multi-agent research system beat a single agent by ~90% on their internal research eval, but used roughly **~15x tokens** compared with chat (a single agent ~4x). In their analysis, token usage itself explained most of the performance variance. So the gain is often "spending more tokens".
+- **Anthropic:** their multi-agent research system beat a single agent by ~90% on their internal research eval (a fixed test set that scores answers), but used roughly **~15x tokens** compared with chat (a single agent ~4x). In their analysis, token usage itself explained most of the performance variance. So the gain is often "spending more tokens".
 - **Counterpoint (Cognition, "Don't build multi-agents"):** parallel subagents don't see each other's decisions → conflicting assumptions. For write-heavy tasks (coding), a single-threaded agent with good context engineering does better.
 
 **Pro:** each agent has a small context and few tools → better tool selection; parallel search on breadth tasks; different teams can own different agents.
@@ -600,7 +621,7 @@ A handoff brief looks like this:
 
 ## Common multi-agent failure modes and fixes
 
-**Why do we need this?** In multi-agent systems most bugs are not model mistakes, they are coordination mistakes. An example: the seller says "handle price and ads". Supervisor → pricing → supervisor → pricing → supervisor... each time pricing says "ads are not my job" and the supervisor sends it to pricing again. After 25 steps, `GraphRecursionError`, and the seller gets nothing.
+**Why do we need this?** In multi-agent systems most bugs are not model mistakes, they are coordination mistakes. An example: the seller says "handle price and ads". Supervisor → pricing → supervisor → pricing → supervisor... each time pricing says "ads are not my job" and the supervisor sends it to pricing again. After 25 steps, `GraphRecursionError` (the error LangGraph raises when `recursion_limit` is hit), and the seller gets nothing.
 
 **Trace of the fix:** keep a `handoff_count` in state. +1 on every handoff. If the same agent is sent twice in a row, or the count goes above 4, force the supervisor to give a summary or send it to a human.
 

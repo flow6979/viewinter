@@ -15,6 +15,27 @@ An agent that runs on your laptop and an agent that serves lakhs of users are tw
 - How the data of two different customers stays separate inside one system.
 - How a new prompt or model ships safely, and when and how the agent hands off to a human.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| Agent | A program where an LLM decides, step by step, which tools to call until a task is done. |
+| LLM provider | The company whose model you call over an API, like OpenAI or Anthropic. |
+| Checkpointer | Code that saves the agent's full state to a database after every step, so a run can resume. |
+| SSE | Server-Sent Events: an HTTP connection the server keeps open to push updates to the client. |
+| Run | One execution of the agent for one message or task, from start to finish. |
+| Tenant | One customer company or account; many tenants share the same system. |
+| Graph | The agent's code as steps (nodes) joined by arrows (edges) that decide what runs next. |
+| Thread | One saved conversation; every run on it shares the same stored state, found by `thread_id`. |
+| Tool | A normal function (API call, DB query) the model can ask your code to run. |
+| Human-in-the-loop (HITL) | The run pauses so a person can approve or change something before it continues. |
+| Eval | An automated test that scores the agent's answers on a fixed set of example inputs. |
+| Prompt injection | Hidden text in user input or a document that tries to make the model ignore its rules. |
+| ReAct | The basic agent loop: the model thinks, calls a tool, reads the result, and repeats. |
+| RAG | Retrieval-augmented generation: search your documents, put the relevant parts in the prompt, then answer. |
+
 ## Big picture: from notebook to production
 
 Say you built a support agent that works well in a notebook. Now 20,000 people will use it at the same time. First it needs a **serving setup** that takes requests and hands the work to workers. Then it needs **durable execution** so a crash does not lose work. Then **reliability**, because the LLM provider can get slow or go down at any time. Then **security** and **tenant isolation**, so one user can never see another user's data. Then **versioning**, so a new prompt does not break everything. And finally **human handoff**, for when the agent is out of its depth. Each section on this page is one of these layers.
@@ -192,7 +213,7 @@ The client only holds the `run_id`; if a worker dies, another worker picks up th
 - **Idempotent node:** a node that gives the same result even if it runs twice. Needed because a node that was half done at crash time will run again.
 - **Idempotency key:** a unique ID sent with a side effect (refund, email, upload). If the server sees the same key again, it does not repeat the work ([Idempotency](../01-topics/10-idempotency-retries.md)).
 - **Durability modes (LangGraph):** `"exit"` saves only at the end (fast, a crash loses everything), `"async"` is the default and saves in the background while the next step runs, `"sync"` moves on only after each step is saved (safest, a bit slower).
-- **Temporal-style durability:** Temporal writes each activity result into the event history; after a crash the workflow replays and completed activities do not run again. For very long, multi-day, money-moving workflows, teams wrap LLM calls as Temporal activities. The LangGraph checkpointer gives step-level durability; Temporal gives stronger guarantees like timers, signals and workflow versioning.
+- **Temporal-style durability:** Temporal (an open-source durable workflow engine) writes each activity result into the event history; after a crash the workflow replays and completed activities do not run again. For very long, multi-day, money-moving workflows, teams wrap LLM calls as Temporal activities. The LangGraph checkpointer gives step-level durability; Temporal gives stronger guarantees like timers, signals and workflow versioning.
 
 The resume code is short. Same `thread_id`, and input `None`:
 
@@ -456,7 +477,7 @@ sequenceDiagram
 - **Secrets:** API keys live in a secret manager (Vault/KMS); never in the prompt, tool output or traces. Redact PII/secrets in traces.
 - **Per-user auth propagated to tools:** the tool gets the user's scoped token / identity from runtime context, not from the LLM's arguments. The LLM can write anything in a `user_id` argument.
 - **Least privilege:** minimum scopes for each agent/tool; separate read and write tools; human approval on high-risk writes ([Guardrails & Safety](08-guardrails.md)).
-- **Sandboxing:** code-execution / browser tools run in isolated containers (gVisor, Firecracker, an E2B-style sandbox); network off or allowlisted, CPU/memory/time limits, no host secrets.
+- **Sandboxing:** code-execution / browser tools run in isolated containers (gVisor, Firecracker, an E2B-style sandbox: tools that run code in a locked-down container or tiny VM); network off or allowlisted, CPU/memory/time limits, no host secrets.
 - **Prompt injection:** tool results and retrieved docs are untrusted data. Never treat them as instructions.
 
 Below is the same tool. The identity comes from `Ctx`, not from the model's arguments:
@@ -643,7 +664,7 @@ flowchart LR
     R -->|tests fail| L
 ```
 
-- **Patterns:** ReAct loop + tools (`shell` in a sandbox), evaluator-optimizer (tests as verifier), human approval for destructive commands; an optional planner + sub-agents for big tasks.
+- **Patterns:** ReAct loop + tools (`shell` in a sandbox), evaluator-optimizer (one step makes a change, a checker judges it and sends it back; here tests are the verifier), human approval for destructive commands; an optional planner + sub-agents for big tasks.
 - **Hard parts:** context (the repo is big and does not fit, hence search + file summaries), edit reliability (exact string/diff edits), sandbox security, endless fix-test loops (step budget), the cost of long runs.
 
 Tests act as the verifier: a failure becomes feedback that goes back into the loop, and a cap on iterations stops an endless fix-test cycle.
@@ -681,7 +702,7 @@ flowchart LR
     CR -->|gap found| PL
 ```
 
-- **Patterns:** orchestrator-workers, parallelization (`Send`), reflection, background runs + checkpointer.
+- **Patterns:** orchestrator-workers, parallelization (`Send`, LangGraph's way to start one parallel branch per sub-question), reflection, background runs + checkpointer.
 - **Hard parts:** source quality and citation faithfulness, cost (sub-agents multiply tokens), context overflow (pass summaries, not raw pages), stopping criteria, progress streaming.
 
 ### 4. Data-analyst (text-to-SQL) agent
@@ -700,7 +721,7 @@ flowchart LR
 ```
 
 - **Patterns:** RAG over the schema/semantic layer, execution only on the read replica, evaluator-optimizer (DB error as feedback), tool sandboxing.
-- **Hard parts:** ambiguous business metrics (the definition of "active user", solved with a semantic layer), wrong-but-runs SQL (silent errors, eval with gold queries), row-level permissions, expensive queries (timeouts, read-only role).
+- **Hard parts:** ambiguous business metrics (the definition of "active user", solved with a semantic layer, i.e. one shared place that defines each metric), wrong-but-runs SQL (silent errors, eval with gold queries), row-level permissions, expensive queries (timeouts, read-only role).
 
 Validation and DB errors go back to the generator for self-correction, and execution happens only on the read replica.
 

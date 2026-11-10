@@ -81,8 +81,8 @@ const RAG_P1 = ['01-what-is-rag', '02-semantic-search', '03-chunking', '04-hybri
 const RAG_P2 = ['09-production-rag-api', '08-rag-evaluation', '07-advanced-retrieval', '06-pageindex']
 const DSA_P1 = ['04-patterns-cheatsheet', '03-stl', '05-arrays-hashing-prefix', '06-two-pointers-sliding-window', '07-binary-search', '11-trees', '13-graphs', '15-dp']
 const DSA_P2 = ['01-cpp-basics', '08-greedy-intervals', '09-stack-queue-monotonic', '10-recursion-backtracking', '12-heaps-priority-queue', '14-dsu']
-const AGENT_P1 = ['01-agent-foundations', '02-langgraph-core', '03-workflow-patterns', '04-agent-patterns', 'agents-react', '13-agentic-interview-qa']
-const AGENT_P2 = ['05-memory-context', '07-tools-mcp-a2a', '09-agent-evals', '08-guardrails', '10-agent-observability', '11-cost-latency', '12-agents-in-production', 'agents-rag', 'agents-prod']
+const AGENT_P1 = ['00-start-here', '14-how-llms-work', '01-agent-foundations', '03-workflow-patterns', '04-agent-patterns', '07-tools-mcp-a2a', 'agents-react', '13-agentic-interview-qa', '22-llm-engineer-interview']
+const AGENT_P2 = ['02-langgraph-core', '05-memory-context', '09-agent-evals', '08-guardrails', '15-inference-serving', '16-fine-tuning', '11-cost-latency', '21-llmops', '12-agents-in-production', 'agents-rag', 'agents-prod']
 
 // Reading time × factor = study time (questions need practice, labs need running)
 const FACTOR: Record<Page['kind'], number> = { topic: 3, question: 2.5, lld: 2, lldp: 2.5, java: 1.5, db: 1.5, cs: 1.5, beh: 2, rag: 2, dsa: 3, ai: 2, agent: 2 }

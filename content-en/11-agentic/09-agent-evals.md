@@ -16,6 +16,27 @@ You changed the agent's prompt. You tried two or three questions and the answers
 - What an LLM judge's prompt looks like, and how to check it against human labels.
 - How a CI eval gate stops a bad prompt change from being merged.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| Eval | An automated test that runs the agent on many example questions and scores the results. |
+| Golden dataset | A hand-checked set of example questions whose right answer or right behaviour is known. |
+| Trajectory | The full list of steps an agent took in one run: which tools, with which arguments, in order. |
+| LLM-as-judge | Using a second LLM call to grade an output against written rules. |
+| Baseline | The scores of the current version, which a new version's scores are compared against. |
+| Non-deterministic | The same input can give a different output on each run. |
+| Rubric | A written list of what a good answer must contain, used to grade it. |
+| Mocked tools | Fake versions of real tools that return canned data, so tests never touch real payments or databases. |
+| Router node | The step in an agent that decides which path or intent a request belongs to. |
+| Grounded | Every claim in the answer is backed by the documents or tool results the agent was given. |
+| Trace | A recorded log of every model call and tool call in one run, with inputs, outputs, time and cost. |
+| Chain-of-thought | Asking the model to write its reasoning step by step before the final answer. |
+| Few-shot | Putting a few worked examples into the prompt so the model copies their pattern. |
+| RAG | Retrieval-augmented generation: search documents first, then give the relevant pieces (chunks) to the model. |
+
 ## Big picture: you changed the prompt, did the agent get better?
 
 In software, when you change code you run unit tests. In an agent, a big part of the "code" is the prompt, the model and the tools. Evals are their unit tests. The flow is simple: keep a **golden dataset** (questions + an idea of the right answer). After every change, run the agent on the whole dataset. Score each answer **three ways**. Compare the scores with the old version (the baseline). If they drop, block the merge. After shipping, check live traffic too, and put the failures you find back into the dataset. Each section of this page is one part of this loop.
@@ -405,7 +426,7 @@ def agreement(examples, human_labels):
 
 **In one line:** if the agent retrieves, evaluate retrieval and generation separately.
 
-- **Retrieval:** context precision, context recall, MRR, nDCG, hit@k.
+- **Retrieval:** context precision, context recall, MRR, nDCG, hit@k. All of them ask the same thing: were the right chunks found, and were they ranked near the top?
 - **Generation:** faithfulness (no hallucination), answer relevance, correctness.
 - Extra in agentic RAG: **when** the agent retrieved, whether the query rewrite was good, how many times it retrieved.
 - Details: [RAG Evaluation](../09-rag/08-rag-evaluation.md).
@@ -455,7 +476,7 @@ def agreement(examples, human_labels):
 **One example, step by step.** Prompt v2 for the Swiggy support bot:
 
 1. **Offline:** task success on the golden set goes from 0.92 to 0.94. Pass.
-2. **A/B:** v2 gets 10% of traffic. After a week: escalation rate 8% → 6.5%, CSAT same, cost per conversation ₹0.38 → ₹0.41.
+2. **A/B:** v2 gets 10% of traffic. After a week: escalation rate 8% → 6.5%, CSAT (customer satisfaction score) same, cost per conversation ₹0.38 → ₹0.41.
 3. **Online judge:** a reference-free judge runs on 5% of sampled traces. Scores dropped on Hindi refund questions.
 4. Those low-score traces went to a review queue, and 12 new cases went into the golden set.
 
@@ -479,7 +500,7 @@ Offline evals gate the release, online evals watch live traffic, and the failure
 | Data | curated golden set | real user traffic (sampled) |
 | When | dev, PR, before release | continuously in prod |
 | Reference | yes, mostly | no, reference-free judges |
-| Catches | regressions | drift, new failure types |
+| Catches | regressions | drift (quality slowly changing as users, data or the model change), new failure types |
 
 **Terms:**
 
@@ -668,7 +689,7 @@ score = conversation_judge(outputs=convo)   # goal achieved? polite? no repeats?
 | RAGAS | open source library | RAG metrics (faithfulness, context precision/recall), synthetic testsets |
 | Promptfoo | open source CLI | YAML test configs, model comparison, red-teaming, CI friendly |
 | Braintrust | hosted platform | experiments, scorers, playground, CI diffs |
-| Arize Phoenix | open source | OTel-based tracing + evals, self-host |
+| Arize Phoenix | open source | OTel-based (OpenTelemetry, the standard tracing format) tracing + evals, self-host |
 | Inspect (UK AISI) | open source framework | agentic/safety evals, sandboxed tool tasks |
 | agentevals / openevals | open source library | trajectory match, LLM-as-judge helpers |
 
@@ -714,7 +735,7 @@ flowchart LR
 
 **Interview tip:** "I do not start with generic metrics. I first read 100 traces, find the failure modes, then write evals for them."
 
-**Common mistake:** wiring off-the-shelf metrics (BLEU, generic helpfulness) into a dashboard that does not correlate with real failures.
+**Common mistake:** wiring off-the-shelf metrics (BLEU, a word-overlap score borrowed from machine translation, generic helpfulness) into a dashboard that does not correlate with real failures.
 
 ## Read next
 

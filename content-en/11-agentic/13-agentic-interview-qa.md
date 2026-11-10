@@ -14,6 +14,27 @@ This page is for revision before the interview. Agentic AI Engineer interviews c
 - Answers to "why X, why not Y?" trade-off questions: the default, when you would switch, how you would measure.
 - How to split time in a 45-minute round and which red flags to avoid.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| LangGraph | A Python library for building agents as graphs: steps (nodes) joined by arrows (edges), sharing one state. |
+| Tool | A function the model can ask your code to run, like `get_order` or `issue_refund`. |
+| Superstep | One round of a LangGraph run: every ready node executes, then the state is saved. |
+| RAG | Retrieval-augmented generation: search your documents, put the relevant parts in the prompt, then answer. |
+| HITL | Human-in-the-loop: the run pauses until a person approves or edits, then continues. |
+| Store / namespace | A database for facts kept across chats; the namespace, like `(tenant, user)`, keeps each user's facts separate. |
+| Guardrail | A check before or after the model that blocks unsafe input, output or actions. |
+| Eval | An automated test that scores the agent's outputs on fixed example inputs. |
+| LLM-as-judge | Using a second model call to grade an answer against a rubric, a written scoring guide. |
+| Prompt caching | The provider reuses work on a repeated prompt start and bills those tokens much cheaper. |
+| Semantic cache | Returns a stored answer when a new question means nearly the same as an old one. |
+| `recursion_limit` | LangGraph setting that stops a run after N steps, so a looping agent cannot run forever. |
+| Subgraph | A smaller graph used as one step inside a bigger graph, like one per issue type. |
+| Hallucination | When the model states something false or made up as if it were true. |
+
 ## Big picture: what the interview checks
 
 An agentic AI round usually runs in three parts. First come short conceptual questions (rapid-fire), which check that your basics are solid. Then a system design ("design a support agent"), where they watch whether you clarify, pick the right pattern, and get all the way to evals, cost and failures. Trade-off questions ("why multi-agent?") come up along the way. Through the whole round the interviewer also notes red flags. The sections on this page follow the same order.
@@ -50,7 +71,7 @@ State = a typed dict (with reducers, e.g. messages append). Node = a function th
 *In simple words:* state is a shared notebook, a node is a step that writes into that notebook, and an edge says which step comes next. A reducer says how new data merges with old data (like appending to a list).
 
 **Q5. Why a checkpointer and thread_id?**
-State is saved after every superstep against a `thread_id`. This gives multi-turn memory, crash resume, human-in-the-loop (`interrupt`) and time-travel. In prod, use the Postgres checkpointer.
+State is saved after every superstep against a `thread_id`. This gives multi-turn memory, crash resume, human-in-the-loop (`interrupt`) and time-travel (re-running from an older save point). In prod, use the Postgres checkpointer.
 *In simple words:* after every step a game "save point" is made. `thread_id` is the name of that save file. If there is a crash, or the user comes back tomorrow, the same save is loaded.
 
 **Q6. What do `interrupt()` and `Command` do?**
@@ -97,7 +118,7 @@ Clear name + description (docs for the model), strictly typed args, task-shaped 
 *In simple words:* a tool should do one whole job (like `refund_order`), not small DB operations the model has to stitch together. Idempotent = running it twice has the effect of running it once.
 
 **Q14. What is MCP?**
-Model Context Protocol: an open standard for exposing tools, resources and prompts (client–server, stdio/HTTP). Build an MCP server once, use it in any MCP-compatible agent/host.
+Model Context Protocol: an open standard for exposing tools, resources and prompts (client–server, over stdio, i.e. a local process, or HTTP). Build an MCP server once, use it in any MCP-compatible agent/host.
 *In simple words:* MCP is like USB for tools. One standard plug that fits any device (agent app).
 
 **Q15. MCP vs A2A?**
@@ -113,7 +134,7 @@ Three levels: final output (correctness, LLM-as-judge with a rubric), trajectory
 *In simple words:* check the path too, not just the final answer. Trajectory = which tools the agent ran in which order. Golden dataset = sample questions with their correct answers.
 
 **Q18. Risks of LLM-as-judge?**
-Position/length/self bias, and noisy results if the rubric is vague. Fix: a clear rubric, pairwise or binary pass/fail, calibrate the judge on human labels, a strong judge model when needed.
+Position/length/self bias, and noisy results if the rubric is vague. Fix: a clear rubric, pairwise (compare two answers, pick the better) or binary pass/fail, calibrate the judge on human labels, a strong judge model when needed.
 *In simple words:* the judge model makes mistakes too: it may prefer the first answer or the longer one. So give a clear rubric and match its verdicts against human verdicts.
 
 ## ⭐ Rapid-fire: observability, cost and production
@@ -131,7 +152,7 @@ Model routing/cascade, prompt caching (stable prefix), tool/semantic cache, fewe
 *In simple words:* give easy work to a small cheap model, cache the prompt you send again and again, and cut steps. Distillation = training a small model on a big model's answers.
 
 **Q21. How do you cut latency?**
-Stream tokens + step events (TTFT), parallel tool calls/nodes, small models for sub-steps, fewer output tokens, speculative fetch, prompt caching.
+Stream tokens + step events (TTFT), parallel tool calls/nodes, small models for sub-steps, fewer output tokens, speculative fetch (fetching likely-needed data before the model asks), prompt caching.
 *In simple words:* show the user the first word quickly (TTFT = time to first token), and do together whatever can run together.
 
 **Q22. How do you stop a runaway agent?**
@@ -294,7 +315,7 @@ sequenceDiagram
 
 "Researchers return compressed notes, not raw pages, and the critic can send the run back to the planner only a limited number of times; then the report ships."
 
-**5. Pattern and tools.** "The pattern is orchestrator-workers: dynamic fan-out with LangGraph `Send`, a reflection loop of max 2 rounds, a background run + Postgres checkpointer. Tools: web search API, page fetch + clean (HTML → text), PDF parse, internal RAG. Each researcher has its own isolated context."
+**5. Pattern and tools.** "The pattern is orchestrator-workers: dynamic fan-out with LangGraph `Send` (one parallel branch per sub-question), a reflection loop of max 2 rounds, a background run + Postgres checkpointer. Tools: web search API, page fetch + clean (HTML → text), PDF parse, internal RAG. Each researcher has its own isolated context."
 
 **6. Memory and context.** "Researchers return **compressed notes + source URLs**, not raw pages; the aggregator dedupes. Long-term, the user's past reports/preferences are optional."
 
@@ -478,6 +499,7 @@ The round is a pipeline: get the diagram done by minute 20, and make sure evals 
 - [AI Agents: Foundations](01-agent-foundations.md), [LangGraph Core](02-langgraph-core.md), [Workflow patterns](03-workflow-patterns.md), [Agent patterns](04-agent-patterns.md)
 - [Memory & Context](05-memory-context.md), [Data & Retrieval](06-agentic-data-rag.md), [Tools, MCP & A2A](07-tools-mcp-a2a.md)
 - [Guardrails](08-guardrails.md), [Evals](09-agent-evals.md), [Observability](10-agent-observability.md), [Cost & Latency](11-cost-latency.md), [Agents in Production](12-agents-in-production.md)
+- [LLM Engineer Interview Prep](22-llm-engineer-interview.md): fundamentals, serving and fine-tuning questions
 - [RAG Interview Q&A](../09-rag/10-rag-interview-qa.md), [LLM chat app](../02-questions/t2-22-llm-chat-app.md)
 - Labs: [Production agent](/viewinter/agents/labs/prod), [Multi-agent](/viewinter/agents/labs/multi), [Web agent](/viewinter/agents/labs/web)
 

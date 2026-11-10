@@ -16,6 +16,27 @@ Agentic AI interview ka pehla 15 minute isi page pe hota hai: "agent vs workflow
 - Same task ko workflow aur agent dono tareeke se kaise karte hain, aur kab kaunsa chuno.
 - Agent kahan fail hota hai aur har failure ka fix kya hai.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| System prompt | Har call ke saath jaane wale fixed instructions. Model ko role, rules aur limits batate hain. |
+| Tool | Tumhare code ka normal function ya API, jise chalane ko model bol sakta hai. |
+| LLM | Large language model. Text padh ke agla text ka tukda predict karta hai, ek-ek karke. |
+| `tool_use` | Model ka lautaya JSON block jo bolta hai "ye tool in arguments ke saath chalao". |
+| Temperature | Randomness ki setting. 0 pe lagbhag har baar same jawab, zyada pe variety. |
+| ReAct | Reason + Act. Model sochta hai, tool maangta hai, result padhta hai, phir repeat. |
+| `tool_result` | Tool ka output leke tumhare code ka wapas bheja message, matching call id ke saath. |
+| Vector DB | Database jo exact words se nahi, milte-julte matlab se text dhoondhta hai. |
+| `stop_reason` | Model ke reply ka field jo batata hai wo kyun ruka, jaise kaam khatam ya tool chahiye. |
+| Guardrail | Model ke aas-paas laga check jo unsafe ya rule todne wala input ya output rokta hai. |
+| HITL | Human in the loop. Agent aage badhe usse pehle ek insaan step approve ya edit karta hai. |
+| Structured output | Model se fixed JSON shape me jawab lena, taaki tumhara code safely parse kar sake. |
+| Hallucinated args | Model ke khud se bana diye args, jaise aisa order id jo exist hi nahi karta. |
+| Trajectory | Ek run ka poora raasta: har model call, tool call aur result, order me. |
+
 ## Big picture: agent ke andar kya hota hai
 
 Agent koi jaadu nahi hai. Ek `for` loop hai. Loop me tum LLM ko teen cheezein bhejte ho: instructions (system prompt), tools ki list, aur ab tak ki baatcheet (messages). LLM ya to final answer deta hai, ya bolta hai "ye tool in arguments ke saath chalao". Tool tumhara code chalata hai, LLM nahi. Result messages me jud jaata hai aur loop phir chalta hai. Is page ke saare sections isi loop ke ek-ek hisse ko samjhate hain.
@@ -343,7 +364,7 @@ Tool fail ho to program crash mat karo. Clear error message wapas do, taaki mode
 1. Model bhejta hai `get_inventory("102938")`. Tool lautata hai `Error: SKU 'FK-' se start hona chahiye, e.g. FK-102938` with `is_error: true`.
 2. Model ye padh ke dobara bhejta hai `get_inventory("FK-102938")`. Kaam ho gaya. Retry count limit karo (2–3).
 
-Neeche LangChain me wahi tool. `@tool` decorator docstring ko description aur type hints ko schema bana deta hai.
+Neeche LangChain (LLM apps banane ki popular Python library) me wahi tool. `@tool` decorator docstring ko description aur type hints ko schema bana deta hai.
 
 ```python
 from langchain_core.tools import tool
@@ -368,7 +389,7 @@ for call in msg.tool_calls:          # [{'name': 'get_inventory', 'args': {...},
 - `@tool` function ko tool schema me badal deta hai. Docstring hi model ke liye description hai.
 - `bind_tools` har LLM call ke saath ye schema bhejne ka intezaam karta hai.
 - Do SKU maange the, to `msg.tool_calls` me do calls aayengi (parallel), har ek ka apna `id`.
-- Is code ne tool chalaya nahi, sirf model ki request print ki. Chalana agla step hai (loop ya `ToolNode`).
+- Is code ne tool chalaya nahi, sirf model ki request print ki. Chalana agla step hai (loop ya `ToolNode`, LangGraph ka ready-made node jo maange gaye tools chalata hai).
 
 **Ek line me:** tum model ko tools ka **naam + description + JSON schema** dete ho; model structured call lautata hai; tumhara code chalata hai aur result wapas deta hai.
 
@@ -484,9 +505,9 @@ Section 3 tools ka order fix karta hai, section 4 policy hai jo kabhi nahi tootn
 
 - **System prompt anatomy:** upar ke 6 sections.
 - **Few-shot:** 2–5 examples of good trajectories (sirf final answers nahi). Diverse rakho, warna model ek pattern copy karta hai.
-- **CoT / reasoning models:** non-reasoning model pe "step by step socho" helps. Reasoning models (o-series, Claude extended thinking) khud sochte hain; unhe micro-manage mat karo, goal aur constraints do. Thinking tokens bhi bill hote hain.
-- **Templates:** `ChatPromptTemplate` / f-strings with variables; static part pehle, dynamic last (prompt caching ke liye prefix stable rakho).
-- **Versioning:** prompt = code. Git ya prompt registry (LangSmith/Langfuse) me version, har change eval suite se gate. Trace me prompt version log karo. Detail: [Evals for Agents](09-agent-evals.md).
+- **CoT / reasoning models:** non-reasoning model pe "step by step socho" helps. Reasoning models (jo jawab se pehle hidden thinking steps likhte hain, e.g. OpenAI o-series, Claude extended thinking) khud sochte hain; unhe micro-manage mat karo, goal aur constraints do. Thinking tokens bhi bill hote hain.
+- **Templates:** `ChatPromptTemplate` / f-strings with variables; static part pehle, dynamic last (prompt caching ke liye prefix stable rakho: provider pehle se process hua same shuruaati prompt reuse karta hai aur sasta bill karta hai).
+- **Versioning:** prompt = code. Git ya prompt registry (versioned prompts store karne wala tool, e.g. LangSmith/Langfuse) me version, har change eval suite se gate. Trace (ek run ka recorded log) me prompt version log karo. Detail: [Evals for Agents](09-agent-evals.md).
 
 **Ek line me:** agent ka system prompt ek **job description + operating manual** hai: role, goal, tools kab use karne, constraints, aur kab rukna/escalate karna.
 

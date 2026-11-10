@@ -15,6 +15,27 @@ Ye page agent ka bill aur speed control karna sikhata hai. Demo me agent chal ja
 - Same run ki timeline: TTFT, tool waits, aur sequential vs parallel.
 - Budgets (max steps, spend cap, timeout), batch API aur fine-tuning kab.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| Step | Agent loop ka ek round: ek LLM call, aur jo tool wo maange. |
+| Model routing | Har request ko uski mushkil ke hisaab se sasta ya strong model dena. |
+| TTFT | Time To First Token: jawab ka pehla shabd aane me kitna time laga. |
+| Streaming | Jawab ko banate-banate tukdon me user ko bhejna, end me ek saath nahi. |
+| Stateless | Model calls ke beech kuch yaad nahi rakhta, isliye har call me sab dobara bhejna padta hai. |
+| System prompt | Har call ki shuruaat me bheje gaye fixed instructions: role, rules, output format. |
+| Tool schema | Tool ka naam, description aur arguments ka format, jo model ko bhejte hain taaki wo use call kar sake. |
+| Reasoning tokens | Hidden step-by-step soch jo kuch models jawab se pehle likhte hain; output ki tarah bill hoti hai. |
+| Prompt caching | Provider haal me dekhe prompt-start ka kaam reuse karta hai, un tokens ka bill bahut kam. |
+| Semantic cache | Naya sawal kisi purane sawal jaisa matlab rakhe, to stored jawab lauta deta hai. |
+| Embedding | Numbers ki list jo text ka matlab pakadti hai; milte-julte texts ke numbers paas hote hain. |
+| LangGraph | Python library jo agent ko steps (nodes) ka graph banati hai, sab ek shared state use karte hain. |
+| Superstep | Ek round jisme LangGraph saare ready nodes parallel chalata hai, phir aage badhta hai. |
+| Prompt injection | Input ya tool data me chhupa text jo model se uske instructions ignore karwa deta hai. |
+
 ## Big picture: poora page ek nazar me
 
 Bijli ka bill yaad karo: **units × rate**. Agent ka bill bhi aisa hi hai: **steps × tokens per step × price per token**. Har lever in teen me se ek cheez ko chhota karta hai. Caching aur routing **price** girate hain. Trimming **tokens per step** girata hai. Better tools aur workflows **steps** girate hain. Latency bhi steps se judi hai: har step = ek LLM call ka wait + tool ka wait. Streaming aur parallel tools us wait ko chhota ya kam bura banate hain. Aur budgets ek fuse ki tarah hain: kuch bigde to bill hazaar dollar tak na jaaye.
@@ -267,7 +288,7 @@ graph = builder.compile(cache=InMemoryCache())  # prod me Redis-backed cache
 
 **Interview tip:** "Context ek budget hai: system + tools + memory + retrieved + history. Main har bucket ka cap rakhta hoon."
 
-**Common galti:** trim karte waqt AI ka tool_call message rakh lena par uska ToolMessage hata dena (ya ulta). Provider request reject kar deta hai.
+**Common galti:** trim karte waqt AI ka tool_call message (model ki tool chalane ki request) rakh lena par uska ToolMessage, jisme us tool ka result hota hai, hata dena (ya ulta). Provider request reject kar deta hai.
 
 ## Steps kam karna
 
@@ -330,7 +351,7 @@ Chhote model ki illustrative price: $0.30/1M input, $1.20/1M output, cached $0.0
 
 > **Example:** Swiggy support bot. 70% queries "order kahan hai", "refund status" jaisi simple hain. Chhota model kaafi. "Wrong item aaya, aadha refund mila, coupon bhi kat gaya" jaise multi-issue cases bade model ko jaate hain.
 
-- **Routing (upfront):** ek classifier (chhota LLM, ya embedding + logistic regression, ya rules) request ka difficulty/intent decide karta hai, phir sahi model ya subgraph.
+- **Routing (upfront):** ek classifier (chhota LLM, ya embedding + logistic regression (ek simple, sasta classic classifier), ya rules) request ka difficulty/intent decide karta hai, phir sahi model ya subgraph.
 - **Cascading (try-then-escalate):** chhota model answer karta hai, phir check: structured confidence, verifier, schema validation, ya tool error. Fail → bada model.
 - **Per-step routing:** agent ke andar bhi: planning aur final synthesis bada model, extraction/summarize/classify chhota model (upar wala example).
 - Saving typically 40–70% jab traffic ka bada hissa simple ho. Trade-off: router ki galti (hard query chhote model pe) quality girati hai, aur cascade me escalation ka latency double lagta hai.
@@ -407,7 +428,7 @@ app = g.compile()
 - **Cascading:** pehle chhota try karo, fail ho to bada.
 - **Escalation:** chhote se bade model pe bhejna.
 
-**Interview tip:** "Router ko bhi eval karta hoon: confusion matrix (simple ko complex bhejna = paisa waste, complex ko simple bhejna = quality loss). Doosri galti zyada mehengi hai, isliye threshold usi taraf bias karta hoon."
+**Interview tip:** "Router ko bhi eval karta hoon: confusion matrix, yaani predicted vs sahi label ki table (simple ko complex bhejna = paisa waste, complex ko simple bhejna = quality loss). Doosri galti zyada mehengi hai, isliye threshold usi taraf bias karta hoon."
 
 **Common galti:** router ke liye bada model use karna, jisse saving hi khatam. Ya escalation ka koi signal define na karna.
 
@@ -494,7 +515,7 @@ Teen tools saath chale, isliye wait 1.3s hi laga. User ko pehle second me progre
 | Metric | Kya hai | Kaun control karta hai |
 |---|---|---|
 | TTFT | request se pehla token | prompt size, prompt cache, model size, queueing |
-| TPOT / tokens per sec | har token ka time | model size, provider load |
+| TPOT (time per output token) / tokens per sec | har token ka time | model size, provider load |
 | Total latency | poora task | steps × (TTFT + output tokens × TPOT) + tool time |
 
 **Levers:**
@@ -557,7 +578,7 @@ async def stream_run(graph, question: str, thread_id: str):
 
 1. Har listing: 800 input + 100 output tokens, chhote model pe ($0.30 / $1.20 per 1M, illustrative).
 2. Online cost: 5,00,000 × (800 × 0.30 + 100 × 1.20) / 1M = 5,00,000 × $0.00036 = **$180 per raat**.
-3. Saari requests ek JSONL file me, har line pe ek `custom_id` (listing id).
+3. Saari requests ek JSONL file (har line ek alag JSON request) me, har line pe ek `custom_id` (listing id).
 4. File batch API pe upload. Provider 24 ghante ke andar process karta hai.
 5. Subah results file aati hai. Har result `custom_id` se listing pe map hota hai.
 6. Batch discount ~50%: **~$90 per raat**. Saal bhar me ~$33,000 bachat.

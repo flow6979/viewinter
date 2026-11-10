@@ -16,6 +16,27 @@ The first 15 minutes of most Agentic AI interviews live on this page: "agent vs 
 - How to do the same task as a workflow and as an agent, and when to pick which.
 - Where agents fail and the fix for each failure.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| System prompt | Fixed instructions sent with every call that tell the model its role, rules and limits. |
+| Tool | A normal function or API in your code that the model can ask you to run. |
+| LLM | Large language model. It reads text and predicts the next piece of text, one piece at a time. |
+| `tool_use` | The JSON block the model returns to say "run this tool with these arguments". |
+| Temperature | A randomness setting. 0 gives almost the same answer every time; higher gives more variety. |
+| ReAct | Reason + Act. The model thinks, asks for a tool, reads the result, and repeats. |
+| `tool_result` | The message your code sends back with a tool's output, tagged with the matching call id. |
+| Vector DB | A database that finds text by similar meaning instead of exact words. |
+| `stop_reason` | A field in the model's reply that says why it stopped, e.g. finished or wants a tool. |
+| Guardrail | A check around the model that blocks unsafe or rule-breaking input or output. |
+| HITL | Human in the loop. A person approves or edits a step before the agent continues. |
+| Structured output | Making the model reply in a fixed JSON shape your code can parse safely. |
+| Hallucinated args | Arguments the model invents confidently, like an order id that does not exist. |
+| Trajectory | The full path of one run: every model call, tool call and result, in order. |
+
 ## Big picture: what happens inside an agent
 
 An agent is not magic. It is a `for` loop. In the loop you send the LLM three things: instructions (the system prompt), the list of tools, and the conversation so far (messages). The LLM either gives a final answer, or says "run this tool with these arguments". Your code runs the tool, not the LLM. The result is added to the messages and the loop runs again. Every section on this page explains one part of this loop.
@@ -343,7 +364,7 @@ When a tool fails, do not crash the program. Send back a clear error message so 
 1. The model sends `get_inventory("102938")`. The tool returns `Error: SKU must start with 'FK-', e.g. FK-102938` with `is_error: true`.
 2. The model reads this and sends `get_inventory("FK-102938")`. Done. Limit the retry count (2–3).
 
-Below is the same tool in LangChain. The `@tool` decorator turns the docstring into the description and the type hints into the schema.
+Below is the same tool in LangChain (a popular Python library for building LLM apps). The `@tool` decorator turns the docstring into the description and the type hints into the schema.
 
 ```python
 from langchain_core.tools import tool
@@ -368,7 +389,7 @@ for call in msg.tool_calls:          # [{'name': 'get_inventory', 'args': {...},
 - `@tool` turns the function into a tool schema. The docstring is the description the model reads.
 - `bind_tools` makes every LLM call send this schema.
 - We asked for two SKUs, so `msg.tool_calls` holds two calls (parallel), each with its own `id`.
-- This code did not run the tool; it only printed the model's request. Running it is the next step (a loop or `ToolNode`).
+- This code did not run the tool; it only printed the model's request. Running it is the next step (a loop or `ToolNode`, LangGraph's ready-made node that runs the requested tools).
 
 **In one line:** you give the model each tool's **name + description + JSON schema**; the model returns a structured call; your code runs it and sends the result back.
 
@@ -484,9 +505,9 @@ Section 3 fixes the order of tools, section 4 is a policy that must never break,
 
 - **System prompt anatomy:** the 6 sections above.
 - **Few-shot:** 2–5 examples of good trajectories (not just final answers). Keep them diverse, or the model copies one pattern.
-- **CoT / reasoning models:** on a non-reasoning model, "think step by step" helps. Reasoning models (o-series, Claude extended thinking) think on their own; do not micro-manage them, give goals and constraints. Thinking tokens are billed too.
-- **Templates:** `ChatPromptTemplate` / f-strings with variables; static part first, dynamic part last (keep the prefix stable for prompt caching).
-- **Versioning:** prompt = code. Version it in Git or a prompt registry (LangSmith/Langfuse), gate every change with an eval suite. Log the prompt version in the trace. Detail: [Evals for Agents](09-agent-evals.md).
+- **CoT / reasoning models:** on a non-reasoning model, "think step by step" helps. Reasoning models (models that write hidden thinking steps before answering, e.g. OpenAI o-series, Claude extended thinking) think on their own; do not micro-manage them, give goals and constraints. Thinking tokens are billed too.
+- **Templates:** `ChatPromptTemplate` / f-strings with variables; static part first, dynamic part last (keep the prefix stable for prompt caching: the provider reuses an identical, already-processed prompt start and bills it cheaper).
+- **Versioning:** prompt = code. Version it in Git or a prompt registry (a tool that stores versioned prompts, e.g. LangSmith/Langfuse), gate every change with an eval suite. Log the prompt version in the trace (the recorded log of one run). Detail: [Evals for Agents](09-agent-evals.md).
 
 **In one line:** an agent's system prompt is a **job description + operating manual**: role, goal, when to use which tools, constraints, and when to stop or escalate.
 

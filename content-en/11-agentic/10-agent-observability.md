@@ -16,6 +16,27 @@ AI observability means recording every LLM call and tool call inside an agent, s
 - The tracing code for LangSmith, Langfuse and plain OpenTelemetry.
 - How to design prod dashboards, alerts, the feedback loop and a sampling policy.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| tool call | The model asking your code to run a function, like `get_order`, with arguments it picked. |
+| OpenTelemetry (OTel) | An open standard and set of libraries for recording traces, metrics and logs from any service. |
+| Trace | The full record of one agent run, from user message to final answer, with every step inside. |
+| Span | One timed step inside a trace, like one LLM call or one tool call. |
+| PII | Personally Identifiable Information: phone, email, address, ID numbers, anything that points to a real person. |
+| Eval dataset | Saved inputs with expected answers, re-run after every change to catch things that broke. |
+| APM | Application Performance Monitoring: tools like Datadog that track a service's speed, errors and uptime. |
+| Hallucination | The model confidently states something false or made up, like an order ID that never existed. |
+| LLM judge | A second model call that grades an answer, for example checking it follows the refund policy. |
+| System prompt | Fixed instructions your app sends to the model before every user message, like the refund policy. |
+| Prompt version | A label like `refund-v8` saying which edit of the system prompt was live for a request. |
+| Retriever | The step that searches a document store and adds matching text to the prompt (this is RAG). |
+| MCP / A2A | Protocols that let an agent call outside tools (MCP) or hand work to other agents (A2A). |
+| TTFT | Time To First Token: how long until the first word of the answer reaches the user. |
+
 ## Big picture: the whole page at a glance
 
 Think of the agent as a flight. A flight's **black box** records every second: speed, altitude, the pilots' voices. After a crash, the investigator opens the black box and goes second by second to find where things went wrong. For an agent, that black box is the **trace**. Every agent run creates one trace. Inside it, every LLM call and tool call is a **span**. We log the useful fields on each span (with PII removed), use standard names (`gen_ai.*`), and send everything to a backend (LangSmith, Langfuse, Phoenix). From there we do two things: debug one bad run, and watch all traffic on dashboards. Bad runs go into an eval dataset, a fix ships, and the loop runs again.
@@ -129,7 +150,7 @@ The diagram shows things in the order they happened: the run, then LLM call 1, t
 - **Session / thread:** a group of traces from one chat. Above, `s42`. In multi-turn chat, link traces with this id.
 - **Span types:** LLM/generation, tool, retriever, embedding, chain/agent node, guardrail, evaluator.
 - **Every span has:** start/end time, parent id, input, output, status, attributes (model, tokens).
-- **Distributed context:** when the agent calls another service (MCP server, A2A agent), pass the W3C `traceparent` header along. Then that service's spans join the same trace.
+- **Distributed context:** when the agent calls another service (MCP server, A2A agent), pass the W3C `traceparent` header along (a standard HTTP header that carries the trace id). Then that service's spans join the same trace.
 
 **Interview tip:** "In a trace tree I look at three things: the longest span, the most expensive span, and the first span where the output went wrong."
 
@@ -188,7 +209,7 @@ Debugging starts at the first span whose output was wrong. Every fixed trace bec
 
 - **Silent failure:** a failure with no error or exception, only a wrong answer.
 - **Eval case:** a saved input + expected output that is re-tested on every change. In LangSmith/Langfuse, "add to dataset" from a trace.
-- **Replay / time-travel:** re-running a failed state from a LangGraph checkpoint, changing the prompt and comparing.
+- **Replay / time-travel:** re-running a failed state from a LangGraph checkpoint (a saved snapshot of the agent's state after each step), changing the prompt and comparing.
 
 **Interview tip:** "My first debugging question: which was the first span where the output went wrong? Everything above it was fine, so the bug is there."
 
@@ -203,7 +224,7 @@ Debugging starts at the first span whose output was wrong. Every fixed trace bec
 **Example step by step:** span 2 (`get_order`) output before it reaches the trace.
 
 1. Raw tool result: `{"order_id": "ORD-1042", "total": 450, "phone": "98xxxxxx21", "address": "Flat 302, Andheri", "items": [...]}`.
-2. A redaction step (Presidio or regex) runs before the exporter. It catches the phone and address.
+2. A redaction step (Presidio, Microsoft's open-source PII detector, or regex) runs before the exporter. It catches the phone and address.
 3. What reaches the trace: `{"order_id": "ORD-1042", "total": 450, "phone": "<PHONE>", "address": "<ADDRESS>", "items": [...]}`.
 4. Everything needed for debugging (total, items, price, status) is still there. The private data never left.
 5. The `user_id` was not sent raw either, only a hash: `u_hash_91`. The real identity lives in a separate secure store.
@@ -401,7 +422,7 @@ def get_order(order_id: str) -> dict:
 
 **Two setup points:**
 
-- Configure the exporter (OTLP) and `TracerProvider` at app startup. Langfuse and Phoenix both accept an OTLP endpoint.
+- Configure the exporter (OTLP) and `TracerProvider` (the object that creates tracers and knows where to send spans) at app startup. Langfuse and Phoenix both accept an OTLP endpoint.
 - In short-lived jobs (Lambda, scripts), **flush** at the end, or spans get lost.
 
 ```mermaid
@@ -505,7 +526,7 @@ Cheap code checks run on every trace, the expensive judge only on a sample. Both
 
 **Drift and degradation alerts:**
 
-- Input drift: new intents, language mix, query length (from embedding clusters).
+- Input drift: new intents, language mix, query length (from embedding clusters, i.e. grouping queries by meaning).
 - Quality drop: judge pass rate, thumbs-down rate, escalation rate crossing a threshold.
 - Provider side: model version change, latency spikes, 429s.
 - Link alerts to **versions** (drop after prompt v8 deploy) so the rollback decision is fast.

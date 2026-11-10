@@ -16,6 +16,27 @@ time: 38
 - `interrupt()` ka exact timeline: pause → human → resume, aur node dobara kyun chalta hai.
 - Haath se ek tool-calling agent graph banana, `ToolNode` aur `tools_condition` ke saath.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| LangGraph | Python library jo agent ko steps ke graph ki tarah chalati hai, save aur pause built-in ke saath. |
+| State | Ek shared dict jise har step padhta hai aur usme apne changes jodta hai. |
+| Checkpoint | Ek step ke baad state ki saved copy, taaki run baad me wahin se aage chal sake. |
+| Reducer | Chhota function jo decide karta hai naya value purane se kaise mile: append, overwrite ya max. |
+| `interrupt()` | Step ke andar ki call jo poora run rok deti hai jab tak human jawab na bheje. |
+| `ToolNode` | LangGraph ka ready-made step jo model ke maange tools chalata hai aur results save karta hai. |
+| Checkpointer | Wo component jo checkpoints ko memory, SQLite ya Postgres me likhta hai. |
+| `thread_id` | Ek conversation ya run ki id. Uske saare checkpoints isi id ke neeche save hote hain. |
+| Conditional edge | Function jo state padh ke agle step ka naam lautata hai. |
+| `Command` | Step ka lautaya object jo state update karke agla step chunta hai, ya ruka hua run resume karta hai. |
+| Superstep | Graph ka ek round: saare ready steps chalte hain, changes merge hote hain, phir ek checkpoint save. |
+| Subgraph | Poora compiled graph jo bade graph ke andar ek single step ki tarah use hota hai. |
+| Store | Saare threads ke across shared long-term key-value memory, jaise user ki khane ki preference. |
+| Embedding | Numbers ki list jo text ka matlab dikhati hai; milte-julte texts ke numbers bhi milte-julte hote hain. |
+
 ## Big picture: LangGraph ke pieces kaise jude hain
 
 Pehle tum ek **state schema** likhte ho: kaunsi keys hongi aur har key kaise merge hogi. Phir **nodes** jodte ho (har node ek Python function jo state padhta hai aur chhota update lautata hai). Phir **edges** se batate ho ki kis node ke baad kaun chalega. `compile()` in sabko ek runnable graph bana deta hai, aur yahin **checkpointer** lagta hai jo har step ke baad state save karta hai. Phir tum graph ko `invoke` ya `stream` karte ho. Beech me `interrupt()` graph ko pause kar sakta hai, aur same `thread_id` se resume hota hai.
@@ -56,6 +77,8 @@ flowchart LR
 
 **LangChain chain vs LangGraph:**
 
+LangChain, LangGraph ki sister library hai jo LLM call karne ke kaam aati hai. LangChain ki "chain" (LCEL yaani LangChain Expression Language me likhi) fixed steps ek ke baad ek chalati hai.
+
 | | LangChain chain (LCEL) | LangGraph |
 |---|---|---|
 | Shape | DAG, linear/branch | graph with cycles |
@@ -67,7 +90,7 @@ flowchart LR
 
 ### Graph andar se kaise chalta hai: supersteps
 
-LangGraph graph ko **supersteps** me chalata hai (Pregel style). Ek superstep me:
+LangGraph graph ko **supersteps** me chalata hai (Pregel style, Google ke graph-processing system ke naam pe, jo bhi rounds me chalta hai). Ek superstep me:
 
 1. Jo nodes is round me active hain, wo saath me (parallel) chalte hain. Maan lo `fetch_price` aur `fetch_stock` dono.
 2. Dono apne updates lautate hain: `{"skus": ["FK-1"]}` aur `{"skus": ["FK-2"]}`.
@@ -146,7 +169,7 @@ flowchart LR
 
 **Ab terms:**
 
-- **State schema:** `TypedDict` (fast, common), `dataclass` (defaults), ya Pydantic `BaseModel` (runtime validation, thoda slow).
+- **State schema:** `TypedDict` (fast, common), `dataclass` (defaults), ya Pydantic `BaseModel` (Pydantic ek Python data-validation library hai; runtime validation, thoda slow).
 - **Partial update:** node **poora state nahi lautata**, sirf jo keys badli: `return {"status": "done"}`.
 - **Reducer:** function `(old, new) -> merged`. Key pe `Annotated[type, reducer]` se lagta hai.
 - **No reducer:** naya value overwrite karta hai.
@@ -690,7 +713,7 @@ print(store.get(("users", "u42", "prefs"), "diet").value)            # {'value':
 - `put(namespace, key, value)` likhta hai, `get(namespace, key)` padhta hai.
 - Node ke andar store `runtime.store` se milta hai; `search` se query karte hain.
 
-- Embeddings ke saath `index={"embed": ..., "dims": ...}` dene se `search(query=...)` semantic ho jaata hai.
+- Embeddings ke saath `index={"embed": ..., "dims": ...}` dene se `search(query=...)` semantic ho jaata hai (exact words nahi, matlab se match karta hai).
 - Kya yaad rakhna, kab likhna, kaise bhoolna: [Memory & Context](05-memory-context.md).
 
 **Ek line me:** Store cross-thread key-value (+ optional semantic search) memory hai, `namespace` tuples me organized; checkpointer ek thread ke andar, Store saare threads ke across.

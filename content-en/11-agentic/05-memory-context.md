@@ -15,6 +15,27 @@ This page covers how an agent "remembers" things: inside one conversation (**sho
 - What to put into the window at each step and what to keep out.
 - How the prompt-caching prefix is preserved, and how to handle old or wrong memories.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| Store | LangGraph's long-term key-value storage that lives across conversations, usually one area per user. |
+| Prompt caching | The model provider reuses work on an unchanged prompt start, so repeat calls are cheaper and faster. |
+| Thread | One conversation, identified by a `thread_id`. Its messages and data are saved together. |
+| Checkpointer | Saves a thread's data after each graph step to memory or a database, so the next request can load it. |
+| TTL | Time to live: how long a saved item is kept before it expires automatically. |
+| Namespace | A folder-like label, such as `("memories", user_id)`, that groups saved items and keeps users apart. |
+| `tool_call` | A part of the model's reply asking your code to run a named function with given arguments. |
+| Reducer | A rule for merging a node's returned update into a state field, for example append instead of overwrite. |
+| Few-shot examples | A handful of worked examples placed in the prompt so the model copies their style or steps. |
+| LangMem | A LangChain library with ready-made tools and jobs to extract, save and search agent memories. |
+| Embedding | A list of numbers representing a text's meaning; texts with similar meaning get nearby numbers. |
+| Semantic search | Finding items by meaning, by comparing embeddings, instead of matching exact words. |
+| Hallucination | The model confidently stating something false or made up. |
+| PII | Personally identifiable information: data that identifies a person, such as phone, card or Aadhaar number. |
+
 ## Big picture: the LLM forgets, the code reminds it
 
 An LLM is an API call, and every call is new. The model knows nothing about the previous call. So "memory" = **our code**, which puts the right things together into the prompt before each call. The conversation lives in thread state (short-term), which gets trimmed or summarized as it grows. Stable facts go into the Store (long-term) and come back in the next session. Context engineering decides what goes into the window, caching makes its stable part cheap, and privacy rules keep old or sensitive memories under control.
@@ -125,7 +146,7 @@ sequenceDiagram
 **Now the terms:**
 - **Super-step:** one tick of the graph. A checkpoint is saved after each super-step.
 - **`InMemorySaver`** is only for dev/test. In production use **`PostgresSaver` / `RedisSaver`** (durable, multi-instance).
-- Checkpoint bonuses: **resume after crash**, **human-in-the-loop** (`interrupt`), **time travel** (fork from an older checkpoint).
+- Checkpoint bonuses: **resume after crash**, **human-in-the-loop** (`interrupt` pauses the graph until a person approves or edits), **time travel** (fork from an older checkpoint).
 
 This code builds a small chat graph and attaches a checkpointer, so each `thread_id`'s history is saved and loaded automatically.
 
@@ -204,7 +225,7 @@ Notice the problem: the order ID "8812" (message 4) fell out of the window. If t
 **Now the terms:**
 - **Context window:** how many tokens the model can read in one call. **Token budget:** how much of it we choose to use.
 - **Trimming:** removing old messages from the LLM's view. The information is simply lost.
-- **Tool-call pair:** an AI `tool_call` + its `ToolMessage`. If one goes without the other, the provider API returns an error.
+- **Tool-call pair:** an AI `tool_call` + its `ToolMessage`. If one goes without the other, the provider API (OpenAI, Anthropic, etc.) returns an error.
 
 This is a trimmed version of the `chat` node. It does not change the state; it only shortens the list sent to the LLM.
 
@@ -333,7 +354,7 @@ builder.add_edge("summarize", END)
 - **Semantic** comes in two shapes:
   - **Profile:** one JSON document that keeps getting updated (`{"language": "hi", "risk": "low"}`). Simple, but concurrent updates conflict.
   - **Collection:** many small items, fetched by search. Better recall, but you must manage duplicates and contradictions.
-- **Episodic:** select successful trajectories dynamically as few-shot examples.
+- **Episodic:** select successful trajectories (the recorded steps of a past run) dynamically as few-shot examples.
 - **Procedural:** from feedback the agent can refine its own system prompt (LangMem's prompt optimizer). Risky; do not ship to prod without review.
 
 **Interview tip:** "First I decide which memory is needed. 80% of B2C assistants only need a semantic profile. Episodic when the task repeats, procedural when behaviour must be customized per user."
@@ -421,7 +442,7 @@ graph.invoke({"messages": [("user", "Give me my portfolio summary")]},
 - `user_id` comes from `runtime.context`, which our server sets. The LLM cannot change it.
 - Thread `t-fri` is new, yet the facts arrive because the Store is not tied to a thread.
 
-- Production: `PostgresStore` (pgvector) or `RedisStore`. `InMemoryStore` is empty after a restart.
+- Production: `PostgresStore` (pgvector, the Postgres extension for embedding search) or `RedisStore`. `InMemoryStore` is empty after a restart.
 
 **Common mistake:** putting all users' memories in one namespace and filtering only by query. One bug and one user's data lands in another user's prompt.
 
@@ -588,7 +609,7 @@ flowchart LR
 - **Privacy:**
   - Per-user namespace, a trusted `user_id`, and a test for cross-tenant search.
   - **Never save** PII (card, Aadhaar, OTP, passwords) into memory. Block it with both the extractor prompt and a regex filter.
-  - Give the user a "show / delete my memories" control. For DPDP/GDPR "right to erasure", the memory store, vector index, backups and summaries must all be covered.
+  - Give the user a "show / delete my memories" control. For DPDP (India's data protection law) / GDPR (the EU's) "right to erasure", the memory store, vector index, backups and summaries must all be covered.
 - **Staleness:**
   - **TTL (time to live):** short for volatile facts (current city, open ticket), long for stable preferences. LangGraph store backends support TTL (default TTL in config, refreshed on read).
   - Keep `created_at`, `updated_at`, `source` on every memory. Show them in the prompt with an "as of" date.

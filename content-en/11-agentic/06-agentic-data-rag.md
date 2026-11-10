@@ -15,6 +15,27 @@ This page covers what happens when retrieval stops being a fixed pipeline and be
 - How GraphRAG solves a multi-hop question on a small entity graph.
 - Why ingestion, ACL, PII and synthetic eval data matter in production.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| RAG | Retrieval-augmented generation: fetch relevant documents first, paste them into the prompt, then let the model answer. |
+| ACL | Access control list: which users or groups are allowed to see a piece of data. |
+| PII | Personally identifiable information: data that identifies a person, such as name, phone, PAN or card number. |
+| Eval | A repeatable test: a fixed set of questions with expected answers, used to score the system. |
+| Grounded | Every claim in the answer is backed by the retrieved text, not invented by the model. |
+| Vector search | Finding stored texts closest in meaning to the question, by comparing their embeddings (see next rows). |
+| Chunk | A small piece of a document, a few paragraphs long, stored and searched as one unit. |
+| Embedding | A list of numbers representing a text's meaning; texts with similar meaning get nearby numbers. |
+| BM25 | A classic keyword-ranking formula, like a search engine's: scores documents by matching words. |
+| Reranking | A second, more careful model re-scores the top search results and reorders them. |
+| Hallucination | The model confidently stating something false or made up, such as a number not in the documents. |
+| Structured output | Forcing the model to reply in a fixed shape, such as `{"relevant": true}`, instead of free text. |
+| Prompt injection | Hidden instructions inside fetched content (a web page, a doc) that try to hijack the model. |
+| Fine-tuning | Training an existing model further on your own examples so it gets better at one task. |
+
 ## Big picture: from question to grounded answer
 
 A user question arrives. The agent first decides whether it needs retrieval, and from where. For text docs, vector/hybrid search, then grading the docs to drop junk (CRAG). For numbers and tables, SQL. For relations and corpus-wide themes, GraphRAG. All these sources are filled by an ingestion pipeline that puts ACL and PII rules on every chunk. And the whole system is tested with a synthetic + real eval set.
@@ -38,7 +59,7 @@ flowchart LR
 | Topic | One line | Details |
 |---|---|---|
 | What RAG is | retrieve → augment prompt → generate | [What is RAG](../09-rag/01-what-is-rag.md) |
-| Embeddings, semantic search | meaning as a vector, nearest via ANN | [Semantic search](../09-rag/02-semantic-search.md) |
+| Embeddings, semantic search | meaning as a vector, nearest via ANN (approximate nearest neighbour search) | [Semantic search](../09-rag/02-semantic-search.md) |
 | Chunking | structure-aware chunks, overlap, parent-child | [Chunking](../09-rag/03-chunking.md) |
 | Hybrid search | BM25 + dense + RRF | [Hybrid search](../09-rag/04-hybrid-search.md) |
 | Reranking | top-k precision with a cross-encoder | [Reranking](../09-rag/05-reranking.md) |
@@ -374,7 +395,7 @@ The first half is indexing (expensive, done once). A local query is answered fro
 
 **Now the terms:**
 - **Entity / relation:** the graph's nodes (INC-42, UPI Autopay) and edges (affected, used by).
-- **Microsoft GraphRAG pipeline:** (1) the LLM extracts entities + relationships + claims from chunks, (2) **Leiden** community detection on the graph, with hierarchical levels, (3) an LLM summary for each community.
+- **Microsoft GraphRAG pipeline:** (1) the LLM extracts entities + relationships + claims from chunks, (2) **Leiden** community detection on the graph (an algorithm that groups tightly connected nodes), with hierarchical levels, (3) an LLM summary for each community.
 - **Local search** = entities + neighbours + linked chunks. **Global search** = map-reduce over community summaries.
 
 | | Vector RAG | GraphRAG |
@@ -446,7 +467,7 @@ flowchart LR
 ```
 
 **Now the terms:**
-- **Schema retrieval:** not the whole DDL in the prompt. An index of table/column descriptions, and per query the top 5–10 tables + sample rows + column meanings.
+- **Schema retrieval:** not the whole DDL (all the `CREATE TABLE` statements) in the prompt. An index of table/column descriptions, and per query the top 5–10 tables + sample rows + column meanings.
 - **Read-only role:** the DB user has only `SELECT`, only on allowed schemas/views. **Row-level security (RLS)** for tenant isolation. Writing "do not DELETE" in the prompt is not security.
 - **Query validation:** parse (sqlglot), a single `SELECT` only, block denied tables, inject `LIMIT`, check cost with `EXPLAIN`, statement timeout. **Self-correction:** send the error back to the agent, max 2–3 tries.
 - **Result summarization:** do not give 10,000 rows to the LLM. Aggregates, top-N, or offload to a file + preview.
@@ -539,7 +560,7 @@ flowchart LR
 - **Parsing:** PDFs with tables, multi-column layouts, headers/footers, scanned pages. Tools: Unstructured, Docling, LlamaParse, or a vision LLM. Keep tables as markdown/HTML; do not split them row by row.
 - **Metadata:** fields like the record above. Filtering and citations depend on them.
 - **Incremental re-index:** a content hash per doc/chunk; re-embed only changed chunks. Full re-index only when the embedding model changes (and then with a blue-green index).
-- **Freshness:** near-real-time through CDC/webhooks. Define an SLA ("a policy change is searchable within 15 min"). Show `updated_at` in the prompt.
+- **Freshness:** near-real-time through CDC (change data capture: a stream of inserts, updates and deletes from the source) or webhooks. Define an SLA ("a policy change is searchable within 15 min"). Show `updated_at` in the prompt.
 - **Deletes:** the most forgotten part. Deleted at the source = deleted from the index (vector + BM25 + cache).
 - **Idempotent pipeline:** chunk ID = `hash(doc_id + chunk_index + version)`, so retries are safe.
 
@@ -615,7 +636,7 @@ flowchart LR
 - **Eval set generation:** a mix of simple, multi-hop, comparison and "unanswerable". Ragas testset generator, or custom.
 - **Agent evals:** synthetic user personas + tasks + expected tool calls/final state (e.g. "refund for order X" → `get_order`, `create_refund`).
 - **Quality filters:** a critique LLM check, dedupe, difficulty balance. 10–20% human review is a must.
-- **Fine-tuning data:** trajectories from a strong model (distillation) → only successful runs → SFT a smaller model. Best for narrow tasks like a query rewriter, grader or router.
+- **Fine-tuning data:** trajectories from a strong model (distillation) → only successful runs → SFT (supervised fine-tuning on those input-output examples) a smaller model. Best for narrow tasks like a query rewriter, grader or router.
 - **Risks:** synthetic questions are "cleaner" than real users' questions, so mix in real queries from production logs. If the generator and the judge are the same model, there is bias.
 
 **Interview tip:** "I make 50–100 real production queries the gold set and use synthetic data to widen coverage, especially edge cases and unanswerable questions."

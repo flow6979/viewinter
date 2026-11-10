@@ -15,6 +15,27 @@ Laptop pe chalne wala agent aur lakhon users ko serve karne wala agent, dono ala
 - Do alag customers ka data ek hi system me kaise alag rehta hai.
 - Naya prompt ya model safely kaise ship hota hai, aur human ko handoff kab aur kaise hota hai.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| Agent | Program jisme LLM step-by-step decide karta hai ki kaunsa tool call karna hai, jab tak kaam pura na ho. |
+| LLM provider | Wo company jiska model tum API se call karte ho, jaise OpenAI ya Anthropic. |
+| Checkpointer | Code jo har step ke baad agent ki poori state database me save karta hai, taaki run resume ho sake. |
+| SSE | Server-Sent Events: HTTP connection jo server khula rakhta hai taaki client ko updates push kar sake. |
+| Run | Ek message ya task ke liye agent ka ek execution, shuru se end tak. |
+| Tenant | Ek customer company ya account; bahut saare tenants ek hi system share karte hain. |
+| Graph | Agent ka code steps (nodes) ke roop me; arrows (edges) batate hain aage kya chalega. |
+| Thread | Ek saved conversation; uske saare runs ek hi stored state share karte hain, jo `thread_id` se milti hai. |
+| Tool | Normal function (API call, DB query) jise chalane ko model tumhare code se keh sakta hai. |
+| Human-in-the-loop (HITL) | Run ruk jaata hai taaki koi insaan approve ya change kare, phir aage chalta hai. |
+| Eval | Automated test jo fixed example inputs pe agent ke jawab ko score karta hai. |
+| Prompt injection | User input ya document me chhupa text jo model se uske rules ignore karwane ki koshish karta hai. |
+| ReAct | Basic agent loop: model sochta hai, tool call karta hai, result padhta hai, aur phir se. |
+| RAG | Retrieval-augmented generation: documents me search karo, relevant hissa prompt me daalo, phir jawab banao. |
+
 ## Big picture: notebook se production tak
 
 Socho tumne ek support agent banaya jo notebook me badhiya chalta hai. Ab use 20,000 log ek saath use karenge. Pehle use ek **serving setup** chahiye jo requests le aur kaam workers ko de. Phir **durable execution** chahiye taaki crash pe kaam na khoye. Phir **reliability** chahiye kyunki LLM provider kabhi bhi slow ya down ho sakta hai. Phir **security** aur **tenant isolation**, taaki ek user doosre ka data na dekh paaye. Phir **versioning**, taaki naya prompt sab kuch na tod de. Aur aakhir me **human handoff**, jab agent ke bas ki baat na ho. Is page ka har section inme se ek layer hai.
@@ -192,7 +213,7 @@ Client ke paas sirf `run_id` hota hai; worker mare to doosra worker last checkpo
 - **Idempotent node:** node jo do baar chale to bhi result ek hi baar wala ho. Zaroori hai kyunki crash ke waqt aadha chala node dobara chalega.
 - **Idempotency key:** side effect (refund, email, upload) ke saath bheja gaya unique ID. Server same key dobara dekhe to kaam dobara nahi karta ([Idempotency](../01-topics/10-idempotency-retries.md)).
 - **Durability modes (LangGraph):** `"exit"` sirf end pe save (fast, crash pe sab gaya), `"async"` default, agle step ke saath background me save, `"sync"` har step save hone ke baad hi aage (sabse safe, thoda slow).
-- **Temporal-style durability:** Temporal har activity ka result event history me likhta hai; crash pe workflow replay hota hai aur completed activities dobara nahi chalti. Bahut lambe, multi-day, paisa move karne wale workflows me log LLM calls ko Temporal activities bana dete hain. LangGraph checkpointer step-level durability deta hai; Temporal timers, signals aur workflow versioning jaisi stronger guarantees deta hai.
+- **Temporal-style durability:** Temporal (open-source durable workflow engine) har activity ka result event history me likhta hai; crash pe workflow replay hota hai aur completed activities dobara nahi chalti. Bahut lambe, multi-day, paisa move karne wale workflows me log LLM calls ko Temporal activities bana dete hain. LangGraph checkpointer step-level durability deta hai; Temporal timers, signals aur workflow versioning jaisi stronger guarantees deta hai.
 
 Resume ka code chhota hai. Same `thread_id`, aur input `None`:
 
@@ -456,7 +477,7 @@ sequenceDiagram
 - **Secrets:** API keys secret manager (Vault/KMS) me; prompt, tool output ya trace me kabhi nahi. Traces me PII/secrets redact karo.
 - **Per-user auth propagated to tools:** tool ko user ka scoped token / identity runtime context se milta hai, LLM ke arguments se nahi. LLM `user_id` argument me kuch bhi likh sakta hai.
 - **Least privilege:** har agent/tool ke liye minimum scopes; read aur write tools alag; high-risk writes pe human approval ([Guardrails & Safety](08-guardrails.md)).
-- **Sandboxing:** code-execution / browser tools isolated containers (gVisor, Firecracker, E2B jaisa sandbox) me; network off ya allowlist, CPU/memory/time limits, host secrets nahi.
+- **Sandboxing:** code-execution / browser tools isolated containers (gVisor, Firecracker, E2B jaisa sandbox: ye code ko locked-down container ya chhoti VM me chalate hain) me; network off ya allowlist, CPU/memory/time limits, host secrets nahi.
 - **Prompt injection:** tool results aur retrieved docs untrusted data hain. Unhe instructions ki tarah treat nahi karna.
 
 Neeche wahi tool. Identity `Ctx` se aati hai, model ke arguments se nahi:
@@ -643,7 +664,7 @@ flowchart LR
     R -->|tests fail| L
 ```
 
-- **Patterns:** ReAct loop + tools (`shell` sandbox me), evaluator-optimizer (tests as verifier), destructive commands pe human approval; bade tasks pe optional planner + sub-agents.
+- **Patterns:** ReAct loop + tools (`shell` sandbox me), evaluator-optimizer (ek step change karta hai, checker judge karke wapas bhejta hai; yahan tests verifier hain), destructive commands pe human approval; bade tasks pe optional planner + sub-agents.
 - **Hard parts:** context (repo bada, sab context me nahi aata, isliye search + file summaries), edit reliability (exact string/diff edits), sandbox security, infinite fix-test loops (step budget), lambe runs ka cost.
 
 Tests verifier ka kaam karte hain: failure feedback ban ke loop me wapas jaata hai, aur iterations pe cap endless fix-test cycle rokta hai.
@@ -681,7 +702,7 @@ flowchart LR
     CR -->|gap mila| PL
 ```
 
-- **Patterns:** orchestrator-workers, parallelization (`Send`), reflection, background runs + checkpointer.
+- **Patterns:** orchestrator-workers, parallelization (`Send`, LangGraph ka tarika har sub-question ke liye ek parallel branch chalane ka), reflection, background runs + checkpointer.
 - **Hard parts:** source quality aur citation faithfulness, cost (sub-agents tokens multiply karte hain), context overflow (summaries pass karo, raw pages nahi), stopping criteria, progress streaming.
 
 ### 4. Data-analyst (text-to-SQL) agent
@@ -700,7 +721,7 @@ flowchart LR
 ```
 
 - **Patterns:** schema/semantic layer pe RAG, execution sirf read replica pe, evaluator-optimizer (DB error as feedback), tool sandboxing.
-- **Hard parts:** ambiguous business metrics ("active user" ki definition, semantic layer se solve), galat-par-chal-jaane-wala SQL (silent errors, gold queries se eval), row-level permissions, mehngi queries (timeouts, read-only role).
+- **Hard parts:** ambiguous business metrics ("active user" ki definition, semantic layer se solve, yaani ek jagah jahan har metric ki definition likhi ho), galat-par-chal-jaane-wala SQL (silent errors, gold queries se eval), row-level permissions, mehngi queries (timeouts, read-only role).
 
 Validation aur DB errors self-correction ke liye generator ko wapas jaate hain, aur execution sirf read replica pe hota hai.
 

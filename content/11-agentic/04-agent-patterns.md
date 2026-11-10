@@ -19,6 +19,27 @@ Fixed-path patterns ke liye [Agentic Patterns: Workflows](03-workflow-patterns.m
 - Multi-agent kab worth hai, tokens aur rupees ke numbers ke saath.
 - Agents ke beech state kaise share karein aur kya kya toot-ta hai.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| LangGraph | LLM apps ko graph ki tarah banane ki Python library. Functions nodes hain, arrows batate hain aage kaun chalega. |
+| `Command` | LangGraph ki return value jo ek saath data update karti hai aur batati hai agla node kaun. |
+| Subgraph | Ek poora compiled graph jo bade graph ke andar ek node ki tarah use hota hai. |
+| Checkpointer | Har step ke baad graph ka data memory ya DB me save karta hai, taaki baat baad me resume ho. |
+| `messages` | Chat messages ki list (user, model, tool results) jo har call pe model ko jaati hai. |
+| `tool_calls` | Model ke reply ka field jo batata hai kaunsa function kin args ke saath chalana hai. Chalata tumhara code hai. |
+| `ToolMessage` | Wo message jo tool ka result `messages` me wapas laata hai, us call se juda hua. |
+| Superstep | Graph ka ek tick: us tick ke saare nodes chalte hain, phir unke updates apply hote hain. |
+| Middleware | Har model ya tool call ke aas-paas chalne wale hooks, jaise history summarize karna ya human se poochna. |
+| State | Shared dict jisse graph ka har node data padhta hai aur usme updates likhta hai. |
+| Hallucination | Model ka poore confidence se galat ya banaya hua jawab dena, jaise bina dekhe numbers bata dena. |
+| Reducer | Node ka update state field me merge karne ka rule, jaise overwrite ki jagah list me append. |
+| Structured output | Model ko free text ki jagah fixed shape (jaise Pydantic class) me jawab dene pe majboor karna. |
+| Span | Ek operation (model call, tool run) ka timed record, jo ek request ke trace ke andar hota hai. |
+
 ## Big picture: agent patterns ki seedhi
 
 Agent ka matlab hai: LLM ek loop me khud decide karta hai ki agla kaam kya. Is page pe hum ek seedhi chadhte hain. Neeche ek agent loop me tools chalata hai (**ReAct**). Lambe tasks me wo raasta bhoolta hai, to pehle plan banwate hain (**plan-and-execute**). Plan wale tareeke ko sasta ya fast karna ho to **ReWOO** aur **LLMCompiler**. Agent galti se seekhe, iske liye **Reflexion**. Aur jab ek agent pe bahut tools ya domains ho jaayein, tab kaam kai agents me baant-te hain (**multi-agent**).
@@ -156,11 +177,11 @@ app = g.compile()
 - `tools_condition` dekhta hai: last message me `tool_calls` hain to `"tools"`, warna END.
 - `tools → model` edge hi loop hai. Approval chahiye to `tools` se pehle ek naya node daal sakte ho.
 
-**Failure modes:** tool loop (same call baar baar), galat tool args, bina tool ke hallucinated final answer, context bloat (bade tool outputs har turn me wapas). Fix: `recursion_limit`, tool descriptions me clear "kab use karo", tool output truncate/summarize, args pe Pydantic validation, aur tool error ko `ToolMessage` bana ke model ko wapas dena taaki wo self-correct kare.
+**Failure modes:** tool loop (same call baar baar), galat tool args, bina tool ke hallucinated final answer, context bloat (bade tool outputs har turn me wapas). Fix: `recursion_limit`, tool descriptions me clear "kab use karo", tool output truncate/summarize, args pe Pydantic (Python ki data-validation library) validation, aur tool error ko `ToolMessage` bana ke model ko wapas dena taaki wo self-correct kare.
 
 **Interview tip:** "ReAct ki cost har step pe poora context resend karna hai. Isliye main tool outputs chhote rakhta hoon aur step limit lagata hoon."
 
-**Common galti:** `create_react_agent` ko current API batana. 1.0 me `create_agent` hai, middleware ke saath (summarization, HITL, model fallback).
+**Common galti:** `create_react_agent` ko current API batana. 1.0 me `create_agent` hai, middleware ke saath (summarization, HITL = human-in-the-loop approval, model fallback).
 
 ## ⭐ Plan-and-execute
 
@@ -376,7 +397,7 @@ flowchart TD
 
 ### Supervisor with handoff tools
 
-Seller bolta hai: "SKU K-101 ka price ₹50 kam karo aur ads boost karo." Har step pe control kiske paas hai, ye dekho:
+Seller bolta hai: "SKU (product code) K-101 ka price ₹50 kam karo aur ads boost karo." Har step pe control kiske paas hai, ye dekho:
 
 | Step | Kya hua | Control kiske paas |
 |---|---|---|
@@ -538,7 +559,7 @@ app = create_swarm([booking, payments], default_active_agent="booking").compile(
 Matlab ~3.4x cost. Ye tab worth hai jab deep research se seller ka bada faisla (pricing) better hota hai. FAQ jaise sawal pe nahi: agar ek workflow ₹0.35 me FAQ ka jawab de raha hai aur multi-agent 15x tokens le, to 1 lakh queries/day pe ~₹35k/day ka kharcha ~₹5 lakh/day ho jaata hai, aur jawab utna hi achha.
 
 **Real data points:**
-- **Anthropic:** unke multi-agent research system ne single-agent se internal research eval pe ~90% better kiya, par roughly **~15x tokens** chat ke comparison me liye (single agent ~4x). Unke analysis me token usage hi performance variance ka bada hissa explain karta tha. Matlab gain aksar "zyada tokens kharch karna" hai.
+- **Anthropic:** unke multi-agent research system ne single-agent se internal research eval (answers ko score karne wala fixed test set) pe ~90% better kiya, par roughly **~15x tokens** chat ke comparison me liye (single agent ~4x). Unke analysis me token usage hi performance variance ka bada hissa explain karta tha. Matlab gain aksar "zyada tokens kharch karna" hai.
 - **Counterpoint (Cognition, "Don't build multi-agents"):** parallel subagents ek doosre ke decisions nahi dekhte → conflicting assumptions. Write-heavy tasks (coding) me single-threaded agent with good context engineering better.
 
 **Pro:** har agent ka chhota context aur kam tools → better tool selection; breadth tasks me parallel search; alag teams alag agents own kar sakti hain.
@@ -600,7 +621,7 @@ Handoff brief aisa dikhta hai:
 
 ## Common multi-agent failure modes aur fixes
 
-**Ye kyun chahiye?** Multi-agent me zyada-tar bugs model ki galti nahi, coordination ki galti hote hain. Ek example: seller bolta hai "price aur ads dekh lo". Supervisor → pricing → supervisor → pricing → supervisor... har baar pricing bolta hai "ads mera kaam nahi" aur supervisor phir pricing ko bhejta hai. 25 steps baad `GraphRecursionError`, aur seller ko kuch nahi mila.
+**Ye kyun chahiye?** Multi-agent me zyada-tar bugs model ki galti nahi, coordination ki galti hote hain. Ek example: seller bolta hai "price aur ads dekh lo". Supervisor → pricing → supervisor → pricing → supervisor... har baar pricing bolta hai "ads mera kaam nahi" aur supervisor phir pricing ko bhejta hai. 25 steps baad `GraphRecursionError` (jo error LangGraph `recursion_limit` hit hone pe deta hai), aur seller ko kuch nahi mila.
 
 **Fix ka trace:** state me `handoff_count` rakho. Har handoff pe +1. Same agent ko lagatar 2 baar bheja ya count 4 se zyada hua, to supervisor ko force karo ki summary de ya human ko bheje.
 

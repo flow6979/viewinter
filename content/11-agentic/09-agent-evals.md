@@ -16,6 +16,27 @@ Tumne agent ka prompt badla. Do-teen sawal pooch ke dekha, jawab acche lage. Par
 - LLM judge ka prompt kaisa dikhta hai, aur use human labels se kaise check karte hain.
 - CI me eval gate kaise ek kharab prompt change ko merge hone se rokta hai.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| Eval | Automated test jo agent ko bahut saare example sawalon pe chala ke results ko score karta hai. |
+| Golden dataset | Haath se check kiye example sawalon ka set, jinka sahi jawab ya sahi behaviour pata hai. |
+| Trajectory | Ek run me agent ke saare steps ki list: kaunse tools, kin arguments ke saath, kis order me. |
+| LLM-as-judge | Ek doosri LLM call se output ko likhe hue rules ke against grade karwana. |
+| Baseline | Current version ke scores, jinse naye version ke scores compare hote hain. |
+| Non-deterministic | Same input pe har run me alag output aa sakta hai. |
+| Rubric | Likhi hui list ki achhe jawab me kya-kya hona chahiye; isi se grade karte hain. |
+| Mocked tools | Asli tools ke nakli versions jo fixed data lautate hain, taaki test asli payment ya database ko na chhue. |
+| Router node | Agent ka wo step jo decide karta hai ki request kis path ya intent ki hai. |
+| Grounded | Jawab ka har claim agent ko diye gaye documents ya tool results se backed ho. |
+| Trace | Ek run ki har model call aur tool call ka recorded log: inputs, outputs, time aur cost. |
+| Chain-of-thought | Model se final answer se pehle apni reasoning step by step likhwana. |
+| Few-shot | Prompt me kuch solved examples daalna taaki model unka pattern follow kare. |
+| RAG | Retrieval-augmented generation: pehle documents me search karo, phir relevant tukde (chunks) model ko do. |
+
 ## Big picture: prompt badla, agent behtar hua ya nahi?
 
 Software me tum code badalte ho to unit tests chalate ho. Agent me "code" ka bada hissa prompt, model aur tools hain. Evals unke unit tests hain. Flow simple hai: ek **golden dataset** rakho (sawal + sahi jawab ka idea). Har change ke baad agent ko poore dataset pe chalao. Har jawab ko **teen tarah se score** karo. Scores ko purane version (baseline) se compare karo. Gire to merge block. Ship hone ke baad live traffic pe bhi check karo, aur jo failures milein unhe wapas dataset me daalo. Is page ka har section is loop ka ek hissa hai.
@@ -405,7 +426,7 @@ def agreement(examples, human_labels):
 
 **Ek line me:** agent agar retrieve karta hai to retrieval aur generation dono ko alag evaluate karo.
 
-- **Retrieval:** context precision, context recall, MRR, nDCG, hit@k.
+- **Retrieval:** context precision, context recall, MRR, nDCG, hit@k. Sab ek hi baat poochte hain: sahi chunks mile ya nahi, aur wo top pe rank hue ya nahi?
 - **Generation:** faithfulness (hallucination nahi), answer relevance, correctness.
 - Agentic RAG me extra: agent ne retrieve **kab** kiya, query rewrite theek thi, kitni baar retrieve kiya.
 - Detail: [RAG Evaluation](../09-rag/08-rag-evaluation.md).
@@ -455,7 +476,7 @@ def agreement(examples, human_labels):
 **Ek example, step by step.** Swiggy support bot ka prompt v2:
 
 1. **Offline:** golden set pe task success 0.92 se 0.94. Pass.
-2. **A/B:** v2 ko 10% traffic. Ek hafte baad: escalation rate 8% se 6.5%, CSAT same, cost per conversation ₹0.38 se ₹0.41.
+2. **A/B:** v2 ko 10% traffic. Ek hafte baad: escalation rate 8% se 6.5%, CSAT (customer satisfaction score) same, cost per conversation ₹0.38 se ₹0.41.
 3. **Online judge:** 5% sampled traces pe reference-free judge chalta hai. Hindi refund sawalon pe score gira.
 4. Un low-score traces ko review queue me daala, 12 naye cases golden set me gaye.
 
@@ -479,7 +500,7 @@ Offline evals release ko gate karte hain, online evals live traffic dekhte hain,
 | Data | curated golden set | real user traffic (sampled) |
 | Kab | dev, PR, release se pehle | continuously in prod |
 | Reference | haan, mostly | nahi, reference-free judges |
-| Pakadta hai | regressions | drift, naye failure types |
+| Pakadta hai | regressions | drift (users, data ya model badalne se quality ka dheere-dheere badalna), naye failure types |
 
 **Terms:**
 
@@ -668,7 +689,7 @@ score = conversation_judge(outputs=convo)   # goal achieved? polite? no repeats?
 | RAGAS | open source library | RAG metrics (faithfulness, context precision/recall), synthetic testsets |
 | Promptfoo | open source CLI | YAML test configs, model comparison, red-teaming, CI friendly |
 | Braintrust | hosted platform | experiments, scorers, playground, CI diffs |
-| Arize Phoenix | open source | OTel-based tracing + evals, self-host |
+| Arize Phoenix | open source | OTel-based (OpenTelemetry, standard tracing format) tracing + evals, self-host |
 | Inspect (UK AISI) | open source framework | agentic/safety evals, sandboxed tool tasks |
 | agentevals / openevals | open source library | trajectory match, LLM-as-judge helpers |
 
@@ -714,7 +735,7 @@ flowchart LR
 
 **Interview tip:** "Main generic metrics se shuru nahi karta. Pehle 100 traces padhta hoon, failure modes nikalta hoon, phir unke liye evals likhta hoon."
 
-**Common galti:** off-the-shelf metrics (BLEU, generic helpfulness) lagake dashboard bana dena jo real failures se correlate hi nahi karte.
+**Common galti:** off-the-shelf metrics (BLEU, machine translation se liya word-overlap score, generic helpfulness) lagake dashboard bana dena jo real failures se correlate hi nahi karte.
 
 ## Aage padho
 

@@ -14,6 +14,27 @@ Ye page interview se pehle ki revision ke liye hai. Agentic AI Engineer intervie
 - "X kyun, Y kyun nahi?" type trade-off sawalon ka jawab: default, kab badloge, kaise measure karoge.
 - 45 minute ke round me time kaise baantna hai aur kaunse red flags se bachna hai.
 
+## Pehle ye shabd samjho
+
+LLM naye ho? Pehle [How LLMs Work](14-how-llms-work.md) padho. Usme tokens, context window aur model text kaise banata hai, ye sab hai.
+
+| Shabd | Simple matlab |
+|---|---|
+| LangGraph | Agents ko graph ki tarah banane ki Python library: steps (nodes), arrows (edges), aur ek shared state. |
+| Tool | Function jise chalane ko model tumhare code se keh sakta hai, jaise `get_order` ya `issue_refund`. |
+| Superstep | LangGraph run ka ek round: saare ready nodes chalte hain, phir state save hoti hai. |
+| RAG | Retrieval-augmented generation: documents me search karo, relevant hissa prompt me daalo, phir jawab banao. |
+| HITL | Human-in-the-loop: run ruka rehta hai jab tak insaan approve ya edit na kare, phir aage chalta hai. |
+| Store / namespace | Chats ke paar facts rakhne wala database; namespace, jaise `(tenant, user)`, har user ke facts alag rakhta hai. |
+| Guardrail | Model se pehle ya baad ka check jo unsafe input, output ya action rok deta hai. |
+| Eval | Automated test jo fixed example inputs pe agent ke outputs ko score karta hai. |
+| LLM-as-judge | Ek doosri model call se jawab ko rubric (likhi hui scoring guide) ke against grade karwana. |
+| Prompt caching | Provider baar-baar aane wale prompt-start ka kaam reuse karta hai, un tokens ka bill bahut kam. |
+| Semantic cache | Naya sawal kisi purane sawal jaisa matlab rakhe, to stored jawab lauta deta hai. |
+| `recursion_limit` | LangGraph setting jo N steps ke baad run rok deti hai, taaki loop me phansa agent hamesha na chale. |
+| Subgraph | Bade graph ke andar ek step ki tarah chalne wala chhota graph, jaise har issue type ka ek. |
+| Hallucination | Jab model galat ya banayi hui baat ko sach ki tarah bol de. |
+
 ## Big picture: interview me kya check hota hai
 
 Ek agentic AI round aam taur pe teen hisson me chalta hai. Pehle chhote conceptual sawal (rapid-fire), jo dekhte hain ki basics pakke hain. Phir ek system design ("support agent design karo"), jahan dekha jaata hai ki tum clarify karte ho, sahi pattern chunte ho, aur evals, cost aur failures tak pahunchte ho. Beech-beech me trade-off sawal aate hain ("multi-agent kyun?"). Poore round me interviewer red flags bhi note karta hai. Is page ke sections isi order me hain.
@@ -50,7 +71,7 @@ State = typed dict (reducers ke saath, e.g. messages append). Node = function jo
 *Simple words me:* state ek shared notebook hai, node us notebook me kuch likhne wala ek step hai, aur edge batata hai agla step kaunsa. Reducer batata hai naya data purane ke saath kaise milega (jaise list me jodna).
 
 **Q5. Checkpointer aur thread_id kyun?**
-Har superstep ke baad state save hoti hai `thread_id` ke against. Isse multi-turn memory, crash resume, human-in-the-loop (`interrupt`) aur time-travel milta hai. Prod me Postgres checkpointer.
+Har superstep ke baad state save hoti hai `thread_id` ke against. Isse multi-turn memory, crash resume, human-in-the-loop (`interrupt`) aur time-travel (purane save point se dobara chalana) milta hai. Prod me Postgres checkpointer.
 *Simple words me:* har step ke baad game ka "save point" banta hai. `thread_id` us save file ka naam hai. Crash ho ya user kal laute, wahi save load hota hai.
 
 **Q6. `interrupt()` aur `Command` kya karte hain?**
@@ -97,7 +118,7 @@ Clear naam + description (model ke liye docs), strict typed args, task-shaped (t
 *Simple words me:* tool ek kaam poora kare (jaise `refund_order`), na ki chhote DB operations jinhe model ko jodna pade. Idempotent = do baar chale to bhi ek hi baar ka asar.
 
 **Q14. MCP kya hai?**
-Model Context Protocol: tools, resources aur prompts expose karne ka open standard (client–server, stdio/HTTP). Ek baar MCP server banao, kisi bhi MCP-compatible agent/host me use karo.
+Model Context Protocol: tools, resources aur prompts expose karne ka open standard (client–server, stdio yaani local process, ya HTTP). Ek baar MCP server banao, kisi bhi MCP-compatible agent/host me use karo.
 *Simple words me:* MCP tools ke liye USB jaisa hai. Ek standard plug, kisi bhi device (agent app) me lag jaata hai.
 
 **Q15. MCP vs A2A?**
@@ -113,7 +134,7 @@ Teen level: final output (correctness, LLM-as-judge with rubric), trajectory (sa
 *Simple words me:* sirf final jawab nahi, raasta bhi check karo. Trajectory = agent ne kaunse tools kis order me chalaye. Golden dataset = sahi jawab ke saath sample sawal.
 
 **Q18. LLM-as-judge ke risks?**
-Position/length/self bias, rubric vague ho to noisy. Fix: clear rubric, pairwise ya binary pass/fail, judge ko human labels pe calibrate karo, zaroorat ho to strong judge model.
+Position/length/self bias, rubric vague ho to noisy. Fix: clear rubric, pairwise (do jawab compare karke behtar chunna) ya binary pass/fail, judge ko human labels pe calibrate karo, zaroorat ho to strong judge model.
 *Simple words me:* judge model bhi galti karta hai: pehle wala jawab ya lamba jawab pasand kar leta hai. Isliye saaf rubric do aur uske faisle insaan ke faislon se milao.
 
 ## ⭐ Rapid-fire: observability, cost aur production
@@ -131,7 +152,7 @@ Model routing/cascade, prompt caching (stable prefix), tool/semantic cache, kam 
 *Simple words me:* aasaan kaam chhote sasta model ko do, baar-baar bheja jaane wala prompt cache karo, aur steps kam karo. Distillation = bade model ke jawabon se chhota model sikhaana.
 
 **Q21. Latency kaise ghataoge?**
-Stream tokens + step events (TTFT), parallel tool calls/nodes, chhote models for sub-steps, kam output tokens, speculative fetch, prompt caching.
+Stream tokens + step events (TTFT), parallel tool calls/nodes, chhote models for sub-steps, kam output tokens, speculative fetch (jo data shayad chahiye, use model ke maangne se pehle la lena), prompt caching.
 *Simple words me:* user ko pehla shabd jaldi dikhao (TTFT = time to first token), aur jo kaam saath ho sakte hain wo saath karo.
 
 **Q22. Runaway agent kaise rokoge?**
@@ -294,7 +315,7 @@ sequenceDiagram
 
 "Researchers raw pages nahi, compressed notes lautate hain, aur critic run ko planner pe sirf limited baar wapas bhej sakta hai, phir report ship hoti hai."
 
-**5. Pattern aur tools.** "Pattern orchestrator-workers hai: LangGraph `Send` se dynamic fan-out, reflection loop max 2 rounds, background run + Postgres checkpointer. Tools: web search API, page fetch + clean (HTML → text), PDF parse, internal RAG. Har researcher ka apna isolated context."
+**5. Pattern aur tools.** "Pattern orchestrator-workers hai: LangGraph `Send` (har sub-question ke liye ek parallel branch) se dynamic fan-out, reflection loop max 2 rounds, background run + Postgres checkpointer. Tools: web search API, page fetch + clean (HTML → text), PDF parse, internal RAG. Har researcher ka apna isolated context."
 
 **6. Memory aur context.** "Researchers **compressed notes + source URLs** lautate hain, raw pages nahi; aggregator dedupe karta hai. Long-term me user ke past reports/preferences optional."
 
@@ -478,6 +499,7 @@ Round ek pipeline ki tarah: diagram 20 minute tak ban jaaye, aur recap se pehle 
 - [AI Agents: Foundations](01-agent-foundations.md), [LangGraph Core](02-langgraph-core.md), [Workflow patterns](03-workflow-patterns.md), [Agent patterns](04-agent-patterns.md)
 - [Memory & Context](05-memory-context.md), [Data & Retrieval](06-agentic-data-rag.md), [Tools, MCP & A2A](07-tools-mcp-a2a.md)
 - [Guardrails](08-guardrails.md), [Evals](09-agent-evals.md), [Observability](10-agent-observability.md), [Cost & Latency](11-cost-latency.md), [Agents in Production](12-agents-in-production.md)
+- [LLM Engineer Interview Prep](22-llm-engineer-interview.md): fundamentals, serving aur fine-tuning ke sawal
 - [RAG Interview Q&A](../09-rag/10-rag-interview-qa.md), [LLM chat app](../02-questions/t2-22-llm-chat-app.md)
 - Labs: [Production agent](/viewinter/agents/labs/prod), [Multi-agent](/viewinter/agents/labs/multi), [Web agent](/viewinter/agents/labs/web)
 

@@ -19,6 +19,27 @@ For the basics of state, reducers, conditional edges and checkpointing, read [La
 - How cost and latency change when you build the same task with different patterns.
 - How to justify the right pattern for any product problem.
 
+## Words you need first
+
+New to LLMs? Read [How LLMs Work](14-how-llms-work.md) first. It explains tokens, context windows and how a model generates text.
+
+| Word | Plain meaning |
+|---|---|
+| Reducer | A rule for merging several updates to the same shared data field, e.g. join lists instead of overwriting. |
+| Conditional edge | A function that reads the graph's shared data and returns the name of the next step to run. |
+| `Send` | A LangGraph object meaning "run this step once with this input". A list of them runs many copies. |
+| Fan-out / fan-in | Fan-out splits work into many branches at once; fan-in waits for all of them and collects the results. |
+| ReAct agent | An agent that loops: the model thinks, calls a tool, reads the result, and repeats until done. |
+| Retrieval | Fetching relevant documents from your own data and adding them to the prompt before the model answers. |
+| Eval | An automated test suite for LLM output that scores answers on a fixed set of examples. |
+| LLM judge | A second model call that grades an output against written criteria and returns pass or fail. |
+| Structured output | Making the model reply in a fixed JSON shape your code can parse safely. |
+| `Command` | An object a step returns to say which step runs next, optionally with changes to the shared data. |
+| Confusion matrix | A table of predicted vs actual categories that shows which categories a classifier mixes up. |
+| Superstep | One round of the graph. All ready steps run together, then their updates merge. |
+| Guardrail | A check around the model that blocks unsafe or rule-breaking input or output. |
+| Trace | A recorded log of one run, showing each step's input, output and time taken. |
+
 ## Big picture: one map for five patterns
 
 One product runs through the whole page: **SellerSaathi**, an AI assistant for Flipkart sellers. Our seller is **Priya**, who sells cotton kurtas from Jaipur. For each pattern we take one of Priya's jobs and watch how the data moves.
@@ -248,7 +269,7 @@ app = g.compile()
 
 **Don't use when:** categories overlap, or one message has two intents ("when will my payment come and why was my listing rejected"). Then think parallel or orchestrator.
 
-**Failure modes:** misroutes (confidently the wrong branch), class imbalance, new intents that fit no bucket, multi-intent messages. Fix: a separate eval set for the router (confusion matrix), a confidence threshold, an `other` bucket, and mining new intents from logs.
+**Failure modes:** misroutes (confidently the wrong branch), class imbalance (one category is far more common than the others), new intents that fit no bucket, multi-intent messages. Fix: a separate eval set for the router (confusion matrix), a confidence threshold, an `other` bucket, and mining new intents from logs.
 
 **Interview tip:** "A router is a classifier, so I eval it like one: per-class precision/recall and a confusion matrix, separate from the end-to-end eval."
 
@@ -330,7 +351,7 @@ app = g.compile()
 - `add_edge([...], "aggregate")` takes a list, which means aggregate waits for all three.
 - Each branch sees only its own small prompt, so it stays focused.
 
-**Failure modes:** forgetting the reducer, one slow or failing branch blocking the whole superstep (timeouts + `RetryPolicy`), hitting rate limits (cap with `max_concurrency` in config), correlated errors in voting (the same prompt N times = the same mistake; vary prompts or models).
+**Failure modes:** forgetting the reducer, one slow or failing branch blocking the whole superstep (timeouts + `RetryPolicy`), hitting rate limits (cap with `max_concurrency` in config, which limits how many branches run at once), correlated errors in voting (the same prompt N times = the same mistake; vary prompts or models).
 
 **Interview tip:** "Sectioning for latency, voting for confidence. An `operator.add` reducer on the shared key, otherwise parallel writes clash."
 
@@ -464,7 +485,7 @@ flowchart LR
 - **Synthesizer:** the node that joins all findings into one answer.
 - Another classic example: a **PR review bot**. The orchestrator looks at the diff and decides which files to review (payments module, migration, config), with one worker per area.
 
-**Use when:** the subtasks depend on the input, but one plan + execute is enough. **Don't use when:** the plan has to change midway. Then use plan-and-execute with a replanner, [next page](04-agent-patterns.md).
+**Use when:** the subtasks depend on the input, but one plan + execute is enough. **Don't use when:** the plan has to change midway. Then use plan-and-execute with a replanner (the LLM makes a plan, runs a step, then revises the plan using the result), [next page](04-agent-patterns.md).
 
 This code has the orchestrator make a capped plan, hands each task to a worker with `Send`, and joins the findings.
 
@@ -513,7 +534,7 @@ app = g.compile()
 **What the code does:**
 - `Plan` has `max_length=6`: the LLM can't create 20 tasks and blow up the bill.
 - `assign` is the same `Send` trick as in map-reduce. The only difference is that the LLM made the list, not the developer.
-- The worker gets `{task, data}`, not the full history. This is a cheap form of context isolation.
+- The worker gets `{task, data}`, not the full history. This is a cheap form of context isolation (each worker sees only the data it needs, not everything).
 - Each worker writes with an `[area]` tag, so the synthesizer knows where each finding came from.
 
 **Failure modes:** over-decomposition (20 tasks for a 5-line diff), overlapping tasks (duplicate findings), giving workers too little context, synthesizer context overflow. Fix: a `max_length` cap on the plan, clear boundaries in task descriptions, short structured output from workers, dedupe before the synthesizer.
@@ -679,7 +700,7 @@ Routing on top, a chain + evaluator loop in the refund branch, a parallel fan-ou
 **Now the terms:**
 - **Subgraph:** a compiled graph used as a node inside another graph. Make each sub-pattern a subgraph: separate tests, separate evals, separate owners.
 - Rule: combine only when each layer's eval number justifies it. Every layer adds latency and cost.
-- Debugging: a LangSmith or Langfuse trace should show every node's input/output; see [AI Observability](10-agent-observability.md).
+- Debugging: a LangSmith or Langfuse trace (both are hosted tools that record and show LLM app runs) should show every node's input/output; see [AI Observability](10-agent-observability.md).
 
 **Interview tip:** "I explain the design by pattern names: 'routing on top, the refund branch is chained with a gate, an evaluator at the end.' The interviewer gets the structure right away."
 
