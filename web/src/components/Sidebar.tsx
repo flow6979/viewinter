@@ -59,10 +59,11 @@ const SECTIONS: Section[] = [
     label: 'Agentic AI',
     icon: 'bot',
     subs: [
-      // order < 1: Start Here + How LLMs Work; 1–13: agent concepts; 14+: wider LLM engineering
+      // order < 1: Start Here + How LLMs Work; 1–13: agent concepts; 14–22: wider LLM engineering; 23+: one page per framework
       { label: { hi: 'Start here', en: 'Start here' }, pages: agentic.filter((p) => p.order < 1) },
       { label: { hi: 'Concepts', en: 'Concepts' }, pages: agentic.filter((p) => p.order >= 1 && p.order <= 13) },
-      { label: { hi: 'LLM engineering', en: 'LLM engineering' }, pages: agentic.filter((p) => p.order > 13) },
+      { label: { hi: 'LLM engineering', en: 'LLM engineering' }, pages: agentic.filter((p) => p.order > 13 && p.order < 23) },
+      { label: { hi: 'Frameworks & stack', en: 'Frameworks & stack' }, pages: agentic.filter((p) => p.order >= 23) },
       { label: { hi: 'Labs', en: 'Labs' }, pages: agentPages },
     ],
   },

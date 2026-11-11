@@ -3,6 +3,9 @@ import { useTr } from '../i18n'
 import { DEFAULT_MODEL, listModels, saveGeminiSettings, testConnection, useGemini } from '../gemini'
 import { useStore } from '../store'
 
+// Text models on Gemini's free tier (ai.google.dev pricing page, Nov 2026); shown until "List" loads the key's own models
+const FREE_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash-lite']
+
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tr = useTr()
   const { settings, status } = useGemini()
@@ -39,6 +42,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   // Result shown only when it belongs to what is saved now
   const shown = !dirty && settings.apiKey ? status : null
+  // The key's own list once loaded, else the free-tier list so the chips are never empty
+  const choices = models.length ? [DEFAULT_MODEL, ...models.filter((m) => m !== DEFAULT_MODEL)] : FREE_MODELS
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -85,19 +90,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
           <datalist id="gemini-models">
-            {[DEFAULT_MODEL, ...models.filter((m) => m !== DEFAULT_MODEL)].map((m) => (
+            {choices.map((m) => (
               <option key={m} value={m} />
             ))}
           </datalist>
-          {models.length > 0 && (
-            <div className="model-list">
-              {[DEFAULT_MODEL, ...models.filter((m) => m !== DEFAULT_MODEL)].map((m) => (
-                <button key={m} type="button" className={`chip ${m === model ? 'on' : ''}`} onClick={() => setModel(m)}>
-                  {m}
-                </button>
-              ))}
-            </div>
-          )}
+          {!models.length && <p className="muted small">{tr('Free tier wale models. Is key ke saare models dekhne ke liye "List" dabao.', 'Free-tier models. Press "List" to see every model your key can use.')}</p>}
+          <div className="model-list">
+            {choices.map((m) => (
+              <button key={m} type="button" className={`chip ${m === model ? 'on' : ''}`} onClick={() => setModel(m)}>
+                {m}
+              </button>
+            ))}
+          </div>
           {modelMsg && <p className="muted small">{modelMsg}</p>}
         </div>
 

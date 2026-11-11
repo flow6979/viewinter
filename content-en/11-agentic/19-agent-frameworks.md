@@ -228,6 +228,8 @@ print(result.final_output)
 
 **In one line:** A library for building agents as a graph of steps over a shared, typed state, with a checkpointer that saves after every step.
 
+**Deep dive:** [LangChain](23-langchain.md)
+
 **Why it exists:** Real agents are not one loop. They branch ("is this a refund or a delivery issue?"), loop with limits, pause for a human, and must survive restarts. LangGraph makes that control flow explicit as nodes and edges, and saves state so runs can resume. See [LangGraph Core](02-langgraph-core.md) for the full API.
 
 **Picture it:** A flowchart taped on the wall of an IRCTC refund desk. Each box is a desk (node). Arrows say where the file goes next (edges). The file itself (state) travels with stamps, and a photocopy is kept after each desk (checkpoint).
@@ -259,6 +261,8 @@ Example: a refund agent has 4 nodes (classify, fetch order, decide, approve). Re
 ## Claude Agent SDK
 
 **In one line:** The agent harness behind Claude Code, released as a library (Python and TypeScript), so you get its built-in tools, context management, subagents and MCP support in your own agent.
+
+**Deep dive:** [Claude Agent SDK](29-claude-agent-sdk.md)
 
 **Why it exists:** Building a good general agent is more than a loop. You need file and shell tools that are safe, automatic context compaction when the window fills, permission prompts, subagents that work in their own window, and MCP connections. Anthropic built all of that for Claude Code. The SDK (earlier called the Claude Code SDK) exposes the same harness.
 
@@ -293,6 +297,8 @@ Example: a "fix failing test" bot for a repo. Allowed tools: read, edit, run tes
 
 **In one line:** OpenAI's lightweight agent library (successor to the Swarm experiment) built on a few primitives: agents, handoffs, guardrails, sessions and built-in tracing.
 
+**Deep dive:** [OpenAI Agents SDK](27-openai-agents-sdk.md)
+
 **Why it exists:** Many teams wanted a small, Python-first way to build multi-agent apps without learning a graph library. The SDK keeps the number of concepts small and adds tracing by default, so you see every run without extra setup.
 
 **Picture it:** A bank branch. The front desk (triage agent) listens, then hands you to the loans desk or the cards desk (handoff). The security guard at the door (guardrail) can stop anyone. The CCTV (tracing) records everything.
@@ -324,6 +330,8 @@ Example: a support bot. `triage = Agent(name="Triage", instructions="Route to th
 ## Pydantic AI
 
 **In one line:** An agent library from the Pydantic team that makes agents type-safe: typed dependencies in, validated structured output out.
+
+**Deep dive:** [DSPy and Pydantic AI](30-dspy-pydantic-ai.md)
 
 **Why it exists:** Most bugs in LLM apps are at the boundaries. The model returns JSON with a missing field, or a tool gets the wrong DB connection. Pydantic AI uses Python types and Pydantic models to catch these early, and retries the model when its output fails validation.
 
@@ -380,6 +388,8 @@ print(result.output.carry_umbrella)     # a real bool, already validated
 
 **In one line:** A framework for role-based multi-agent teams: you describe agents by role and goal, give them tasks, and a crew runs the tasks.
 
+**Deep dive:** [CrewAI](25-crewai.md)
+
 **Why it exists:** Some problems feel like a small team: a researcher, a writer, a reviewer. CrewAI lets you describe that team in a few lines, which is fast for demos and content pipelines.
 
 **Picture it:** A cricket team sheet. Each player has a role (opener, spinner, keeper). The captain sets the batting order (sequential) or decides on the go (hierarchical).
@@ -410,6 +420,8 @@ Example: market research. Researcher searches 5 sources, Analyst writes 3 findin
 
 **In one line:** A data-first framework: connectors, parsing, indexes and query engines for RAG, plus event-driven Workflows and agents on top.
 
+**Deep dive:** [LlamaIndex](24-llamaindex.md)
+
 **Why it exists:** Many "agents" are mostly about getting the right data from PDFs, wikis and databases. LlamaIndex started as the data layer for that: load, chunk, index, retrieve. Agents and Workflows were added so the retrieval can be one tool among many. See [What is RAG](../09-rag/01-what-is-rag.md).
 
 **Picture it:** A library with a great catalogue and a librarian. The catalogue (index) is the main value. The librarian (agent) uses it to answer.
@@ -438,6 +450,8 @@ Example: an HR policy bot over 2,000 PDF pages. LlamaIndex parses, chunks into a
 ## AutoGen, AG2 and Google ADK
 
 **In one line:** Two more families you should recognise: AutoGen/AG2 (agents that talk to each other in conversations) and Google's Agent Development Kit (ADK, code-first agents tuned for Gemini and Google Cloud).
+
+**Deep dive:** [AutoGen and Microsoft Agent Framework](26-autogen.md), [Google ADK](28-google-adk.md)
 
 **Why it exists:** Interviewers check that you know the landscape beyond LangChain and OpenAI. You do not need their APIs; you need one line on what each is for.
 
@@ -569,6 +583,8 @@ Example: primary model times out at p99 (99th percentile latency) 12 seconds. Th
 
 **In one line:** Two plug-in layers sit next to any framework: a vector DB for semantic search over your data, and MCP as the standard way to connect tools.
 
+**Deep dive:** [Vector Databases in Practice](31-vector-databases.md), [Vector Search in Postgres and Other Databases](32-vector-search-in-databases.md)
+
 **Why it exists:** Frameworks run the loop, but the agent is only as useful as the data and tools it can reach. Choosing these independently of the framework keeps you portable.
 
 **Picture it:** The framework is the delivery app. The vector DB is the warehouse with a good index. MCP is the standard plug socket every appliance fits.
@@ -696,6 +712,9 @@ A: Build the same small task in it, run your eval set, read the traces, check ho
 - [Tools, MCP & A2A](07-tools-mcp-a2a.md)
 - [AI Observability](10-agent-observability.md)
 - [Evals for Agents](09-agent-evals.md)
+- [LangChain](23-langchain.md)
+- [LlamaIndex](24-llamaindex.md)
+- [CrewAI](25-crewai.md)
 
 ## Checklist
 

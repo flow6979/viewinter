@@ -228,6 +228,8 @@ print(result.final_output)
 
 **Ek line me:** Library jisme agent ko ek shared, typed state ke upar steps ke graph ki tarah banate ho, aur checkpointer har step ke baad save karta hai.
 
+**Poora page:** [LangChain](23-langchain.md)
+
 **Ye kyun chahiye:** Real agents ek loop nahi hote. Woh branch karte hain ("refund hai ya delivery issue?"), limit ke saath loop karte hain, human ke liye rukte hain, aur restart jhelne chahiye. LangGraph is control flow ko nodes aur edges me saaf dikhata hai, aur state save karta hai taaki run resume ho. Poori API ke liye [LangGraph Core](02-langgraph-core.md) dekho.
 
 **Aise socho:** IRCTC refund desk ki deewar pe chipka flowchart. Har box ek desk (node). Arrows batate hain file aage kahan jaayegi (edges). File khud (state) stamps ke saath ghoomti hai, aur har desk ke baad photocopy rakhi jaati hai (checkpoint).
@@ -259,6 +261,8 @@ Example: refund agent ke 4 nodes (classify, fetch order, decide, approve). ₹5,
 ## Claude Agent SDK
 
 **Ek line me:** Claude Code ke peeche wala agent harness, library ki tarah (Python aur TypeScript), taaki uske built-in tools, context management, subagents aur MCP support tumhare apne agent me mil jaayein.
+
+**Poora page:** [Claude Agent SDK](29-claude-agent-sdk.md)
 
 **Ye kyun chahiye:** Achha general agent sirf loop nahi hai. Safe file aur shell tools chahiye, window bharne pe automatic context compaction, permission prompts, apni window me kaam karne wale subagents, aur MCP connections. Anthropic ne ye sab Claude Code ke liye banaya. SDK (pehle naam Claude Code SDK) wahi harness deta hai.
 
@@ -293,6 +297,8 @@ Example: repo ke liye "fix failing test" bot. Allowed tools: read, edit, run tes
 
 **Ek line me:** OpenAI ki halki agent library (Swarm experiment ki successor), kuch primitives pe bani: agents, handoffs, guardrails, sessions aur built-in tracing.
 
+**Poora page:** [OpenAI Agents SDK](27-openai-agents-sdk.md)
+
 **Ye kyun chahiye:** Bahut teams ko graph library seekhe bina multi-agent apps banane ka chhota, Python-first tareeka chahiye tha. SDK concepts kam rakhta hai aur default me tracing deta hai, taaki bina extra setup har run dikhe.
 
 **Aise socho:** Bank branch. Front desk (triage agent) sunta hai, phir tumhe loans desk ya cards desk ko bhejta hai (handoff). Darwaze pe guard (guardrail) kisi ko bhi rok sakta hai. CCTV (tracing) sab record karta hai.
@@ -324,6 +330,8 @@ Example: support bot. `triage = Agent(name="Triage", instructions="Route to the 
 ## Pydantic AI
 
 **Ek line me:** Pydantic team ki agent library jo agents ko type-safe banati hai: typed dependencies andar, validated structured output bahar.
+
+**Poora page:** [DSPy and Pydantic AI](30-dspy-pydantic-ai.md)
 
 **Ye kyun chahiye:** LLM apps ke zyada bugs boundaries pe hote hain. Model missing field wala JSON deta hai, ya tool ko galat DB connection milta hai. Pydantic AI Python types aur Pydantic models se ye jaldi pakadti hai, aur output validation fail hone pe model se retry karwati hai.
 
@@ -380,6 +388,8 @@ print(result.output.carry_umbrella)     # asli bool, pehle se validated
 
 **Ek line me:** Role-based multi-agent teams ka framework: agents ko role aur goal se describe karo, tasks do, aur crew tasks chalati hai.
 
+**Poora page:** [CrewAI](25-crewai.md)
+
 **Ye kyun chahiye:** Kuch problems chhoti team jaisi lagti hain: researcher, writer, reviewer. CrewAI us team ko kuch lines me describe karne deta hai, jo demos aur content pipelines ke liye fast hai.
 
 **Aise socho:** Cricket team sheet. Har player ka role (opener, spinner, keeper). Captain batting order fix karta hai (sequential) ya chalte-chalte decide karta hai (hierarchical).
@@ -410,6 +420,8 @@ Example: market research. Researcher 5 sources search karta hai, Analyst 3 findi
 
 **Ek line me:** Data-first framework: RAG ke liye connectors, parsing, indexes aur query engines, upar se event-driven Workflows aur agents.
 
+**Poora page:** [LlamaIndex](24-llamaindex.md)
+
 **Ye kyun chahiye:** Bahut saare "agents" asal me PDFs, wikis aur databases se sahi data nikaalne ke baare me hote hain. LlamaIndex usi data layer ki tarah shuru hua: load, chunk, index, retrieve. Agents aur Workflows baad me jude taaki retrieval kai tools me se ek tool ban sake. [What is RAG](../09-rag/01-what-is-rag.md) dekho.
 
 **Aise socho:** Badhiya catalogue aur librarian wali library. Catalogue (index) asli value hai. Librarian (agent) usse jawab deta hai.
@@ -438,6 +450,8 @@ Example: 2,000 PDF pages pe HR policy bot. LlamaIndex parse karta hai, lagbhag 6
 ## AutoGen, AG2 aur Google ADK
 
 **Ek line me:** Do aur families jo pehchaanni chahiye: AutoGen/AG2 (agents jo conversations me ek doosre se baat karte hain) aur Google ka Agent Development Kit (ADK, Gemini aur Google Cloud ke liye tuned code-first agents).
+
+**Poora page:** [AutoGen and Microsoft Agent Framework](26-autogen.md), [Google ADK](28-google-adk.md)
 
 **Ye kyun chahiye:** Interviewer check karte hain ki tumhe LangChain aur OpenAI ke bahar ka landscape pata hai. Unki APIs ki zaroorat nahi; har ek kis kaam ka hai, ek line chahiye.
 
@@ -569,6 +583,8 @@ Example: primary model ka p99 (99th percentile latency) 12 second pe timeout hot
 
 **Ek line me:** Kisi bhi framework ke bagal me do plug-in layers: tumhare data pe semantic search ke liye vector DB, aur tools jodne ke standard tareeke ki tarah MCP.
 
+**Poora page:** [Vector Databases in Practice](31-vector-databases.md), [Vector Search in Postgres and Other Databases](32-vector-search-in-databases.md)
+
 **Ye kyun chahiye:** Frameworks loop chalate hain, par agent utna hi kaam ka hai jitna data aur tools tak pahunch sake. Inhe framework se alag chunne se tum portable rehte ho.
 
 **Aise socho:** Framework delivery app hai. Vector DB achhe index wala warehouse. MCP standard plug socket jisme har appliance fit hota hai.
@@ -696,6 +712,9 @@ A: Usme wahi chhota task banao, apna eval set chalao, traces padho, dekho persis
 - [Tools, MCP & A2A](07-tools-mcp-a2a.md)
 - [AI Observability](10-agent-observability.md)
 - [Evals for Agents](09-agent-evals.md)
+- [LangChain](23-langchain.md)
+- [LlamaIndex](24-llamaindex.md)
+- [CrewAI](25-crewai.md)
 
 ## Checklist
 

@@ -264,6 +264,8 @@ LIMIT 5;
 
 **Ek line me:** dedicated vector DBs: sab upsert, top-K query + filter, delete aur namespaces/collections dete hain; fark hosting, filtering aur scale me hai.
 
+**Poora page:** [Vector Databases in Practice](../11-agentic/31-vector-databases.md), [Vector Search in Postgres and Other Databases](../11-agentic/32-vector-search-in-databases.md)
+
 | Command / method | Kya karta hai | Example |
 |---|---|---|
 | `upsert` | id + vector + metadata insert/replace | Pinecone `index.upsert(vectors=[...], namespace="t1")` |
