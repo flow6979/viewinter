@@ -76,16 +76,41 @@ Each box is a section below. We start with how a model sees an image, because im
 
 ```mermaid
 flowchart LR
-    I["Image 336 x 336"] --> P["576 patches of 14 x 14"]
-    P --> E["Vision encoder ViT, CLIP-style"]
-    E --> PR["Projector MLP"]
+    I["Bill photo resized to 336 x 336"] --> P["576 patches of 14 x 14 px"]
+    P --> E["ViT encoder: 1,024 numbers per patch"]
+    E --> PR["Projector MLP: 1,024 to 4,096"]
     PR --> T["576 image tokens"]
-    Q["Text: what is the total"] --> L["LLM"]
+    Q["Text tokens: what is the total"] --> L["LLM attends over image and text tokens"]
     T --> L
-    L --> A["Answer in text"]
+    L --> A["Answer: Rs 12,840"]
+    class PR hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
 
+*Diagram:* The projector (highlighted) is the bridge: after it, the 576 image patches are just more tokens in the context, side by side with the question.
+
 **Resolution tiling.** 336 pixels is too small to read a printed invoice. So high-resolution models split a big image into tiles, encode each tile, and often add one low-resolution thumbnail for the overall layout.
+
+```mermaid
+flowchart TD
+    BIG["Scan 1024 x 1024"] --> T1["Tile 1: 512 x 512"]
+    BIG --> T2["Tile 2: 512 x 512"]
+    BIG --> T3["Tile 3: 512 x 512"]
+    BIG --> T4["Tile 4: 512 x 512"]
+    BIG --> TH["Thumbnail: whole page, low-res"]
+    T1 --> ENC["Encoder runs per tile"]
+    T2 --> ENC
+    T3 --> ENC
+    T4 --> ENC
+    TH --> ENC
+    ENC --> TOK["About 1,000 to 1,500 tokens"]
+    class T1,T2,T3,T4 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The tiles read the fine print and the thumbnail keeps the layout; doubling width and height gives 4x the tiles, so about 4x the tokens.
 
 | Image | Tiles (example 512 px tiles) | Rough image tokens |
 |---|---|---|
@@ -146,6 +171,22 @@ flowchart LR
 | Engineering effort | more moving parts | one call, simpler |
 
 A strong production answer is often **hybrid**: run OCR to get text with boxes, and send both the OCR text and the page image to the VLM. The VLM uses the image for layout and the OCR text for exact characters.
+
+```mermaid
+flowchart LR
+    PG["Page image"] --> OCR["OCR: exact characters plus boxes"]
+    PG --> VLM["VLM"]
+    OCR -->|text with boxes| VLM
+    VLM --> J["Strict JSON"]
+    J --> CODE["Code checks: GSTIN, row math, totals"]
+    CODE -->|pass| DB["Database"]
+    CODE -->|fail or low confidence| HUM["Human review"]
+    class OCR,VLM hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* In the hybrid, the VLM reads layout from the image and copies digits from the OCR text, so each covers the other's weakness.
 
 **Extraction to a schema, then verify.** Ask for strict JSON (structured outputs or a tool schema), then check it with code, not with another prompt.
 
@@ -229,6 +270,30 @@ class Invoice(BaseModel):
 4. Score with **late interaction (MaxSim)**: for each query vector, find the most similar patch vector on the page, then add up those 12 best scores. This is the ColBERT idea applied to image patches.
 5. Take the top 3 pages and send their images plus the question to a VLM for the answer.
 
+```mermaid
+flowchart LR
+    subgraph QRY["Question: 12 token vectors"]
+        Q1["q1: margin"]
+        Q2["q2: quarter"]
+    end
+    subgraph PAGE["Page 47: about 1,000 patch vectors"]
+        P1["patch 212: bar chart"]
+        P2["patch 530: axis label Q3"]
+        P3["patch 9: logo"]
+    end
+    Q1 -->|best match 0.81| P1
+    Q2 -->|best match 0.77| P2
+    P1 --> SUM["Page score = sum of the 12 best matches"]
+    P2 --> SUM
+    SUM --> TOP["Top 3 page images go to the VLM"]
+    class P1,P2 hot
+    class P3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each query vector keeps only its single best patch (MaxSim); the page score adds those best matches, so a chart patch can make the page win.
+
 **Storage maths:** 50,000 pages × 1,000 vectors × 128 numbers × 2 bytes ≈ **12.8 GB**, versus about 0.3 GB for one 1,536-number float32 vector per page. Multi-vector is powerful but heavy. Common fixes: pool patch vectors, quantize to fewer bits, or use a cheap single-vector search first and re-rank the top 100 pages with MaxSim.
 
 | | Text RAG (OCR then embed text) | Visual RAG (embed page image) |
@@ -259,6 +324,22 @@ class Invoice(BaseModel):
 5. **Batch.** Overnight work (re-extracting 2 lakh old invoices) goes to a batch API, often around half the price, with hours of turnaround.
 6. **Video = frames.** A 60-second clip at 1 frame per second is 60 images. At ~250 tokens per small frame, that is ~15,000 tokens. Sample fewer frames, detect scene changes, and add the audio transcript as text.
 
+```mermaid
+flowchart TD
+    VID["Video 60 s"] -->|1 fps or scene changes| IMG["Incoming image"]
+    IMG --> H{"Same SHA-256 and prompt seen before?"}
+    H -->|yes| C["Return cached result"]
+    H -->|no| R["Crop region, downscale to tested size"]
+    R --> U{"Urgent?"}
+    U -->|yes| RT["Realtime API, low detail if enough"]
+    U -->|no| BT["Batch API, about half price"]
+    class R hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Every image passes the cheap checks first: cache hit, then fewer pixels, then the cheaper batch lane when nobody is waiting.
+
 **Worked example:** 10 lakh product images per day. At 1,500 tokens each, that is 1.5 billion input tokens. Downscaling to ~400 tokens each makes it 0.4 billion: about 73% fewer tokens, with no accuracy loss on this task after testing.
 
 **Interview tip:** "Your image pipeline is too expensive. What do you do?" Say: "Measure tokens per image first. Then downscale and crop to the smallest size that keeps accuracy, use low-detail mode where possible, dedupe by hash, move non-urgent work to batch, and for video sample frames by scene change."
@@ -286,13 +367,25 @@ class Invoice(BaseModel):
 
 ```mermaid
 flowchart LR
-    U["Caller audio"] --> STT["STT streaming"]
-    STT -->|text| LLM["LLM plus tools"]
-    LLM -->|text sentences| TTS["TTS streaming"]
-    TTS --> O["Bot audio"]
-    U --> S2S["Speech-to-speech model"]
-    S2S --> O
+    subgraph CAS["Cascaded: text between every hop"]
+        U1["Caller audio"] --> STT["STT streaming"]
+        STT -->|partial and final text| LLM["LLM plus tools"]
+        LLM -->|sentence by sentence| TTS["TTS streaming"]
+        TTS --> O1["Bot audio"]
+    end
+    subgraph S2S["Speech-to-speech: one model"]
+        U2["Caller audio"] -->|audio tokens| RT["Realtime model, hears tone"]
+        RT -->|audio tokens| O2["Bot audio"]
+        RT -.->|tool calls, transcript| SIDE["Your server"]
+    end
+    subgraph HALF["Half-cascade"]
+        U3["Caller audio"] --> AU["Audio-in model"]
+        AU -->|text you can filter| TTS2["TTS"]
+        TTS2 --> O3["Bot audio"]
+    end
 ```
+
+*Diagram:* In the cascade you can read and filter text at every arrow; in speech-to-speech the only text is a side transcript; the half-cascade keeps one text hop before speaking.
 
 | | Cascaded STT → LLM → TTS | Speech-to-speech |
 |---|---|---|
@@ -343,6 +436,20 @@ Now optimize, stage by stage:
 New total: 250 + 80 + 250 + 60 + 120 + 80 = **840 ms**. That is inside the 800 ms–1 s target.
 
 ```mermaid
+flowchart LR
+    subgraph BEFORE["Before: 1,550 ms"]
+        A1["Endpoint 500"]:::hot --> A2["STT 150"] --> A3["LLM TTFT 450"]:::hot --> A4["Sentence 150"] --> A5["TTS 200"] --> A6["Network 100"]
+    end
+    subgraph AFTER["After: 840 ms"]
+        B1["Endpoint 250"] --> B2["STT 80"] --> B3["LLM TTFT 250"] --> B4["Sentence 60"] --> B5["TTS 120"] --> B6["Network 80"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Endpointing and LLM TTFT (highlighted) are the two biggest cuts: together they save 450 of the 710 ms.
+
+```mermaid
 sequenceDiagram
     participant U as User
     participant V as VAD and turn detector
@@ -381,6 +488,20 @@ sequenceDiagram
 2. **Silence timer:** after N ms of silence, end the turn. Simple, but one value never fits all: 300 ms cuts off thinkers, 800 ms feels slow.
 3. **Semantic end-of-turn model:** a small text or audio model looks at the words so far. "I want to book a table for" → probably not done, wait longer (for example 1 s). "For four people at 8 pm." → done, reply after 200 ms. LiveKit and Pipecat both ship such turn-detector models.
 
+```mermaid
+flowchart TD
+    SIL["VAD: silence started"] --> SEM{"Semantic model: is the sentence finished?"}
+    SEM -->|I want to book a table for| WAIT["Not done: wait up to 1 s"]
+    SEM -->|for four people at 8 pm| GO["Done: reply after 200 ms"]
+    WAIT -->|user speaks again| SIL
+    WAIT -->|still silent after 1 s| GO
+    class GO hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The same silence gets a different wait depending on the words: an unfinished sentence waits up to 1 s, a finished one replies after 200 ms.
+
 | | VAD + silence timer | Semantic end-of-turn model |
 |---|---|---|
 | Signal | sound vs silence | meaning of the words, sometimes intonation |
@@ -408,6 +529,20 @@ sequenceDiagram
     A->>A: history keeps only - booked for Saturday
     A->>U: Sorry, Sunday at 8 pm then
 ```
+
+```mermaid
+stateDiagram-v2
+    [*] --> Listening
+    Listening --> Thinking: end of turn
+    Thinking --> Listening: user keeps talking, drop speculative reply
+    Thinking --> Speaking: first TTS audio
+    Speaking --> Speaking: backchannel like haan or okay
+    Speaking --> Interrupted: real speech over 250 ms
+    Interrupted --> Listening: stop TTS, cancel LLM, truncate history
+    Speaking --> Listening: reply finished
+```
+
+*Diagram:* Backchannels loop back into Speaking; only real speech moves to Interrupted, which always truncates history before listening again.
 
 *Backchannels:* short sounds like "haan", "okay", "mm-hmm" while the other person talks. If the user says "okay" while the bot speaks, it is usually agreement, not an interruption: keep talking. Keep a small list of backchannel words, or use the turn detector to classify them. Some systems also let the bot add short "mm-hmm" sounds during long user turns.
 
@@ -501,6 +636,25 @@ flowchart LR
 2. **Keep tools fast.** Set timeouts (for example 2 s), cache common lookups (menu, opening hours), and pre-fetch data you will likely need (load the caller's last booking when the call connects, using the caller ID).
 3. **Run slow work async.** For long jobs, say "I'll send you an SMS confirmation in a minute", and finish after the call or in the background.
 4. **Confirm critical actions verbally.** Read back the slots: "Table for 4, Saturday 14th, 8 pm, name Sharma. Shall I confirm?" Only call `create_booking` after a clear yes.
+
+```mermaid
+sequenceDiagram
+    participant U as Caller
+    participant A as Agent
+    participant T as Booking API
+    U->>A: table for 4 this Saturday 8 pm, name Sharma
+    A->>U: Let me check that for you
+    A->>T: check_availability, timeout 2 s
+    T-->>A: free at 8 pm
+    A->>U: Table for 4, Saturday 14th, 8 pm, Sharma. Shall I confirm?
+    U->>A: haan, confirm
+    A->>T: create_booking
+    T-->>A: booking id 5521
+    A->>U: Done, SMS confirmation on its way
+```
+
+*Diagram:* The filler covers the lookup's silence, and the write call create_booking happens only after the read-back gets a clear yes.
+
 5. **Few, simple tools.** Every extra tool adds prompt tokens (higher TTFT) and choice errors. A voice agent with 5 well-named tools beats one with 40.
 
 **Interview tip:** "Your booking tool takes 4 seconds. What do you do?" Say: "Speak a filler before calling it, pre-fetch what I can at call start, cache static data, put a timeout with a spoken fallback, and if it is truly slow, accept the request and confirm by SMS. And always read back the details before the write action."
@@ -550,6 +704,25 @@ Prices and latency change every few months, so in an interview name the **criter
 3. **Task success.** Did the booking get created with the correct slots? Check the database, not the transcript.
 4. **Interruption tests.** Scripted cases: interrupt at word 3, cough during bot speech, say "haan" during bot speech, long pause mid-sentence. Measure false barge-ins and missed barge-ins.
 5. **Simulated callers.** An LLM plays the caller with a persona ("elderly, speaks slowly, Hinglish, changes date once"), its text goes through TTS with background noise and 8 kHz, and calls your agent. Run hundreds of calls per release.
+
+```mermaid
+flowchart LR
+    PER["Persona: elderly, slow, Hinglish, changes date once"] --> CL["Caller LLM writes next line"]
+    CL --> TTS["TTS plus background noise, 8 kHz"]
+    TTS --> AG["Your voice agent"]
+    AG -->|bot audio| STT["STT back to text"]
+    STT --> CL
+    AG --> LOG["Per-turn latency, barge-in events"]
+    AG --> DB["Booking row in database?"]
+    LOG --> REP["Report: task success, p95, false barge-ins"]
+    DB --> REP
+    class AG hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The simulated caller talks to your agent through real audio (TTS, noise, 8 kHz), and success is read from the database and logs, not the transcript.
+
 6. **Production monitoring.** Record calls (with consent), sample and review, track hang-up rate, transfer-to-human rate, and turns per successful task.
 
 ```python
@@ -593,6 +766,22 @@ print("p50", pct(turn_ms, 50), "p95", pct(turn_ms, 95))
 2. **Decide the transcript script.** Roman Hinglish ("kal shaam") or Devanagari? Pick one, and tell the LLM which it will receive.
 3. **Normalize numbers.** "Nau aath saat..." "double five", "ninety-eight four one...", "do hazaar" (2,000), "dedh sau" (150). Convert to digits in a normalization step and validate (10-digit mobile starting 6–9, 6-digit PIN code).
 4. **Read back in chunks.** "98 41 2 3 4 5 6 7, is that right?" Speak numbers in small groups, slowly, and digit by digit for phone numbers.
+
+```mermaid
+flowchart LR
+    S["STT: nau aath chaar ek do teen chaar paanch chhe saat"] --> N["Normalize number words"]
+    N --> D["Digits: 9841234567"]
+    D --> V{"10 digits, starts with 6 to 9?"}
+    V -->|no| ASK["Ask the caller again"]
+    V -->|yes| RB["Read back in chunks: 98 41 2 3 4 5 6 7"]
+    RB --> OK["Caller confirms, then save"]
+    class N,V hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Spoken words become digits, digits are checked by rules, and only a confirmed read-back gets saved.
+
 5. **TTS pronunciation.** Test Indian names and places ("Thiruvananthapuram", "Sharma ji"). Use the TTS's pronunciation dictionary or phonetic hints where available.
 6. **Reply in the caller's language.** If the caller speaks Hinglish, reply in Hinglish. Keep the system prompt explicit about this.
 

@@ -25,16 +25,32 @@ Every page has the same shape. Use it like this:
 5. **Checklist.** Tick an item only if you can explain it without looking. The site tracks your progress from these ticks.
 6. **Quick look.** A one-minute summary of the page. Read it the night before the interview.
 
+```mermaid
+flowchart LR
+    W["Words you need first"] --> B["Big picture diagram"]
+    B --> S["Star sections first"]
+    S --> T["Say the interview tip out loud"]
+    T --> C["Tick checklist only if you can explain it"]
+    C -->|night before| Q["Quick look"]
+    S -.->|lost| B
+```
+
+*Diagram:* One pass through a page; when a section feels hard, the dotted arrow sends you back to the Big picture before you read on.
+
 ## The reading order
 
 ```mermaid
 flowchart LR
-    S1["1 How LLMs work"] --> S2["2 RAG"]
-    S2 --> S3["3 Agents"]
-    S3 --> S4["4 Production"]
-    S4 --> S5["5 LLM engineering depth"]
+    S1["1 How LLMs work, about 1 h"]:::hot --> S2["2 RAG, about 3 h"]
+    S2 --> S3["3 Agents, about 4 h"]
+    S3 --> S4["4 Production, about 4 h"]
+    S4 --> S5["5 LLM engineering depth, about 5 h"]
     S5 --> S6["6 Interview practice"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Start at the highlighted stage 1; every later stage uses its words. About 17 hours of reading before interview practice.
 
 ### Stage 1: how a model works (about 1 hour)
 

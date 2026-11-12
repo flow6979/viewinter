@@ -14,6 +14,24 @@ RAG (Retrieval-Augmented Generation) ka matlab: LLM se answer likhwane se pehle 
 
 > **Example:** Company ka HR policy bot. Employee poochta hai "paternity leave kitne din ki hai?". LLM ko tumhari company ki policy pata hi nahi. RAG policy PDF se sahi paragraph nikaal ke prompt me deta hai, LLM usse answer + citation likhta hai.
 
+```mermaid
+flowchart LR
+    subgraph NO["Without RAG"]
+        Q1["How many days of paternity leave?"] --> M1["LLM memory only"]
+        M1 --> A1["Guess: 5 days, no source"]:::dim
+    end
+    subgraph YES["With RAG"]
+        Q2["Same question"] --> S2["Search HR policy PDF"]
+        S2 --> C2["Chunk p.4: paternity leave is 15 days"]:::hot
+        C2 --> M2["LLM reads the chunk"]
+        M2 --> A2["15 days, source policy.pdf p.4"]:::hot
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* RAG ke bina model memory se guess karta hai; RAG me sahi policy chunk prompt me jaata hai, isliye answer sahi hota hai aur page citation ke saath aata hai.
+
 LLM akele kyun kaafi nahi:
 - **Knowledge cutoff:** model training ke baad ka data nahi jaanta.
 - **Private data:** tumhare internal docs, tickets, contracts model ne kabhi dekhe hi nahi.
@@ -32,6 +50,20 @@ RAG kya deta hai:
 ## ⭐ RAG vs fine-tuning vs long context
 
 **Ek line me:** RAG = naya *knowledge* dena; fine-tuning = *behaviour/style* sikhana; long context = sab kuch prompt me thoons dena.
+
+```mermaid
+flowchart TD
+    S["New requirement"] --> K{"About knowledge or behaviour?"}
+    K -->|behaviour, tone, format| FT["Fine-tune"]
+    K -->|knowledge, facts, docs| T{"Corpus tiny, 1-2 docs?"}
+    T -->|yes| LC["Long context: paste it all"]
+    T -->|no, GBs or changing| RAG["RAG: retrieve per query"]:::hot
+    FT -.->|often combined| RAG
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Knowledge chahiye to RAG, jab tak corpus bahut chhota na ho; behaviour/format badalna hai to fine-tuning, aur practice me dono aksar saath chalte hain.
 
 | | RAG | Fine-tuning | Long context |
 |---|---|---|---|
@@ -56,16 +88,22 @@ RAG kya deta hai:
 
 ```mermaid
 flowchart LR
-    D["Docs: PDF, wiki, tickets"] --> I["Ingest and parse"]
-    I --> C["Chunk"]
-    C --> E["Embed"]
-    E --> S[("Vector DB plus BM25 index")]
-    Q["User query"] --> QE["Embed query"]
-    QE --> R["Retrieve top 50"]
+    subgraph OFF["Offline indexing, async"]
+        D["Docs: PDF, wiki, tickets"] --> I["Ingest and parse"]
+        I --> C["Chunk"]
+        C --> E["Embed"]
+        E --> S[("Vector DB plus BM25 index")]
+    end
+    subgraph ON["Online query, latency critical"]
+        Q["User query"] --> QE["Embed query"]
+        QE --> R["Retrieve top 50"]
+        R --> RR["Rerank to top 5"]
+        RR --> G["LLM generates with citations"]
+    end
     S --> R
-    R --> RR["Rerank to top 5"]
-    RR --> G["LLM generates with citations"]
 ```
+
+*Diagram:* Offline hissa tab chalta hai jab docs badalte hain; har user request pe sirf online hissa chalta hai, jo offline me bane index ko padhta hai.
 
 Offline (indexing):
 - **Ingest:** PDF/HTML/Confluence se text nikaalo, OCR, cleaning, tables sambhalo.
@@ -85,6 +123,21 @@ Online (query):
 ## ⭐ RAG kyun fail hota hai (aur fix kahan hai)
 
 **Ek line me:** zyada tar RAG failures LLM ki wajah se nahi, retrieval ki wajah se hote hain: sahi chunk mila hi nahi, ya mila par galat jagah/aadha mila.
+
+```mermaid
+flowchart TD
+    B["Bad answer"] --> C{"Was the answer in the retrieved chunks?"}
+    C -->|no| RP["Retrieval problem"]:::hot
+    C -->|yes| GP["Generation problem"]
+    RP --> T{"Right chunk in top 50 at all?"}
+    T -->|no| F1["Fix chunking, hybrid, query rewrite"]
+    T -->|yes, at rank 4-5| F2["Add a reranker"]
+    GP --> F3["Fix prompt, send fewer chunks, check faithfulness"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Pehle retrieved context dekho: zyada tar bad answers retrieval wali branch pe khatam hote hain, jahan bada LLM bilkul madad nahi karta.
 
 | Failure | Kya hota hai | Fix (page) |
 |---|---|---|

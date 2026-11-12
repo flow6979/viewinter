@@ -303,6 +303,33 @@ app = g.compile()
 
 **LLMCompiler:** planner tasks ko dependencies ke saath **DAG** me stream karta hai. Task fetching unit dependencies ready hote hi tasks parallel chalata hai. Joiner decide karta hai: answer do ya replan. Paper ne ReAct ke comparison me latency me kaafi speedup report kiya.
 
+```mermaid
+flowchart LR
+    subgraph RW["ReWOO: 2 LLM calls"]
+        P["Planner LLM: E1 search Nifty PE, E2 calc E1 x 1.1"]:::hot
+        W["Worker, no LLM: E1 is 22.4, E2 is 24.64"]
+        S["Solver LLM: final answer"]:::hot
+    end
+    subgraph LC["LLMCompiler: DAG in parallel"]
+        PL["Planner streams the DAG"]
+        T1["Task 1: price of fund A"]
+        T2["Task 2: price of fund B"]
+        T3["Task 3: compare, needs 1 and 2"]
+        J["Joiner: answer or replan"]
+    end
+    P --> W
+    W --> S
+    PL --> T1
+    PL --> T2
+    T1 --> T3
+    T2 --> T3
+    T3 --> J
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* ReWOO LLM ko sirf do baar (highlighted) bulata hai kyunki worker model se pooche bina E1 ko E2 me bhar deta hai; LLMCompiler task 1 aur 2 ek saath chalata hai aur task 3 dono ka intezaar karta hai.
+
 | | ReAct | Plan-and-execute | ReWOO | LLMCompiler |
 |---|---|---|---|---|
 | LLM calls | har step | plan + replan har step | ~2 (plan, solve) | plan + join |
@@ -383,6 +410,38 @@ Grounded signal (tests) fail hone pe reflection Store me jaati hai aur agle atte
 | Hierarchical | supervisor of supervisors (subgraphs) | bahut saare agents, team-wise grouping |
 | Swarm / handoffs | active agent khud handoff karta hai | conversational, user ek specialist se baat kare |
 | Network (peer-to-peer) | koi bhi agent kisi ko bhi | rare; hard to debug |
+
+```mermaid
+flowchart LR
+    subgraph SUP["Supervisor"]
+        S0["Supervisor"]:::hot
+        S1["Pricing"]
+        S2["Ads"]
+    end
+    subgraph SW["Swarm"]
+        W1["Booking"]
+        W2["Payments"]
+    end
+    subgraph NW["Network"]
+        N1["Agent A"]
+        N2["Agent B"]
+        N3["Agent C"]
+    end
+    S0 --> S1
+    S1 --> S0
+    S0 --> S2
+    S2 --> S0
+    W1 -->|handoff| W2
+    W2 -->|handoff| W1
+    N1 --> N2
+    N2 --> N3
+    N3 --> N1
+    N2 --> N1
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Supervisor: control hamesha centre (highlighted) pe lautta hai. Swarm: active agent baton aage deta hai. Network: koi bhi kisi ko bhi bulata hai, isliye debug mushkil hai. Hierarchical version neeche hai.
 
 ```mermaid
 flowchart TD
@@ -574,6 +633,25 @@ Matlab ~3.4x cost. Ye tab worth hai jab deep research se seller ka bada faisla (
 | Long chat jahan specialist badalta hai (booking → payment) | Swarm handoffs |
 | Low-value, high-volume query (FAQ) | Single agent ya workflow; 15x cost justify nahi |
 
+```mermaid
+flowchart TD
+    Q["New task"] --> F{"Low value, high volume, like FAQ?"}
+    F -->|yes| SA["Single agent or workflow"]:::hot
+    F -->|no| A{"Under 15 tools, one domain?"}
+    A -->|yes| SA
+    A -->|no| B{"Tightly coupled edits on one codebase?"}
+    B -->|yes| SA
+    B -->|no| C{"Breadth research, independent sub-questions?"}
+    C -->|yes| OR["Orchestrator + parallel subagents"]
+    C -->|no| D{"Specialist changes during a long chat?"}
+    D -->|yes| SW["Swarm handoffs"]
+    D -->|no, 30+ tools across domains| SP["Supervisor + specialists"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Zyaadatar raaste single agent (highlighted) pe khatam hote hain; multi-agent ka ~3.4x bill sirf breadth, kai domains ya badalte specialist wali branches pe dena padta hai.
+
 **Interview tip:** "Multi-agent ka case token budget se shuru karta hoon: agar single agent ka context tools aur history se overflow ho raha hai, ya parallel breadth chahiye, tab split. Warna nahi."
 
 **Common galti:** org chart ko agent chart bana dena ("PM agent, dev agent, QA agent") bina ye dikhaye ki single agent fail ho raha tha.
@@ -591,6 +669,23 @@ Matlab ~3.4x cost. Ye tab worth hai jab deep research se seller ka bada faisla (
 2. Subagent apne private state me 12 searches karta hai: ~30k tokens, parent ko dikhte nahi.
 3. Subagent wapas ~300 tokens ka structured result deta hai.
 4. Parent ki `messages` me sirf ye 300 tokens judte hain. Agli supervisor call 30k ki jagah 300 tokens zyada padhti hai.
+
+```mermaid
+flowchart LR
+    subgraph SH["Shared history"]
+        SS["Supervisor"] --> SR["Research subagent: 12 searches"]
+        SR -->|all 30k tokens of tool calls| SM["Parent messages grow by 30k"]
+    end
+    subgraph PR["Private scratchpad"]
+        PS["Supervisor"] -->|task brief JSON| PA["Research subagent: 12 searches"]
+        PA --> PP["Private state: 30k tokens"]
+        PA -->|300-token result| PM["Parent messages grow by 300"]:::hot
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Dono tareeke me wahi 12 searches; private scratchpad me sirf highlighted 300-token result parent tak pahunchta hai, isliye supervisor ki aage ki har call chhoti rehti hai.
 
 Handoff brief aisa dikhta hai:
 
@@ -624,6 +719,19 @@ Handoff brief aisa dikhta hai:
 **Ye kyun chahiye?** Multi-agent me zyada-tar bugs model ki galti nahi, coordination ki galti hote hain. Ek example: seller bolta hai "price aur ads dekh lo". Supervisor → pricing → supervisor → pricing → supervisor... har baar pricing bolta hai "ads mera kaam nahi" aur supervisor phir pricing ko bhejta hai. 25 steps baad `GraphRecursionError` (jo error LangGraph `recursion_limit` hit hone pe deta hai), aur seller ko kuch nahi mila.
 
 **Fix ka trace:** state me `handoff_count` rakho. Har handoff pe +1. Same agent ko lagatar 2 baar bheja ya count 4 se zyada hua, to supervisor ko force karo ki summary de ya human ko bheje.
+
+```mermaid
+flowchart LR
+    S["Supervisor"] -->|handoff 1| P["Pricing agent"]
+    P -->|ads are not my job| S
+    S -->|handoff 2, same agent again| G{"Same agent twice or handoff_count over 4?"}
+    G -->|no| P
+    G -->|yes| F["Forced summary or human"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Guard ke bina ye cycle step 25 pe `GraphRecursionError` tak chalta hai; state me rakha counter pehle repeat pe hi ise tod deta hai.
 
 | Failure | Symptom | Fix |
 |---|---|---|

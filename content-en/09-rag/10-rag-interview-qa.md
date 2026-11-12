@@ -16,16 +16,24 @@ This page is for revision: a common HLD question ("design a RAG chatbot over com
 
 ```mermaid
 flowchart LR
-    D["Docs: Confluence, Drive, PDFs"] --> I["Ingestion workers"]
-    I --> C["Chunk + embed + ACL metadata"]
-    C --> V["Vector + BM25 index"]
-    U["User query"] --> R["Rewrite query"]
-    R --> H["Hybrid retrieve with ACL filter"]
+    subgraph OFF["Offline ingestion"]
+        D["Docs: Confluence, Drive, PDFs"] --> I["Ingestion workers"]
+        I --> C["Chunk + embed + ACL metadata"]
+        C --> V[("Vector + BM25 index")]
+    end
+    subgraph ON["Online query"]
+        U["User query"] --> R["Rewrite query"]
+        R --> H["Hybrid retrieve with ACL filter"]:::hot
+        H --> K["Rerank top 50 to 5"]
+        K --> L["LLM answer with citations"]
+        L --> S["Stream to user"]
+    end
     V --> H
-    H --> K["Rerank top 50 to 5"]
-    K --> L["LLM answer with citations"]
-    L --> S["Stream to user"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Two pipelines meet at the index; the highlighted ACL filter inside retrieval is what keeps the intern away from the salary-band doc.
 
 1. **Requirements:** how many docs/users, freshness (minutes or days?), latency (first token < ~2s), permissions, languages.
 2. **Ingestion:** connectors + change webhooks → async queue → parse (OCR for scans) → structure-aware chunking ~300–800 tokens → embed (with cache) → upsert with `doc_id, tenant, acl_groups, updated_at`. ([Production RAG API](09-production-rag-api.md))

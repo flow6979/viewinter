@@ -70,6 +70,23 @@ Each section below is one box in this chain. One example runs through the whole 
 | wrong dish on the plate | wrong answer, with HTTP 200 |
 | slip and photo at every station | prompt, tool input, output on every span |
 
+```mermaid
+flowchart LR
+    U["Priya asks about her refund"] --> AG["Support agent"]
+    AG -->|HTTP 200 in 1.8s| APM["APM: p95 1.8s, errors 0.1 percent, all green"]
+    AG -->|spans with prompt and tool I/O| TR["LLM trace"]
+    TR --> T1["get_order says Paneer Tikka ₹180"]
+    TR --> T2["LLM answer says full refund ₹450"]
+    T1 --> MM["Mismatch: promised ₹450, actual ₹180"]
+    T2 --> MM
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MM hot
+    class APM dim
+```
+
+*Diagram:* The same request seen two ways: APM (dimmed) only sees a fast HTTP 200, while the trace shows the tool said ₹180 and the model promised ₹450.
+
 **In one line:** APM tells you the service is up and fast; LLM observability tells you **whether the answer was right**, because failures are silent, semantic and non-deterministic.
 
 | | Traditional APM | LLM/agent observability |
@@ -229,6 +246,22 @@ Debugging starts at the first span whose output was wrong. Every fixed trace bec
 4. Everything needed for debugging (total, items, price, status) is still there. The private data never left.
 5. The `user_id` was not sent raw either, only a hash: `u_hash_91`. The real identity lives in a separate secure store.
 
+```mermaid
+flowchart LR
+    RAW["get_order raw result: total, items, phone, address"] --> RD["Redactor: Presidio or regex"]
+    RD -->|phone and address become placeholders| SP["Span output"]
+    UID["Raw user_id"] -->|hash| HS["u_hash_91"]
+    HS --> SP
+    SP --> EX["Trace exporter"]
+    EX --> BE["Tracing backend, every engineer can see"]
+    UID -.->|real identity only| SS["Separate secure store"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RD,HS hot
+```
+
+*Diagram:* Redaction and hashing (highlighted) sit before the exporter, so only placeholders and a hashed user id ever reach the tracing backend; the real identity lives in a separate store.
+
 **What to log:**
 
 | Field | Why |
@@ -295,6 +328,25 @@ Debugging starts at the first span whose output was wrong. Every fixed trace bec
 
 3. Any backend, whether Langfuse, Phoenix or Datadog, understands these names. Cost and token dashboards build themselves.
 4. Span 2 (the tool) gets `gen_ai.operation.name = execute_tool`, `gen_ai.tool.name = get_order`, `gen_ai.tool.call.id = call_abc`. The root span gets `invoke_agent`.
+
+```mermaid
+flowchart LR
+    subgraph TRACE["One trace, standard gen_ai names"]
+        RA["invoke_agent refund-agent"] --> C1["chat gpt-4.1-mini"]
+        RA --> TL["execute_tool get_order"]
+        RA --> C2["chat gpt-4.1-mini, input_tokens 2300, output_tokens 120"]
+    end
+    TRACE -->|instrument once| EXP["OTel exporter"]
+    EXP --> LF["Langfuse"]
+    EXP --> PH["Phoenix"]
+    EXP --> DD["Datadog"]
+    EXP --> GR["Grafana"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class EXP hot
+```
+
+*Diagram:* Spans are named by the convention (invoke_agent, chat, execute_tool), so moving from Langfuse to Datadog is only a change at the exporter (highlighted).
 
 **In one line:** the OTel GenAI conventions define standard attribute names (`gen_ai.*`) for LLM/agent spans, so any backend understands the same data. OpenInference is Arize's similar convention.
 

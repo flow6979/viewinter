@@ -271,6 +271,25 @@ graph = builder.compile(cache=InMemoryCache())  # Redis-backed cache in prod
 4. Prompt caching is still on. Bill: 16,000 new tokens × $3/1M = $0.048, 20,000 cached × $0.30/1M = $0.006, output $0.033.
 5. **New bill: $0.087 per task** (was $0.1275). Step 6 now sends 7.5k tokens instead of 12k, so TTFT drops too.
 
+```mermaid
+flowchart LR
+    subgraph IN["What the agent has"]
+        RAW["get_holdings raw JSON: 40 fields, 1,500 tokens"]
+        OLD["Older turns of the chat"]
+        NEW["Last 8 messages"]
+    end
+    RAW -->|keep symbol, qty, avg_price, sector| CMP["Compacted result: 600 tokens"]
+    OLD -->|small model| SUM["Running summary"]
+    CMP --> CTX["Context sent to the LLM: about 4k tokens"]
+    SUM --> CTX
+    NEW -->|kept as is| CTX
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CMP,SUM hot
+```
+
+*Diagram:* Two levers shrink the context (highlighted): tool results are cut to the 4 needed fields and old turns become a summary; only the last 8 messages go in as they are.
+
 > **Example:** an HDFC 40-turn support chat. Send the full history every turn and turn 40 has 30k input tokens = ~$0.09 per turn. The last 8 messages + a running summary fit in 4k tokens = ~$0.012 per turn.
 
 **Techniques:**
@@ -303,6 +322,25 @@ graph = builder.compile(cache=InMemoryCache())  # Redis-backed cache in prod
 3. New flow: step 1 → `get_portfolio_overview` + `get_sector_map` + `get_news` together. Step 2 → `calc_pnl`. Step 3 → final answer.
 4. Input: 4.5k, 5.1k, 5.7k (cache and trimming on). Output: 300 + 300 + 700.
 5. **New bill: $0.0438 per task** (was $0.087). And 3 fewer LLM waits, so lower latency too (see the timeline in the Latency section).
+
+```mermaid
+flowchart LR
+    subgraph BEFORE["Before: 6 LLM calls, $0.087"]
+        direction TB
+        B1["1: get_holdings"] --> B2["2: get_prices"] --> B3["3: get_sector_map"] --> B4["4: get_news"] --> B5["5: calc_pnl"] --> B6["6: answer"]
+    end
+    subgraph AFTER["After: 3 LLM calls, $0.0438"]
+        direction TB
+        A1["1: get_portfolio_overview + get_sector_map + get_news in parallel"] --> A2["2: calc_pnl"] --> A3["3: answer"]
+    end
+    BEFORE -->|merge tools, parallel calls| AFTER
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class A1 hot
+    class B1,B2,B3,B4,B5,B6 dim
+```
+
+*Diagram:* Holdings and prices merge into one coarse tool, and the three independent lookups run in one turn (highlighted), so 6 LLM round trips become 3.
 
 > **Example:** a Razorpay merchant-support agent used to take 3 loop iterations for 3 separate calls: `get_merchant`, `get_settlements`, `get_disputes`. One `get_merchant_overview(merchant_id)` tool made it a single step.
 
@@ -583,6 +621,21 @@ async def stream_run(graph, question: str, thread_id: str):
 5. In the morning, a results file arrives. Each result maps back to its listing by `custom_id`.
 6. Batch discount ~50%: **~$90 per night**. About $33,000 saved in a year.
 
+```mermaid
+flowchart LR
+    L["5 lakh new listings"] --> J["requests.jsonl: one line per listing, custom_id is the listing id"]
+    J -->|upload| B["Batch API"]
+    B -->|async, within 24h| P["Provider runs them in bulk"]
+    P --> R["results.jsonl, in any order"]
+    R -->|match by custom_id| DB["Listings updated"]
+    B -.->|about 50 percent off| C["$90 a night instead of $180"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class R,DB hot
+```
+
+*Diagram:* Requests go in as one JSONL file and come back hours later in any order, so results are matched by custom_id (highlighted), never by position; the price is about half.
+
 **Points:**
 
 - Upload a JSONL file of requests → the provider processes it async (typically within 24h) → results file.
@@ -698,6 +751,24 @@ async def run_with_budget(graph, user_id: str, thread_id: str, msg: str):
 4. **One-time cost** (data, training, eval pipeline): say ~$15,000 (illustrative).
 5. **Break-even:** daily saving ~$17,500. The money comes back in one day.
 6. **Opposite case:** the same job at only 2,000 tickets a day. Saving ~$17.5/day. Getting $15,000 back takes ~850 days. Do not fine-tune; stay with prompting.
+
+```mermaid
+flowchart TD
+    Q["A task costs too much on a big model"] --> K{"Is it about facts or fresh data?"}
+    K -->|yes| RAG["Stay with prompting plus RAG"]
+    K -->|no| N{"Narrow, stable and high volume?"}
+    N -->|no| PR["Keep prompting"]
+    N -->|yes| E{"Eval set ready?"}
+    E -->|no| EV["Build the eval set first"]
+    E -->|yes| BE{"Daily saving pays back the one-time cost soon?"}
+    BE -->|20 lakh a day, back in 1 day| D["Distill a small model"]
+    BE -->|2,000 a day, 850 days| PR
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class D hot
+```
+
+*Diagram:* Fine-tuning is the last branch, not the first: facts go to RAG, and only a narrow, high-volume task with an eval set and a fast break-even (the PhonePe case) reaches distillation.
 
 | | Prompting (+RAG) | Fine-tuning / distillation |
 |---|---|---|

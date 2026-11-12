@@ -16,16 +16,24 @@ Ye page revision ke liye hai: ek common HLD question ("company docs pe RAG chatb
 
 ```mermaid
 flowchart LR
-    D["Docs: Confluence, Drive, PDFs"] --> I["Ingestion workers"]
-    I --> C["Chunk + embed + ACL metadata"]
-    C --> V["Vector + BM25 index"]
-    U["User query"] --> R["Rewrite query"]
-    R --> H["Hybrid retrieve with ACL filter"]
+    subgraph OFF["Offline ingestion"]
+        D["Docs: Confluence, Drive, PDFs"] --> I["Ingestion workers"]
+        I --> C["Chunk + embed + ACL metadata"]
+        C --> V[("Vector + BM25 index")]
+    end
+    subgraph ON["Online query"]
+        U["User query"] --> R["Rewrite query"]
+        R --> H["Hybrid retrieve with ACL filter"]:::hot
+        H --> K["Rerank top 50 to 5"]
+        K --> L["LLM answer with citations"]
+        L --> S["Stream to user"]
+    end
     V --> H
-    H --> K["Rerank top 50 to 5"]
-    K --> L["LLM answer with citations"]
-    L --> S["Stream to user"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Do pipelines index pe milti hain; highlighted ACL filter retrieval ke andar hai, wahi intern ko salary-band doc se door rakhta hai.
 
 1. **Requirements:** kitne docs/users, freshness (minutes ya din?), latency (first token < ~2s), permissions, languages.
 2. **Ingestion:** connectors + webhooks for changes → async queue → parse (OCR for scans) → structure-aware chunking ~300–800 tokens → embed (with cache) → upsert with `doc_id, tenant, acl_groups, updated_at`. ([Production RAG API](09-production-rag-api.md))

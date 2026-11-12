@@ -222,6 +222,25 @@ Fixed hissa same rehta hai, sirf history aur tool results badhte hain. Budget 8,
 
 Problem dekho: order ID "8812" (message 4) window se gir gaya. User pooche "mera order number kya tha?" to bot nahi bata payega. Isi ke liye agla section, summarization.
 
+```mermaid
+flowchart LR
+    subgraph ST["State: all 12 messages kept"]
+        M1["1 System"]
+        M27["2 to 7: order late, 8812, get_order, picked up"]:::dim
+        M812["8 to 12: refund question, policy, coupon"]
+    end
+    TR["trim_messages: last, 3000 tokens, start_on human"]
+    W["LLM window: 1 + 8 to 12"]:::hot
+    M1 -->|include_system| TR
+    M812 -->|fits the budget| TR
+    M27 -.->|dropped, 8812 lost| TR
+    TR --> W
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* State me saare 12 messages rehte hain; LLM ko sirf highlighted window jaati hai, aur order ID 8812 wala dim block hi trimming me chhoot jaata hai.
+
 **Ab terms:**
 - **Context window:** ek call me model jitne tokens padh sakta hai. **Token budget:** usme se kitna hum use karenge.
 - **Trimming:** purane messages LLM ke view se hatana. Info seedha kho jaati hai.
@@ -349,6 +368,19 @@ builder.add_edge("summarize", END)
 | Procedural | agent ke rules/instructions | "Is user ko hamesha Hindi me jawab do" | system prompt ka hissa, agent khud update kar sakta |
 
 **Walk-through:** user bolta hai "Main F&O nahi karta. Pichhli baar wala tax report tareeka chahiye. Hindi me bolo." Ek message, teen writes: semantic fact save hota hai, pichli successful run ke 3 steps example ki tarah prompt me aate hain, aur system prompt me "Hamesha Hindi me jawab do" judta hai.
+
+```mermaid
+flowchart LR
+    U["User: no F and O, use last time's tax-report method, speak Hindi"] --> X["Memory writer"]
+    X -->|fact| SE[("Semantic: no F and O, long-term equity")]
+    X -->|experience| EP[("Episodic: 3 steps of last tax P and L run")]
+    X -->|rule| PR[("Procedural: always reply in Hindi")]
+    SE -->|searched into prompt| P["Next prompt"]
+    EP -->|few-shot example| P
+    PR -->|system prompt line| P
+```
+
+*Diagram:* Ek message se teen alag writes hote hain, aur har memory type prompt me alag jagah wapas aata hai.
 
 **Ab terms:**
 - **Semantic** ke do shapes:
@@ -510,12 +542,16 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    W["Write: scratchpad, files, memory"] --> CTX["Context window for this step"]
-    S["Select: retrieve only relevant"] --> CTX
-    C["Compress: trim, summarize"] --> CTX
-    I["Isolate: sub-agents, sandboxes"] --> CTX
+    W["Write: 40,000 CSV rows to a file, 120k to 300 tokens"] --> CTX["Window at step 12: about 7.3k, not 154k"]:::hot
+    S["Select: 6 of 80 tools, 12k to 1k"] --> CTX
+    C["Compress: old tool outputs, 18k to 2k"] --> CTX
+    I["Isolate: sub-agent reads 50k, returns 1.5k"] --> CTX
     CTX --> LLM["LLM call"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Har strategy window ka ek hissa chhota karti hai; milke ye step 12 ko lagbhag 154k se 7.3k tokens (highlighted) pe le aati hain.
 
 **Ab terms:** **scratchpad** = plan, todo, findings ek state field ya file me (write). **Tool-result pruning** = purane results placeholder se replace (compress). Isolate me state schema ke heavy fields bhi aate hain jo LLM ko kabhi nahi jaate.
 

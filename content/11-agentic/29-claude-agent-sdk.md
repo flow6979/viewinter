@@ -70,6 +70,25 @@ Har box neeche ek section hai. Phir ek UPI payments service ke liye on-call help
 
 **Aise socho:** Experienced site engineer hire karna jo apna toolkit laata hai, vs fresher hire karke har tool khud khareedna. Kaun se kamron me ja sakta hai, ye tum decide karte ho (permissions), kisi bhi kamre ke darwaze pe rok sakte ho (hooks), aur woh basement naapne ke liye helper bhej sakta hai (subagent).
 
+```mermaid
+flowchart LR
+    subgraph PY["Your Python process"]
+        APP["Your code"] --> SDK["claude_agent_sdk"]
+    end
+    subgraph CC["claude subprocess"]
+        LOOP["Agent loop"] --> TL["Read, Edit, Bash, Grep"]
+        LOOP --> FS[("cwd and session files")]
+    end
+    SDK -->|JSON over stdio| LOOP
+    LOOP -->|Messages API| API["Claude via API, Bedrock or Vertex"]
+    LOOP -->|typed messages stream back| SDK
+    class LOOP hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Tumhara code loop khud nahi chalata: woh ek alag claude subprocess chalata hai jiske paas shell, working directory aur session files hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `pip install claude-agent-sdk`. Package me native Claude Code binary bundled hai, to aam taur pe alag install nahi chahiye.
@@ -107,6 +126,25 @@ Har box neeche ek section hai. Phir ek UPI payments service ke liye on-call help
 **Ye kyun chahiye:** CI job "failing test theek karo" one shot hai. Chat UI ya Slack bot follow-ups bhejta hai, Stop button chahta hai, aur session ke beech permission mode badal sakta hai. Dono ke liye ek API bhaddi hoti.
 
 **Aise socho:** `query()` darzi ko ek order dena aur shirt le aana hai. `ClaudeSDKClient` darzi ke paas khade rehna hai: "sleeves chhoti karo… ruko… ab collar".
+
+```mermaid
+flowchart LR
+    subgraph QY["query: one shot"]
+        Q1["prompt"] --> Q2["new session, loop runs"]
+        Q2 --> Q3["ResultMessage, stream ends"]
+    end
+    subgraph CL["ClaudeSDKClient: one open session"]
+        C1["query: which route handles refunds"] --> C2["ResultMessage 1"]
+        C2 --> C3["query: who calls it, same context"]
+        C3 --> C4["interrupt or set_permission_mode mid-run"]
+        C4 --> C5["ResultMessage 2, session still open"]
+    end
+    class C3 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* query() stream khatam hote hi sab bhool jaata hai; client ek session zinda rakhta hai, isliye highlighted follow-up 'it' bol sakta hai aur beech me control kar sakte ho.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -169,6 +207,21 @@ asyncio.run(chat())
 
 **Aise socho:** Hospital ka store room. Kuch cheezein shelf pe sabke liye (allowed), kuch ke liye doctor ka signature chahiye (permission prompt), kuch is ward me rakhi hi nahi (removed).
 
+```mermaid
+flowchart TD
+    CALL["Claude wants to call Edit"] --> EX{"Tool available? tools list, bare names in disallowed_tools"}
+    EX -->|removed| GONE["Not in context, Claude never sees it"]
+    EX -->|available| PRE{"Listed in allowed_tools?"}
+    PRE -->|yes| RUN["Runs without asking"]
+    PRE -->|no| MODE["Falls through to permission mode and can_use_tool"]
+    MODE -->|default mode, no callback| DEN["Denied, Claude gets a rejection"]
+    class EX,PRE hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Do alag sawal: tool exist karta hai ya nahi, aur pre-approved hai ya nahi; allowed_tools sirf doosra sawal answer karta hai, isliye unlisted tools exist karte hain aur aage girte hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Main built-in tools:
@@ -203,6 +256,23 @@ Example: `default` mode me `allowed_tools=["Read", "Grep"]` aur bina callback wa
 
 **Aise socho:** Universal charging port. Koi bhi MCP charger chalta hai; in-process server tumhare apne wall socket me laga charger hai.
 
+```mermaid
+flowchart LR
+    subgraph PY["Your Python process"]
+        FN["get_payment with the tool decorator"] --> SRV["create_sdk_mcp_server payments"]
+    end
+    SRV -->|mcp_servers payments| CC["Claude Code process"]
+    EXT["External MCP server: github over stdio or HTTP"] --> CC
+    CC -->|exposes mcp__payments__get_payment| C["Claude"]
+    C -->|call with txn_id TXN-881| CC
+    CC -->|routed back into your process| FN
+    class FN,SRV hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* In-process server tumhare Python app ke andar hai, isliye call bina extra service ke tumhare function tak wapas aati hai; external servers usi slot me lagte hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Async function decorate karo: `@tool(name, description, input_schema)`. Schema `{"txn_id": str}` jaisa simple dict ho sakta hai ya poora JSON Schema (enums ya optional fields ke liye zaroori).
@@ -227,6 +297,24 @@ Example: `default` mode me `allowed_tools=["Read", "Grep"]` aur bina callback wa
 **Ye kyun chahiye:** Shell wala agent database delete kar sakta hai. Kuch calls kabhi nahi chalni chahiye, kuch hamesha, aur kuch ko human chahiye. Permissions ye decision har run me explicit aur same banate hain.
 
 **Aise socho:** Office access. Kuch darwaze seal hain (deny rules), tumhara badge kuch kholta hai (allow rules), floor ka mode baaki decide karta hai (open day vs lockdown), aur baaki ke liye guard tumhare manager ko phone karta hai (callback).
+
+```mermaid
+flowchart TD
+    TC["Tool call: Bash rm -rf build"] --> HK{"PreToolUse hooks"}
+    HK -->|deny| D1["Denied, reason sent to Claude"]
+    HK -->|no decision| DR{"Deny rule matches?"}
+    DR -->|yes| D2["Denied in every mode"]
+    DR -->|no| MA{"Mode or allow rule covers it?"}
+    MA -->|yes| OK["Allowed, tool runs"]
+    MA -->|no| CB{"can_use_tool callback"}
+    CB -->|PermissionResultAllow| OK
+    CB -->|deny, or no callback in default mode| D3["Denied"]
+    class HK,DR,MA,CB hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har call ye chaar checks upar se neeche chalti hai aur pehle decide karne wale pe ruk jaati hai; tumhara callback tabhi poocha jaata hai jab upar kisi ne decide na kiya ho.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -260,6 +348,32 @@ Example: `dontAsk` mode me `allowed_tools=["Read", "mcp__payments__get_payment"]
 
 **Aise socho:** Highway ke toll booths. Har gaadi (tool call) booth se guzarti hai; booth log kar sakta hai, jaane de sakta hai, ya rok sakta hai.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant CC as Claude Code
+    participant HK as Your hooks
+    participant C as Claude
+    participant T as Bash
+    U->>CC: prompt
+    CC->>HK: UserPromptSubmit, add company context
+    CC->>C: prompt plus context
+    C-->>CC: tool call Bash rm -r -f tmp
+    CC->>HK: PreToolUse matcher Bash
+    HK-->>CC: deny, only pytest allowed
+    CC->>C: denied with reason
+    C-->>CC: tool call Bash pytest
+    CC->>HK: PreToolUse matcher Bash
+    HK-->>CC: allow
+    CC->>T: run pytest
+    CC->>HK: PostToolUse, write audit row
+    CC->>C: test output
+    C-->>CC: final answer
+    CC->>HK: Stop, check answer and save state
+```
+
+*Diagram:* Hooks tumhare process me fixed points pe chalte hain: pehli Bash call PreToolUse se block hoti hai, Claude reason padhkar allowed command pe switch karta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Python hook events: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `Notification`, `PermissionRequest`. TypeScript me kuch aur hain.
@@ -290,6 +404,25 @@ Example: `dontAsk` mode me `allowed_tools=["Read", "mcp__payments__get_payment"]
 
 **Aise socho:** Senior doctor junior ko patient ki 200 page history padh ke ek page summary laane bhejta hai. Senior ki table saaf rehti hai.
 
+```mermaid
+flowchart LR
+    subgraph MAIN["Main agent context window"]
+        P["Parent: history, CLAUDE.md, all tools"]
+        SUM["Receives about 1,500-token summary"]
+    end
+    subgraph SUB["log-analyst subagent: fresh window, haiku"]
+        T["Task string with paths and txn id"] --> R["Reads 40 logs, about 320,000 tokens"]
+        R --> F["Final message only"]
+    end
+    P -->|Agent tool call| T
+    F -->|returns| SUM
+    class R hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* 320,000 tokens ki log reading subagent ki apni window me rehti hai; parent ko sirf bheja hua task aur wapas aayi chhoti report dikhti hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Define karo: `agents={"log-analyst": AgentDefinition(description=..., prompt=..., tools=[...], model="haiku")}`. Ya `.claude/agents/` me markdown files rakho.
@@ -315,6 +448,19 @@ Example numbers: 40 log files × ~8,000 tokens = ~320,000 tokens. Main window me
 
 **Aise socho:** Game save karna. Resume same save ko aage chalata hai. Fork save ki copy banata hai taaki original khoye bina risky move try kar sako.
 
+```mermaid
+flowchart LR
+    S1["Session abc: turns 1 to 30, error_max_turns"] -->|resume abc| S1b["Same session abc: turn 31 onward"]
+    S1 -->|resume abc with fork_session| S2["New session xyz: copy up to turn 30, try another path"]
+    S1 -.->|session_store mirrors transcript| ST[("Object store or DB")]
+    ST -.->|resume on another host| S1b
+    class S1b hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Resume usi session me likhta rehta hai; fork naye id me copy karta hai taaki original na chhuye; session store se doosra pod bhi resume kar sakta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `ResultMessage` (ya init `SystemMessage`) se `session_id` padho.
@@ -336,6 +482,24 @@ Example numbers: 40 log files × ~8,000 tokens = ~320,000 tokens. Main window me
 **Ye kyun chahiye:** Wahi harness repo me Claude Code jaisa, production me strict support bot jaisa, aur multi-tenant service me saaf, isolated worker jaisa chalna chahiye. Iske liye kaun si instructions load hon, uspe explicit control chahiye.
 
 **Aise socho:** Naya employee: company handbook (system prompt), team ka wiki page (`CLAUDE.md`), aur shelf pe how-to binders jo zaroorat pe hi kholta hai (skills).
+
+```mermaid
+flowchart TD
+    SP{"system_prompt"} -->|omitted| MIN["Minimal prompt"]
+    SP -->|preset claude_code| PRE["Claude Code prompt plus your append"]
+    SP -->|string| OWN["Only your text"]
+    SS{"setting_sources"} -->|user| U["~/.claude settings and memory"]
+    SS -->|project| PJ["Repo CLAUDE.md, .claude skills and agents"]
+    SS -->|empty list| NONE["Nothing from disk, isolated"]
+    PRE --> CTX["Every request"]
+    PJ -->|full CLAUDE.md each request| CTX
+    PJ -->|skill descriptions only, body on Skill call| CTX
+    class PRE,PJ hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Do dials agent ko shape karte hain: system_prompt base behaviour chunta hai, setting_sources disk ki kaunsi files load hon; CLAUDE.md har baar poora jaata hai, skills sirf descriptions ke roop me.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -359,6 +523,24 @@ Example numbers: 40 log files × ~8,000 tokens = ~320,000 tokens. Main window me
 **Ye kyun chahiye:** Lamba fix-the-bug session 60 tool calls kar sakta hai, har ek hazaron tokens lautata hai. Compaction ke bina window bharte hi run fail hota. Iske saath run purane hisse ke summary ke saath chalta rehta hai. [Memory & Context](05-memory-context.md) dekho.
 
 **Aise socho:** Lambi meeting jisme minute-taker pehle do ghante ke notes ko ek page summary se badal deta hai, aur aakhri 20 minute word for word rakhta hai.
+
+```mermaid
+flowchart LR
+    subgraph BEFORE["Before: window nearly full"]
+        B1["System prompt, tools, CLAUDE.md"] --> B2["Turns 1 to 50: big tool outputs"]
+        B2 --> B3["Turns 51 to 60"]
+    end
+    subgraph AFTER["After compaction"]
+        A1["System prompt, tools, CLAUDE.md re-sent"] --> A2["Short summary of turns 1 to 50"]
+        A2 --> A3["Turns 51 to 60 kept word for word"]
+    end
+    B2 -->|PreCompact hook archives, then summarise| A2
+    class A2 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Sirf history ka purana beech wala hissa summary me dabta hai (aur compact_boundary message aata hai); CLAUDE.md bachta hai kyunki har request me dobara jaata hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -391,6 +573,26 @@ Example numbers: 40 log files × ~8,000 tokens = ~320,000 tokens. Main window me
 5. Ek `ClaudeSDKClient` session: investigate aur fix, phir incident note ke liye follow-up turn.
 
 Worked numbers: `max_turns=30` aur `max_budget_usd=2.0`. Yahan typical run 10–20 turns ka hai. Agent loop me phase to 30 turns pe `error_max_turns` ke saath, ya lagbhag $2 pe rukta hai (cap ko ek response jitna paar kar sakta hai, to headroom rakho).
+
+```mermaid
+flowchart LR
+    CL["ClaudeSDKClient session"] --> AG["Main agent: opus, acceptEdits"]
+    AG -->|1| GP["mcp__payments__get_payment TXN-881"]
+    AG -->|2| LA["log-analyst subagent: haiku, read-only"]
+    AG -->|3| RD["Grep and Read in src"]
+    AG -->|4| ED["Edit src, config and migrations denied"]
+    AG -->|5| HK{"PreToolUse hook on Bash"}
+    HK -->|pytest| BT["Bash pytest runs"]
+    HK -->|anything else| BL["Blocked with reason"]
+    AG -->|6| NOTE["Turn 2, same session: incident note"]
+    CAP["max_turns 30, max_budget_usd 2"] -.-> AG
+    class HK,ED hot
+    class BL dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Numbered edges expected run order hain; highlighted boxes woh safety layers hain jo decide karti hain agent kya badal sakta hai.
 
 **Step 1: custom tool.**
 
@@ -552,6 +754,25 @@ sequenceDiagram
 
 **Aise socho:** Ghar pe raw ingredients se khana banana (Messages API) vs poori kitchen wala caterer hire karna (Agent SDK). Ghar pe har masale pe poora control; caterer 200 mehmaanon ki shaadi sambhalta hai.
 
+```mermaid
+flowchart LR
+    subgraph RAW["Messages API: you own the loop"]
+        R1["Your loop and step cap"] --> R2["messages.create"]
+        R2 -->|stop_reason tool_use| R3["Your tools and your safety code"]
+        R3 -->|tool_result blocks| R1
+    end
+    subgraph SDKH["Agent SDK: the harness owns it"]
+        S1["Your prompt and options"] --> S2["Claude Code loop"]
+        S2 --> S3["Built-in tools, permissions, hooks, compaction, subagents"]
+        S3 --> S2
+    end
+    class R1,R3,S1 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Highlighted boxes woh code hain jo tum likhte ho: left me lagbhag poora loop, right me sirf configuration.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Plain tool use: `messages` ke saath `tools` (JSON schemas) bhejo. `stop_reason == "tool_use"` ho to tools chalao, saare `tool_result` blocks ek user message me jodo, aur dobara call karo. Step cap, error handling, history trimming aur har tool tum likhte ho.
@@ -610,6 +831,25 @@ print(next((b.text for b in resp.content if b.type == "text"), ""))
 
 **Aise socho:** Contractors ko flats ki chaabiyan dena. Har ek ko ek flat (container), building se kya bahar ja raha hai guard dekhta hai (egress proxy), aur kaam ke baad chaabiyan wapas (ephemeral containers).
 
+```mermaid
+flowchart LR
+    subgraph BOX["One container per session or tenant"]
+        AG["Agent SDK and claude process"] --> CWD[("Tenant cwd and CLAUDE_CONFIG_DIR")]
+    end
+    AG --> PX{"Egress proxy: domain allow list, injects credentials"}
+    PX -->|allowed| API["api.anthropic.com"]
+    PX -->|allowed| MCP["Needed MCP endpoints"]
+    PX -->|blocked| EV["Any other domain"]
+    AG -.->|OTel| OT["Your collector"]
+    AG -.->|SessionStore| SS[("Transcripts for resume")]
+    class PX hot
+    class EV dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har session ko untrusted code samjho: apne container me band chalta hai, aur proxy hi bahar ka raasta hai, isliye injected 'secrets bhejo' instruction kahin nahi ja sakti.
+
 **Kaise kaam karta hai, step by step:**
 
 | Concern | Kya karo |
@@ -639,6 +879,23 @@ Koi total session timeout built in nahi hai, isliye `max_turns` tumhara main sto
 **Ye kyun chahiye:** "Ye kyun, X kyun nahi?" senior sawal hai. SDK powerful hai par bhaari aur Claude-specific.
 
 **Aise socho:** Poori tarah equipped workshop. Furniture banane ke liye perfect; ek screw kasne ke liye zyada.
+
+```mermaid
+flowchart TD
+    Q1{"One call or short chat with a few API tools?"} -->|yes| MA["Messages API"]
+    Q1 -->|no| Q2{"Long approval workflow needing explicit steps?"}
+    Q2 -->|yes| LG["LangGraph or a workflow engine"]
+    Q2 -->|no| Q3{"Agent works on files, code, shell or documents?"}
+    Q3 -->|no, needs several providers| OT["OpenAI Agents SDK or ADK"]
+    Q3 -->|yes| Q4{"Want Anthropic to host the loop and sandbox?"}
+    Q4 -->|no| SDK["Claude Agent SDK"]
+    Q4 -->|yes| MG["Managed Agents"]
+    class SDK hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* SDK tabhi jawab hai jab halke options rule out ho jaayein: ye files aur shell pe open-ended kaam ke liye hai jo tum khud host karna chahte ho.
 
 **Kaise kaam karta hai, step by step:**
 

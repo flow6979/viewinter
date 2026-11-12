@@ -236,14 +236,18 @@ Agar amount 7200 hota, to step 4 me `goto="ops_review"` jaata. Agar message me "
 
 ```mermaid
 flowchart LR
-    S["START"] --> C["classify"]
+    S["START"] --> C["classify"]:::hot
     C --> RF{"route fn"}
-    RF -->|refund| R["refund_flow"]
-    RF -->|food_quality| Q["quality_team"]
-    RF -->|other| E["END"]
-    R -->|Command goto small amount| A["auto_refund"]
-    R -->|Command goto large amount| O["ops_review"]
+    RF -->|refund| R["refund_flow"]:::hot
+    RF -->|food_quality| Q["quality_team"]:::dim
+    RF -->|other| E["END"]:::dim
+    R -->|Command goto, 450 is under 500| A["auto_refund"]:::hot
+    R -->|Command goto, large amount| O["ops_review"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Highlighted raasta ORD-1 ka run hai: 450, 500 ki limit se kam hai, isliye `Command` seedha auto_refund pe jaata hai; dim branches hain par is baar nahi chali.
 
 **Ab terms:**
 
@@ -321,6 +325,21 @@ for chunk in graph.stream({"messages": [("user", "ORD-1 ka refund chahiye")]},
 - Teen chunks = teen nodes chale, usi order me jisme state badli.
 - `stream_mode="values"` doge to har step ke baad **poora** state milega, sirf diff nahi.
 - `graph.invoke(...)` yahi sab chalata hai par sirf aakhri state lautata hai.
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant G as Compiled graph
+    C->>G: stream with stream_mode updates
+    G-->>C: chunk classify, order_id ORD-1
+    G-->>C: chunk refund_flow, refund_approved True
+    G-->>C: chunk auto_refund, Refund done
+    C->>G: invoke with the same input
+    Note over G: same 3 nodes run, nothing sent yet
+    G-->>C: final state only
+```
+
+*Diagram:* Dono baar wahi teen nodes chalte hain: `stream` har node ke baad ek chunk deta hai, `invoke` intezaar karke sirf final state lautata hai.
 
 | Method | Kya karta hai |
 |---|---|
@@ -404,6 +423,20 @@ sequenceDiagram
 
 - Postgres pe pehli baar `checkpointer.setup()` chalao (tables banata hai).
 - **Time-travel:** `get_state_history` se purana checkpoint lo, uske config se `invoke(None, config)` = **replay** (us point ke baad dobara execute). `update_state(old_config, values)` naya checkpoint (branch) banata hai = **fork**. Example: checkpoint 2 pe jao, `order_id` ko `ORD-2` karo, aur wahi se chalao; purani history safe rehti hai.
+
+```mermaid
+flowchart LR
+    C1["CP1 input arrived"] --> C2["CP2 after classify, ORD-1"]
+    C2 --> C3["CP3 after refund_flow"]
+    C3 --> C4["CP4 Refund done"]
+    C2 -->|update_state order_id ORD-2| F2["CP2b fork, ORD-2"]:::hot
+    F2 -->|invoke None| F3["CP3b"]:::hot
+    F3 --> F4["CP4b"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Checkpoint 2 se fork ek nayi branch (highlighted) banata hai, CP3 aur CP4 history me waise hi rehte hain; replay CP2 se bina badle dobara chalata hai.
 
 Neeche code checkpointer lagata hai, run karta hai, latest state padhta hai, phir replay aur fork karta hai.
 
@@ -541,6 +574,20 @@ graph.invoke(Command(resume={"approved": True, "by": "ops@phonepe"}), cfg)
 - `messages`: `(AIMessageChunk("Seller"), {"langgraph_node": "compare_sellers", ...})`, phir `" B"`, phir `" sabse"`...
 - `custom`: `{"progress": "3 sellers compare kar raha hoon"}`
 
+```mermaid
+flowchart LR
+    N["compare_sellers node runs"] --> V["values: whole state after the step"]
+    N --> U["updates: only the compare_sellers diff"]
+    N --> M["messages: tokens Seller, B, is ..."]
+    N --> CU["custom: progress, comparing 3 sellers"]
+    M -->|filter by langgraph_node| UI["Chat UI"]:::hot
+    CU --> UI
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Ek node run, uske chaar view; chat UI (highlighted) aam taur pe `messages` aur `custom` sunta hai.
+
 | Mode | Har chunk me | Use |
 |---|---|---|
 | `values` | har step ke baad poora state | simple UIs, debugging |
@@ -595,6 +642,29 @@ for mode, chunk in graph.stream(inputs, cfg, stream_mode=["messages", "custom"])
 3. Subgraph andar apne nodes chalata hai (PAN verify → OTP → face match) aur lautata hai `{"verified": True, ...}`
 4. Wrapper parent ki key me map karta hai: `{"kyc_verified": True}`. Parent state me sirf ye ek key badli.
 
+```mermaid
+flowchart LR
+    subgraph P["Parent graph: OnboardingState"]
+        PS["pan, phone, kyc_verified, other keys"]
+        W["run_kyc wrapper"]:::hot
+    end
+    subgraph K["KYC subgraph: own schema"]
+        K1["PAN verify"]
+        K2["Aadhaar OTP"]
+        K3["Face match"]
+    end
+    PS -->|only pan and phone| W
+    W -->|invoke| K1
+    K1 --> K2
+    K2 --> K3
+    K3 -->|verified True| W
+    W -->|kyc_verified True| PS
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Andar sirf do keys jaati hain aur ek key wapas aati hai; parent ki baaki keys KYC team ke graph tak kabhi nahi pahunchti.
+
 **Ab terms:**
 
 - **Shared keys** (e.g. dono me `messages`): `builder.add_node("kyc", kyc_graph)`, seedha compiled graph ko node bana do.
@@ -637,6 +707,28 @@ builder.add_node("kyc", run_kyc)
 4. Agar attempt 3 bhi fail hota, to error graph se bahar aata.
 
 **Ek example: recursion limit.** `recursion_limit=15`. ReAct agent ka ek round = 2 supersteps (agent + tools). To lagbhag 7 rounds ke baad `GraphRecursionError`. Tum use pakad ke user ko "abhi nahi ho paaya, ticket bana diya" bolte ho.
+
+```mermaid
+flowchart LR
+    subgraph RP["RetryPolicy on fetch_quote"]
+        A1["Attempt 1: 503"]
+        A2["Attempt 2: 503"]
+        A3["Attempt 3: 200 OK"]:::hot
+    end
+    subgraph RL["recursion_limit 15 on the run"]
+        R7["About 7 ReAct rounds, 2 supersteps each"]
+        GE["GraphRecursionError"]
+        FB["Caught: ticket opened, clear reply"]:::hot
+    end
+    A1 -->|wait 0.5s| A2
+    A2 -->|wait 1.0s| A3
+    R7 -->|limit crossed| GE
+    GE --> FB
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Left: transient error ko double hote wait ke saath retry kiya jaata hai jab tak success na mile. Right: recursion limit ek safety net hai jise pakad ke graceful reply diya jaata hai.
 
 **Ab terms:**
 
@@ -691,6 +783,25 @@ except GraphRecursionError:                          # loop limit cross
 2. Friday, `thread_id = "chat-fri"`: messages khaali hain, nayi chat.
 3. Node `store.get(("users", "u42", "prefs"), "diet")` padhta hai → `{"value": "veg"}`.
 4. Agent sirf veg restaurants suggest karta hai.
+
+```mermaid
+flowchart LR
+    subgraph MON["Thread chat-mon"]
+        M1["User: I am vegetarian"]
+    end
+    subgraph FRI["Thread chat-fri"]
+        F1["New chat, empty messages"]
+        F2["Agent suggests veg only"]
+    end
+    ST[("Store: users, u42, prefs - diet is veg")]:::hot
+    M1 -->|store.put| ST
+    F1 -->|store.get| ST
+    ST -->|veg| F2
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har thread ki apni checkpointer history hai, par dono ek hi Store namespace (highlighted) tak pahunchte hain, isliye Friday ki chat ko Monday ki baat pata hai.
 
 **Ab terms:**
 

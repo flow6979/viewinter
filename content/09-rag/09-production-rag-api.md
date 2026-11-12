@@ -35,6 +35,19 @@ sequenceDiagram
 - Queue me PDF bytes mat bhejo; file path ya S3 reference bhejo (Redis message size aur memory).
 - Job idempotent rakho: client retry kare to duplicate job conflicting state na likhe ([Idempotency](../01-topics/10-idempotency-retries.md)).
 
+```mermaid
+stateDiagram-v2
+    [*] --> queued: POST /ingest
+    queued --> processing: worker picks job
+    processing --> completed: all pages indexed
+    processing --> partial: some pages failed, e.g. OCR on p47
+    processing --> failed: file unreadable
+    partial --> completed: failed pages retried
+    completed --> [*]
+```
+
+*Diagram:* Per-page status ki wajah se job partial pe khatam ho sakta hai: baaki 199 pages query ho sakte hain jab tak page 47 retry hota hai.
+
 **Interview tip:** "Koi bhi timeout ek saath normal requests aur 10-min ingestion dono ko serve nahi kar sakta, isliye async job + status endpoint."
 **Common galti:** sync ingestion; client disconnect, retry, aur do jobs vector DB me partial chunks likh dete hain.
 
@@ -48,6 +61,26 @@ sequenceDiagram
 - Har chunk pe `request.is_disconnected()` check karo; user chala gaya to generation roko, warna tokens ka paisa bekaar.
 - LLM client ka default timeout (httpx 5s) stream ke liye chhota hai; lamba set karo.
 
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant A as RAG API
+    participant V as Retriever
+    participant L as LLM
+    B->>A: GET /ask via EventSource
+    A-->>B: progress retrieving
+    A->>V: hybrid search plus rerank
+    V-->>A: top 5 chunks
+    A-->>B: context with sources
+    A-->>B: progress generating
+    A->>L: prompt with chunks, stream on
+    L-->>A: tokens
+    A-->>B: token events
+    A-->>B: done
+```
+
+*Diagram:* Browser ko milliseconds me progress events aur pehle token se pehle sources mil jaate hain, isliye retrieval ke dauraan screen kabhi khaali nahi dikhti.
+
 **Interview tip:** "User ke liye time-to-first-token sabse important number hai, total time nahi."
 
 ## Rate limits, batching aur embedding cache
@@ -58,9 +91,56 @@ sequenceDiagram
 - **Embedding cache:** notes me ~28% chunks duplicate the (disclaimers, boilerplate). Key = `SHA-256(normalize(text) | model_name | model_version)`; model badla to cache apne aap invalid.
 - Do layer: in-process LRU (sub-ms) → Redis (2–5ms). Vectors raw float32 bytes me (~6KB vs ~30KB JSON for 1536 dims).
 
+```mermaid
+flowchart LR
+    C["800 chunks"] --> B["Batches of about 8000 tokens"]
+    B --> S["Semaphore: max 10 in flight"]
+    S --> API["Embedding API"]
+    API -->|200 OK| OK[("Vectors stored")]
+    API -->|429| BO["Backoff 1s, 2s, 4s plus jitter"]:::hot
+    BO --> S
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Batching calls ki ginti ghatata hai, semaphore concurrency limit karta hai, aur 429 aane pe job fail nahi hota, jitter wale backoff se wapas jaata hai.
+
+```mermaid
+flowchart LR
+    T["Chunk text"] --> K["Key: SHA-256 of text, model, version"]
+    K --> L1{"In-process LRU?"}
+    L1 -->|hit, sub-ms| V["Vector"]:::hot
+    L1 -->|miss| L2{"Redis?"}
+    L2 -->|hit, 2-5 ms| V
+    L2 -->|miss| API["Embedding API"]
+    API --> W["Write to Redis and LRU"]
+    W --> V
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Duplicate boilerplate (lagbhag 28% chunks) LRU ya Redis se mil jaata hai; sirf sach me naya text embedding API tak jaata hai.
+
 ## ⭐ Caching, guardrails aur access control
 
 **Ek line me:** answer cache se cost bachao, prompt injection se bachao, aur user ko sirf wahi chunks dikhao jo use dekhne ka haq hai.
+
+```mermaid
+flowchart LR
+    U["Request plus user role"] --> IG["Input guardrail: PII, abuse"]
+    IG --> EC{"Exact or semantic cache hit, same tenant?"}
+    EC -->|hit| OUT["Response"]
+    EC -->|miss| RT["Retrieve with ACL pre-filter"]:::hot
+    RT --> RR["Rerank to top 5"]
+    RR --> L["LLM, context marked as data"]
+    L --> OG["Output check: supported by context?"]
+    OG --> W["Write cache"]
+    W --> OUT
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Cache retrieval se pehle check hota hai, aur ACL filter retrieval ke andar lagta hai, isliye jo chunk user nahi dekh sakta wo LLM tak kabhi nahi pahunchta.
 
 - **Exact cache:** normalized query + filters + index version → answer. Sasta, par hit rate kam.
 - **Semantic cache:** query embedding ke paas (cosine > ~0.95) koi purani query mili to uska answer do. FAQ-type traffic me badi bachat; threshold galat to galat answer. Cache key me tenant/user role zaroor ho ([Caching](../01-topics/05-caching.md)).
@@ -68,6 +148,21 @@ sequenceDiagram
 - **Guardrails:** input pe PII/abuse filter, output pe "context me support hai?" check, off-topic pe polite refusal.
 - **Access control / multi-tenancy:** har chunk pe `tenant_id`, `acl_groups` metadata; retrieval me **pre-filter** lagao, LLM ke baad nahi. Bade tenants ke liye alag namespace/index ([metadata filter](../05-db/11-vector.md)).
 - **Freshness / re-indexing:** doc update → purane chunks delete + naye upsert (doc_id se). Content hash se sirf badle hue chunks re-embed karo. Embedding model badla → poora re-index naye index me, phir alias switch (blue-green).
+
+```mermaid
+flowchart LR
+    subgraph BLUE["Live"]
+        A["Alias docs-live"] --> V1[("Index v1, model A")]
+    end
+    subgraph GREEN["Building"]
+        V2[("Index v2, model B, full re-embed")] --> E["Eval on golden set"]
+    end
+    E -->|passes| SW["Point alias at v2, keep v1 for rollback"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Jab tak v2 ban raha hai aur eval ho raha hai, queries alias se v1 pe jaati rehti hain; switch ek alias update hai, aur rollback bhi.
 
 **Interview tip:** "Permission check retrieval ke andar filter hai; LLM ko kabhi woh chunk mile hi nahi jo user nahi dekh sakta."
 **Common galti:** sab tenants ka data ek index me bina filter ke, aur "LLM ko bol denge ki mat dikhana" pe bharosa.
@@ -86,6 +181,18 @@ sequenceDiagram
 - Cost levers: kam chunks LLM ko, chhota model simple queries pe, semantic cache, embedding cache.
 - **Deploy:** API aur workers alag containers. API HTTP load pe scale, workers queue depth pe (KEDA). Worker memory limit ~2GB, OOM pe orchestrator restart kare. Graceful shutdown: SIGTERM pe naye jobs band, chal rahe khatam.
 - Notes ka priority order: async ingestion → streaming → rate limits → memory → caching (optimization, last).
+
+```mermaid
+flowchart LR
+    LB["Load balancer"] --> API["API pods, scale on HTTP load"]
+    API -->|enqueue| Q[("Redis queue")]
+    Q --> W["Worker pods, 2GB memory limit"]
+    K["KEDA watches queue depth"] -.->|scale| W
+    W --> V[("Vector DB")]
+    API --> V
+```
+
+*Diagram:* API aur workers alag signals pe scale hote hain, API request load pe aur workers queue depth pe, isliye bada upload burst queries ko slow nahi karta.
 
 ## Kahan aur padho
 

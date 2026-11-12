@@ -80,6 +80,23 @@ Silent regression ka worked example:
 4. Ek hafte me human escalation rate 6% se 9% ho jaata hai. Bas yahi ek signal hai.
 5. Dashboard pe quality metric na ho to hafton tak koi dono ko jodta nahi.
 
+```mermaid
+flowchart LR
+    subgraph NORM["Normal service bug"]
+        B1["Bad deploy"] --> E1["Exceptions, HTTP 500"] --> A1["Error alert fires in minutes"]
+    end
+    subgraph LLM["LLM prompt regression"]
+        B2["Prompt cut 1,800 to 1,200 tokens"] --> E2["HTTP 200, error rate 0.2 pct"]
+        E2 --> G2["Dashboards stay green"]
+        G2 --> S2["Escalations 6 to 9 pct over a week"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class S2 hot
+```
+
+*Diagram:* Normal bug error metrics se chillata hai; LLM regression 200 hi lautata hai aur sirf dheere badalte quality signal me dikhta hai.
+
 **Interview tip:** "LLMs operate karne me kya alag hai?" Bolo: "Failures silent aur statistical hote hain. Isliye main quality ko ek metric ki tarah treat karta hoon, apne dashboards aur alerts ke saath. Jo kuch badal sakta hai sab pin karta hoon, aur cost per task naapta hoon kyunki bill tokens chalate hain, requests nahi."
 
 **Common galti:**
@@ -100,6 +117,19 @@ Silent regression ka worked example:
 3. App prompt hardcode nahi karta. Runtime pe maangta hai "`production` label wala version".
 4. Har trace aur log line me `config_id=support_reply@v15` record hota hai, taaki har answer exact config tak trace ho.
 5. Rollback = `production` label ko v15 se wapas v14 pe le jao. Koi redeploy nahi. Lagbhag 30 second.
+
+```mermaid
+flowchart LR
+    APP["App asks: support_reply labelled production"] --> LBL["Label: production"]
+    LBL -->|points to| V15["v15: prompt, model snapshot, params, tools"]
+    LBL -.->|rollback moves the label, 30 s| V14["v14"]
+    V15 --> TR["Every trace logs config_id support_reply@v15"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class LBL hot
+```
+
+*Diagram:* App kabhi version ka naam nahi leta; rollback bas production label ko v15 se v14 pe le jaana hai, bina redeploy.
 
 Git me rakhi config file:
 
@@ -158,6 +188,24 @@ Kai teams dono karti hain: git source of truth, aur CI approved versions registr
 5. **Gate:** same cases pe current production config se compare karo. Pass rate noise margin se zyada gire, ya cost, maan lo, 15% se zyada badhe, to merge block.
 6. CI pull request pe comment karta hai: pass rate, cost, latency, aur un cases ki list jo pass se fail hue.
 
+```mermaid
+flowchart LR
+    PR["PR touches prompts/"] --> RUN["Run golden set, 3 samples each"]
+    RUN --> NEW["PR config v15"]
+    RUN --> OLD["Production config v14"]
+    NEW --> SC["Scorers: code checks, then LLM judge"]
+    OLD --> SC
+    SC --> G{"Drop above 3 pts, cost up 15 pct, or p95 above 4 s?"}
+    G -->|any yes| BL["Block merge"]
+    G -->|all no| OK["Merge allowed"]
+    G --> CM["PR comment: flipped cases"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class G hot
+```
+
+*Diagram:* Dono configs same cases pe chalte hain, isliye gate barabar ki cheez compare karta hai aur batata hai kaun se cases flip hue.
+
 GitHub Actions style flow:
 
 ```yaml
@@ -195,6 +243,21 @@ jobs:
 4. **Judge ko stable banao.** Temperature 0, fixed judge model snapshot, specific rubric, aur 1–10 score ki jagah pass/fail.
 5. **Set badhao.** Chhote changes pakadne hain to zyada cases chahiye. Error bar aadha karne ke liye 4x cases.
 
+```mermaid
+flowchart LR
+    C["200 golden cases, old vs new"] --> SAME["188 same result"]
+    C --> PF["9 pass to fail"]
+    C --> FP["3 fail to pass"]
+    PF --> R["Read these 12, not the two averages"]
+    FP --> R
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class PF hot
+    class SAME dim
+```
+
+*Diagram:* Paired comparison 188 unchanged cases ko chhod deta hai aur 12 flips saamne rakhta hai; asli signal wahi hai.
+
 **Interview tip:** "Eval score 2 points gira. Release block karoge?" Bolo: "Pehle dekhta hoon ki ye noise se bahar hai ya nahi. 200 cases pe interval ~±4.5 points hai, to paired flips dekhta hoon aur zyada samples ke saath rerun karta hoon. Specific important cases flip hue to block. Random spread hai to nahi."
 
 **Common galti:**
@@ -208,6 +271,27 @@ jobs:
 **Ye kyun chahiye:** Golden set reality ka chhota, purana sample hai. Real users wo poochhte hain jo tumne kabhi nahi dekha, Hinglish me, typos ke saath, raat 2 baje. Kuch effects sirf live dikhte hain: users ka sawal dobara poochhna, thumbs-down dabana, ya human maangna. Inhe dekhne ke liye real traffic chahiye, par controlled tarike se.
 
 **Aise socho:** Swiggy pe naya item. Pehle kitchen chakhta hai (offline eval). Phir purani dish ke saath banta hai par serve nahi hota (shadow). Phir ek city ke 5% orders me jaata hai (canary). Ratings theek rahein to poore menu me.
+
+```mermaid
+flowchart LR
+    subgraph OFF["Offline: minutes, zero user risk"]
+        GS["Golden set eval in CI"]
+    end
+    subgraph ON["Online: days, real traffic"]
+        SH["Shadow: both run, users see old"]
+        CA["Canary 5 pct, sticky by user"]
+        RA["Ramp to 25, 50, 100 pct"]
+    end
+    GS -->|pass| SH
+    SH -->|judge scores hold| CA
+    CA -->|guardrail metrics hold| RA
+    CA -->|a metric crosses its limit| RB["Auto rollback"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CA hot
+```
+
+*Diagram:* Offline evals jaane-pehchaane regressions jaldi pakadte hain; naye inputs aur asli user behaviour sirf online steps dekhte hain, risk traffic % se limited.
 
 **Step by step kaise kaam karta hai:**
 1. **Shadow:** live requests purane aur naye dono configs ko bhejo. Users ko sirf purana answer dikhe. Dono log karo, aur offline judge se score karo. Naye version ke write tools (refunds, emails) band rakho. Cost: shadow ke dauraan double calls ka paisa.
@@ -259,6 +343,24 @@ flowchart LR
 
 **Aise socho:** Subah 10 baje IRCTC pe Tatkal booking. Sab har second refresh dabayein to site aur bigadti hai. Har baar thoda zyada, random pause ke saath ruko, to chance bhi better aur site bhi jaldi theek hoti hai.
 
+```mermaid
+flowchart TD
+    E["Call failed"] --> Q1{"Retryable? 408, 429, 5xx, timeout"}
+    Q1 -->|no, 400, 401, context too long| RAISE["Raise now"]
+    Q1 -->|yes| Q2{"Attempts left, under 3?"}
+    Q2 -->|no| FB["Go to fallback route"]
+    Q2 -->|yes| Q3{"Retry-After header?"}
+    Q3 -->|yes| W1["Wait that many seconds"]
+    Q3 -->|no| W2["Wait random 0 to base x 2^attempt"]
+    W1 --> RETRY["Retry"]
+    W2 --> RETRY
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class W2 hot
+```
+
+*Diagram:* Har failed call is tree se guzarti hai: non-retryable errors turant bahar, retries max 3, aur wait ya to provider ka Retry-After ya random jitter wala backoff.
+
 **Step by step kaise kaam karta hai:**
 
 1. **Apni limits jaano.** Provider har account ko **RPM** (requests per minute) aur **TPM** (tokens per minute) deta hai. Example: 500 RPM aur 2,00,000 TPM. Har request 2,000 tokens ki hai to TPM sirf 100 requests per minute allow karta hai. Asli limit TPM hai, RPM nahi.
@@ -270,10 +372,34 @@ flowchart LR
 7. **Total cap karo.** 3 attempts, aur ek total deadline. User ka retry ke liye 40 second wait karna, jaldi fallback se bura hai.
 8. **Circuit breaker.** Ek provider ki last 20 calls me 50% se zyada fail hui, to breaker open karo: 30–60s tak waha koi call nahi, seedha fallback. Phir ek trial call jaane do (half-open). Chal gayi to breaker close. Poori outage timeline [Agents in Production](12-agents-in-production.md) me hai.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> Open: over 50 pct of last 20 calls failed
+    Open --> HalfOpen: after 30 to 60 s, meanwhile calls go to fallback
+    HalfOpen --> Closed: one trial call works
+    HalfOpen --> Open: trial call fails
+```
+
+*Diagram:* Closed me traffic normal jaata hai, Open me provider ko kuch nahi jaata, aur Half-open me sirf ek trial call decide karti hai aage kya hoga.
+
 **Side effects ke liye idempotency.** Padhne ke liye retries safe hain. Karne ke liye khatarnaak. Agent ne `issue_refund` call kiya aur response timeout ho gaya, to retry do baar refund kar sakta hai.
 - Har side-effect wali tool call ko ek **idempotency key** do, jaise `f"{run_id}:{step_id}"`.
 - Payments ya ticket API key store karti hai. Same key ke saath doosri call dobara action karne ki jagah pehla result lautati hai.
 - Example: run `r42`, step 3, key `r42:3`. Pehli call ₹499 refund karti hai aur wapas aate time timeout. Retry phir `r42:3` bhejta hai; API kehti hai "already done, refund id RF-881". Customer ko ₹499 ek hi baar milte hain.
+
+```mermaid
+sequenceDiagram
+    participant A as Agent run r42
+    participant P as Payments API
+    A->>P: issue_refund 499, key r42:3
+    P->>P: refund done, store key r42:3 as RF-881
+    P--xA: response lost, timeout
+    A->>P: retry issue_refund 499, key r42:3
+    P-->>A: already done, refund id RF-881
+```
+
+*Diagram:* Retry me wahi key jaati hai, isliye API dobara refund karne ki jagah pehla result lauta deta hai.
 
 **Request hedging.** Slow tail ke liye, pehli request slow ho to doosri bhejo, aur jo pehle aaye wo use karo.
 - Example: tumhara p95 time to first token 1.5s hai. 2s tak first token na aaye to same request backup model ko bhejo aur haarne wali cancel karo.
@@ -300,6 +426,21 @@ flowchart LR
 4. Primary se 429 aaye to, agar latency cost se zyada important hai, wo bina ruke seedha fallback pe ja sakta hai.
 5. Har fallback model ka **apna prompt variant** hota hai, CI me tested. Ek model ke liye tune hua prompt doosre pe aksar kharab chalta hai.
 6. Gateway log karta hai kis entry ne jawab diya. Fallback usage me spike ek alert hai.
+
+```mermaid
+flowchart LR
+    S["Service asks for support-chat"] --> GW["LLM gateway"]
+    GW --> P1["Primary: provider A, model X"]
+    P1 -->|5xx after 2 retries or breaker open| P2["Fallback: provider B, model Y, own prompt"]
+    P2 -->|also failing| P3["Last resort: small model or canned message"]
+    GW --> LOG["Log which entry answered"]
+    LOG -->|fallback rate above 10 pct| AL["Alert"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class P2 hot
+```
+
+*Diagram:* Services sirf logical naam jaante hain; gateway chain pe chalta hai, har fallback ka apna tested prompt hai, aur fallback usage khud ek metric hai.
 
 Tools: LiteLLM (open-source proxy aur Python library, bahut providers ke liye ek OpenAI-style API, saath me fallbacks, retries, per-key budgets aur cost tracking), ya tumhare cloud provider ka managed gateway. Kai model families host karne wale cloud platforms ek hi account me cross-provider fallback aasaan bana dete hain.
 
@@ -414,6 +555,18 @@ def chat(messages, attempts=3):
 4. **Model routing:** router 40% simple tasks ("mera order kahan hai") ko ~$0.002 wale one-step small-model flow pe bheje, to average aur girke lagbhag $0.017.
 5. **Batch API:** async kaam (nightly evals, purane tickets tag karna) ke liye providers ke batch APIs ~50% saste hain aur 24 ghante me lautate hain. Live users ke liye kabhi nahi.
 
+```mermaid
+flowchart LR
+    T0["Per task: $0.050"] -->|prompt caching, 3,000 of 4,000 input tokens cached| T1["$0.026"]
+    T1 -->|route 40 pct easy tasks to small model| T2["about $0.017"]
+    T2 -->|x 2 lakh tasks a day| D["about $3,400 a day instead of $10,000"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class D hot
+```
+
+*Diagram:* Do safe levers quality chhede bina cost per task lagbhag do-tihai kam kar dete hain; daily volume se multiply karo to samajh aata hai kyun zaroori hai.
+
 **Har level pe token budgets:**
 
 | Level | Example limit | Hit hone pe |
@@ -506,6 +659,24 @@ sequenceDiagram
 5. **Ticket kholne wale alerts:** judge score week-over-week 3 points se zyada gira; guardrail triggers 2x; naya bada input cluster dikha.
 6. **Har chart config ID se split ho sake**, taaki rollout ke baad purana aur naya version saath-saath dikhein.
 
+```mermaid
+flowchart LR
+    REQ["Every request: config_id, user, tenant"] --> PX["Proxy signals: escalation, re-ask, thumbs"]
+    REQ -->|1 to 5 pct sample, async| JD["Online LLM judge"]
+    REQ --> DR["Drift: inputs and outputs, week over week"]
+    PX --> DB["Dashboards split by config_id"]
+    JD --> DB
+    DR --> DB
+    DB -->|errors, fallback, TTFT, spend| PG["Page on-call"]
+    DB -->|judge down 3 pts, new input cluster| TK["Open ticket"]
+    TK --> GS[("Bad cases into golden set")]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class GS hot
+```
+
+*Diagram:* Teen tarah ke signals ek dashboard me jaate hain jo config se split hai; outage pe page, quality drop pe ticket, aur har kharab case wapas golden set me.
+
 **Interview tip:** "Prod me quality regressions kaise detect karte ho?" Bolo: "Teen tarah ke signals. Har request pe proxy signals: escalation, re-ask rate, thumbs, answer length, refusal rate. Fixed rubric ke saath chhote sample pe online judge. Aur inputs aur outputs pe drift checks. Sab config version se split, week-over-week drops pe alerts. Kharab cases golden set me wapas jaate hain."
 
 **Common galti:**
@@ -528,6 +699,22 @@ sequenceDiagram
 5. Kuch din live traffic pe **shadow**, phir guardrail metrics ke saath **canary**, jaise upar bataya.
 6. Retirement date tak **purana model fallback rakho**, phir hatao aur fallback chain update karo.
 
+```mermaid
+flowchart LR
+    N["Deprecation notice: 3 months"] --> GS["Golden set on new model"]
+    GS --> RT["Re-tune prompt: new config version"]
+    RT --> CL["Compare cost with new tokenizer, and latency"]
+    CL --> SH["Shadow for a few days"]
+    SH --> CA["Canary with guardrail metrics"]
+    CA --> SW["Move production label"]
+    SW --> FB["Old model stays as fallback until retire date"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RT hot
+```
+
+*Diagram:* Model swap bhi kisi risky change jaisi pipeline se guzarta hai; log jo step skip karte hain woh hai naye model ke liye prompt re-tune karna.
+
 **Interview tip:** "Jis model pe tum depend ho wo deprecate ho raha hai. Kya karoge?" Bolo: "Main pehle se snapshots pin karta hoon aur dates track karta hoon, to ye planned migration hai: candidate models pe golden set, har model ke liye prompt re-tune, quality, cost aur latency compare, shadow, canary, phir config switch. Purana snapshot retire hone tak fallback rehta hai."
 
 **Common galti:**
@@ -548,6 +735,24 @@ sequenceDiagram
 3. Naya worker last checkpoint load karke agle step se continue karta hai. Ho chuke steps dobara nahi chalte.
 4. Side-effect wale steps idempotency keys use karte hain, taaki aadha hua step dobara chale to do baar action na ho.
 5. User ko status dikhta hai ("5 me se step 3") aur khatam hone pe notification milti hai.
+
+```mermaid
+sequenceDiagram
+    participant Q as Queue
+    participant W1 as Worker 1
+    participant DB as Checkpoint store
+    participant W2 as Worker 2
+    Q->>W1: job 77
+    W1->>DB: save after step 1
+    W1->>DB: save after step 2
+    Note over W1: pod restarts during step 3
+    Q->>W2: job 77 again after visibility timeout
+    W2->>DB: load last checkpoint, step 2 done
+    W2->>DB: run step 3, save
+    W2->>Q: job done
+```
+
+*Diagram:* Worker 2 step 3 se shuru karta hai; steps 1 aur 2 ka paisa dobara nahi lagta.
 
 Sequence diagram ke saath poora walk-through [Agents in Production](12-agents-in-production.md) me hai.
 

@@ -82,6 +82,21 @@ Token ek fixed vocabulary se text ka tukda hai, jo BPE se banta hai (byte pair e
 **Q: Ek forward pass samjhao.**
 Token IDs → embedding vectors → N transformer blocks (har block = attention + feed-forward MLP, residual connections aur normalisation ke saath) → final layer jo vocabulary pe logits deti hai → softmax → next token ki probabilities.
 
+```mermaid
+flowchart LR
+    T["Token IDs: 4 tokens"] --> E["Embeddings: 4 x 4096"]
+    E --> B1["Block 1: attention plus MLP"]
+    B1 --> BN["... N blocks, e.g. 32"]
+    BN --> LG["Logits: one score per vocab token, 128K"]
+    LG --> SM["Softmax"]
+    SM --> NX["Next-token probabilities"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class B1,BN hot
+```
+
+*Diagram:* Har block me shape 4 x 4096 hi rehta hai; sirf aakhri step last position ko poori vocabulary ke scores me badalta hai.
+
 **Q: Attention kya compute karta hai?**
 Har token ek query (Q), key (K) aur value (V) vector banata hai. Scores = Q·Kᵀ / √d, causal mask future tokens chhupata hai, softmax scores ko weights banata hai, aur output V ka weighted sum hai. √d se divide karne se scores dimension ke saath bade nahi hote aur softmax saturate nahi hota.
 
@@ -102,6 +117,28 @@ GPU floating-point maths perfectly associative nahi hai. Results batch size aur 
 
 **Q: Mixture of Experts model kya hai?**
 Har layer ka feed-forward hissa bahut saare "experts" me bata hota hai. Ek chhota router har token ke liye top-k experts (aksar 2 se 8) chunta hai. Mixtral 8x7B me lagbhag 47B total parameters hain par har token pe sirf ~13B active; DeepSeek-V3 me 671B total aur ~37B active. Per token compute active parameters pe chalta hai; GPU memory me phir bhi saare rakhne padte hain.
+
+```mermaid
+flowchart LR
+    TK["Token vector"] --> R{"Router: top-2 of 8"}
+    R -->|gate 0.7| E2["Expert 2"]
+    R -->|gate 0.3| E5["Expert 5"]
+    R -.-> E1["Expert 1"]
+    R -.-> E3["Expert 3"]
+    R -.-> E4["Expert 4"]
+    R -.-> E6["Expert 6"]
+    R -.-> E7["Expert 7"]
+    R -.-> E8["Expert 8"]
+    E2 --> S["Weighted sum: 0.7 x E2 + 0.3 x E5"]
+    E5 --> S
+    S --> O["Output to next layer"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class E2,E5 hot
+    class E1,E3,E4,E6,E7,E8 dim
+```
+
+*Diagram:* Is token ke liye sirf 2 highlighted experts chalte hain; baaki 6 GPU memory me pade rehte hain, isliye compute active params se chalta hai par memory total se.
 
 **Q: Serving me MoE ke trade-offs?**
 Per token compute sasta aur per FLOP quality behtar. Par saare experts ke liye memory chahiye, routing unbalanced ho sakti hai (kuch experts overload), aur multi-GPU serving me all-to-all communication wala expert parallelism lagta hai. Chhote batch pe latency ka fayda active-parameter count jitna nahi milta.
@@ -137,6 +174,24 @@ Har naya token banane ke liye GPU ko har weight memory se ek baar padhna padta h
 **Q: Prefill vs decode, aur TTFT vs TPOT?**
 Prefill saare prompt tokens parallel process karta hai; ye compute-bound hai aur TTFT (time to first token) tay karta hai. Decode har step pe ek token banata hai; ye memory-bound hai aur TPOT (time per output token, jise inter-token latency bhi kehte hain) tay karta hai. Lambe prompts TTFT bigaadte hain; lambe jawab total latency.
 
+```mermaid
+flowchart LR
+    subgraph PF["Prefill: compute-bound"]
+        P["All 2,000 prompt tokens in one pass"] --> KV[("KV cache filled")]
+    end
+    subgraph DC["Decode: memory-bound"]
+        D1["Token 1"] --> D2["Token 2"] --> D3["Token 3 to 300"]
+    end
+    KV -->|TTFT ends here| D1
+    KV -.->|weights and cache read every step| D2
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class P hot
+    class D1,D2,D3 hot
+```
+
+*Diagram:* Prefill ek bada parallel pass hai jo TTFT tay karta hai; decode 300 chhote steps hain, har step saare weights dobara padhta hai, jo TPOT tay karta hai.
+
 **Q: KV cache kya hai, aur kitna bada hota hai?**
 Har pichhle token aur har layer ke liye model key aur value vectors save karta hai taaki dobara compute na kare. Per token size = 2 (K aur V) × layers × KV heads × head dim × bytes. Llama 3 8B: 2 × 32 × 8 × 128 × 2 bytes = 128 KB per token, yaani 8K-token request ~1 GB leti hai.
 
@@ -157,6 +212,19 @@ Weight-only INT8 ya INT4 (GPTQ aur AWQ jaise methods) memory kam karte hain aur 
 
 **Q: Speculative decoding kaise kaam karta hai?**
 Ek chhota, tez draft model (ya Medusa ya EAGLE jaise extra prediction heads) agle 3–5 tokens guess karta hai. Bada model saare guesses ek forward pass me check karta hai aur sabse lamba sahi run rakhta hai. Sahi acceptance rule ke saath output distribution bilkul bade model jaisa hi rehta hai. Ye chhote batch sizes pe sabse zyada help karta hai, jahan GPU ke paas spare compute hota hai.
+
+```mermaid
+sequenceDiagram
+    participant D as Draft model, small
+    participant T as Target model, big
+    D->>D: guess 4 tokens - the cat sat on
+    D->>T: check all 4 in one forward pass
+    T-->>D: accept the cat sat, reject on
+    T->>T: emit its own token for position 4 - down
+    Note over D,T: 4 tokens for about one big-model step
+```
+
+*Diagram:* Bada model 4 guesses ek pass me check karta hai, match hone wale 3 rakhta hai aur 4th apna jodta hai, to ek mehenge step me kai tokens aage badhte hain.
 
 **Q: Tensor parallelism vs pipeline parallelism?**
 Tensor parallelism har layer ki matrices GPUs me baant deta hai; isme fast links (NVLink) chahiye aur latency kam karne ke liye ek node ke andar use hota hai. Pipeline parallelism alag layers alag GPUs pe rakhta hai; multi-node setups ke liye theek hai par pipeline bubbles aate hain. 70B model serve karne ke liye ek node me 2–8 GPUs pe tensor parallelism default hai.
@@ -180,6 +248,22 @@ Bade batches GPU per tokens/second badhate hain par har user ke tokens slow kart
 | Replica throughput (assume karo, phir benchmark) | lagbhag 2,000–3,000 output tokens/s | 2,500 lo |
 | Kitne replicas | 30,000 / 2,500 = 12, plus 30% headroom | ≈ 16 replicas = 32 H100s |
 
+```mermaid
+flowchart LR
+    subgraph REP["One replica: 2 x H100 = 160 GB"]
+        W["Weights FP8: 70 GB"]
+        OV["Overhead: about 15 GB"]
+        KV["KV cache: about 75 GB"]
+    end
+    KV -->|2.6 GB per 8K request| C["about 28 concurrent requests"]
+    C -->|x 16 replicas| T["32 H100s for 100 req per s"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class KV hot
+```
+
+*Diagram:* Har replica ka lagbhag aadha hissa KV cache hai, aur ek saath kitne users fit honge ye wahi tay karta hai, weights nahi.
+
 > **Bolo:** "Ye planning numbers hain. Commit karne se pehle main real prompt aur output lengths ke saath apne SLO pe benchmark karunga, kyunki length mix se throughput 2–3× badal jaata hai."
 
 **Common galti:** GPUs sirf weights se size karna aur KV cache bhool jaana, jo aksar weights jitni hi memory leta hai.
@@ -191,11 +275,43 @@ Bade batches GPU per tokens/second badhate hain par har user ke tokens slow kart
 **Q: Prompting ya RAG ki jagah fine-tune kab karte ho?**
 RAG us knowledge ke liye jo badalti hai ya jiska citation chahiye. Prompting har us cheez ke liye jo achhi instruction plus examples se solve ho jaaye. Fine-tune consistent style, format ya narrow skill ke liye; chhote model ko ek task pe bade jaisa banane ke liye (sasta, tez); ya jab prompt itna lamba ho ki bahut mehnga pade. Facts jodne ke liye fine-tuning kharab tarika hai.
 
+```mermaid
+flowchart TD
+    S["Model fails your eval"] --> Q1{"Fixed by better instructions plus examples?"}
+    Q1 -->|yes| PR["Prompting"]
+    Q1 -->|no| Q2{"Missing or changing knowledge, needs citations?"}
+    Q2 -->|yes| RAG["RAG"]
+    Q2 -->|no| Q3{"Style, format, narrow skill, or prompt too costly?"}
+    Q3 -->|yes| FT["Fine-tune: SFT with LoRA"]
+    Q3 -->|no| BIG["Bigger or reasoning model"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class FT hot
+```
+
+*Diagram:* Saste fixes order me try karo; fine-tuning behaviour aur format ke liye hai, facts ke liye nahi.
+
 **Q: SFT kya hai, aur wo ek bug kaunsa hai jo sab karte hain?**
 SFT (supervised fine-tuning) input-output pairs pe next-token loss se train karta hai. Loss sirf assistant tokens pe lagao, prompt pe nahi, aur bilkul wahi chat template use karo jis pe model train hua tha. Template mismatch chupchap quality bigaad deta hai.
 
 **Q: LoRA kaise kaam karta hai, numbers ke saath?**
 LoRA (2021) weight matrix W ko freeze karta hai aur low-rank update ΔW = B·A seekhta hai, jahan A r × d aur B d × r hai. 4096 × 4096 matrix me 16.8M parameters hain; rank r = 16 pe LoRA 2 × 4096 × 16 ≈ 131K train karta hai, 1% se kam. Adapters ko W me merge kar sakte ho (zero extra latency), ya multi-adapter serving ke liye alag rakh sakte ho.
+
+```mermaid
+flowchart LR
+    X["Input x: 4096"] --> W["W frozen: 4096 x 4096 = 16.8M"]
+    X --> A["A: 16 x 4096, trained"]
+    A --> B["B: 4096 x 16, trained"]
+    W --> S["Sum: W x plus B A x"]
+    B --> S
+    S --> Y["Output: 4096"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class A,B hot
+    class W dim
+```
+
+*Diagram:* Badi matrix kabhi nahi badalti; sirf patla A aur B wala raasta (lagbhag 131K numbers) train hota hai, aur uska output upar se jud jaata hai.
 
 **Q: LoRA ke kaunse hyperparameters matter karte hain?**
 Rank r (8–64 common), alpha (scaling, aksar r ka 1–2×), kin modules pe adapters lagenge (saari linear layers aam taur pe sirf attention se behtar), aur learning rate (full fine-tuning se zyada, lagbhag 1e-4 se 2e-4).
@@ -214,6 +330,25 @@ DPO (direct preference optimization, 2023) wahi preference pairs use karta hai p
 
 **Q: GRPO kya hai?**
 GRPO (group relative policy optimization, DeepSeekMath se, DeepSeek-R1 me use hua) har prompt ke liye jawabon ka ek group, maan lo 8, sample karta hai aur har ek ko score karta hai. Har jawab ka advantage = (uska reward − group mean) / group std. Alag value (critic) model nahi chahiye, memory bachti hai. Checkable rewards (unit tests pass, maths answer match) ke saath ise RLVR (RL with verifiable rewards) kehte hain.
+
+```mermaid
+flowchart LR
+    subgraph RL["RLHF: 4 models"]
+        R1["Preference pairs"] --> R2["Train reward model"] --> R3["PPO with KL penalty"]
+    end
+    subgraph DP["DPO: 2 models"]
+        D1["Preference pairs"] --> D2["Direct loss vs frozen reference"]
+    end
+    subgraph GR["GRPO: no critic"]
+        G1["8 answers per prompt"] --> G2["Score each, e.g. tests pass"] --> G3["Advantage = reward minus group mean"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class R2 dim
+    class D2,G3 hot
+```
+
+*Diagram:* DPO reward model aur RL loop hata deta hai; GRPO RL rakhta hai par critic ki jagah group average leta hai, jo checkable rewards ke liye fit hai.
 
 **Q: Reward hacking kya hai?**
 Model task kiye bina high reward lene ka rasta dhoondh leta hai: judge ko length pasand ho to bahut lambe jawab, reward "tests pass" ho to failing tests delete karna. Fix: KL penalty, behtar aur mushkil se fool hone wale rewards, length controls, aur samples haath se padhna.
@@ -239,6 +374,20 @@ Docs parse aur clean karo → chunk karo (structure ke saath 300–800 tokens) �
 
 **Q: Jawab galat aa rahe hain. RAG debug kaise karoge?**
 Do sawalon me todo. Kya sahi chunk retrieve hua (labelled set pe recall@k dekho)? Nahi to chunking, hybrid search, query rewriting ya reranker theek karo. Agar retrieve hua, to kya jawab us chunk ke faithful hai? Nahi to prompt theek karo, best chunk pehle rakho, ya strong model lo.
+
+```mermaid
+flowchart TD
+    W["Wrong answer"] --> Q1{"Right chunk in top k? check recall at k"}
+    Q1 -->|no, retrieval bug| FX1["Fix chunking, hybrid search, query rewrite, reranker"]
+    Q1 -->|yes, generation bug| Q2{"Answer faithful to the chunk?"}
+    Q2 -->|no| FX2["Fix prompt, best chunk first, stronger model"]
+    Q2 -->|yes| FX3["Check the eval label or the source doc"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class Q1 hot
+```
+
+*Diagram:* Pehla sawal har RAG bug ko do alag fix lists me baant deta hai, isliye prompt chhedne se pehle yahi poochho.
 
 **Q: Hybrid search plus reranking kyun?**
 Vectors matlab match karte hain par error codes aur product IDs jaise exact terms miss kar dete hain; BM25 (keyword ranking) unhe pakadta hai. Cross-encoder reranker query aur har chunk ko saath padhta hai, isliye dono se kahin zyada accurate hai, par millions docs ke liye bahut slow, isliye sirf top 50 pe chalta hai.
@@ -285,6 +434,21 @@ Rubric wala LLM judge (100–200 human labels pe calibrated), compute ho sakne w
 ## ⭐ Design round 1: internal teams ke liye LLM inference platform
 
 > **Prompt:** "Ek platform design karo jo 40 internal teams ko open-weight models (Llama, Qwen, Mistral) serve kare. Kuch teams ko chat latency chahiye, kuch batch jobs chalati hain, kuch apne LoRA adapters laati hain."
+
+```mermaid
+flowchart LR
+    C["1. Clarify: 3 min"] --> R["2. Requirements: 4 min"]
+    R --> N["3. Numbers: 5 min"]
+    N --> A["4. Architecture: 12 min"]
+    A --> K["5. Key decisions: 6 min"]
+    K --> F["6. Failure modes: 5 min"]
+    F --> S["Say: one-line summary"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class N hot
+```
+
+*Diagram:* Neeche ke chaaron design rounds lagbhag 35 minute me isi skeleton pe chalte hain; numbers wala step zyada candidates skip karte hain aur interviewers usi ko reward karte hain.
 
 **1. Clarify.** Poochho: kaunse models aur sizes? Peak load aur chat vs batch ka mix? Latency SLOs? Data rules (data hamare VPC se bahar nahi)? Kya teams fine-tunes laati hain? Budget aur kaunse GPU types available?
 
@@ -344,6 +508,23 @@ flowchart LR
 
 **1. Clarify.** "Match" ka matlab kya, kaise measure? Aaj ka volume aur cost? Latency target? Kya human-approved replies wale purane tickets hain? Kya bade model ke outputs uski terms ke under training me use ho sakte hain? Kaunsi languages (Hindi, Hinglish)?
 
+```mermaid
+flowchart LR
+    D["50K past chats"] -->|PII removed, keep resolved, high CSAT| K["about 17K good"]
+    K --> SY["Plus filtered synthetic gaps"]
+    SY --> TR["SFT with LoRA, r 16"]
+    TR --> DPO["DPO if tone errors remain"]
+    DPO --> EV{"Eval on frozen 500 golden cases"}
+    EV -->|fails| TR
+    EV -->|within 2 pts of big model| SH["Shadow for a week"]
+    SH --> RT["Router canary 5 pct: easy intents to small model"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class EV hot
+```
+
+*Diagram:* Cleaning ke baad data lagbhag ek-tihai bachta hai, frozen golden set gate hai, aur pass hone ke baad bhi small model sirf woh intents leta hai jin pe router bharosa karta hai.
+
 **2. Data.**
 1. 50K purani conversations nikalo; PII hatao (naam, phone, card numbers).
 2. Sirf achhi rakho: resolved, high CSAT, koi escalation nahi. 30–40% bachne ki ummeed.
@@ -398,6 +579,22 @@ flowchart LR
 | LLM first token | 200–300 ms | Chhota tez model, chhota prompt, prompt caching |
 | TTS first audio | 100–150 ms | Streaming TTS jo pehle sentence pe shuru ho |
 | Network aur telephony | 50–100 ms | Servers telephony provider ke same region me |
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant V as VAD
+    participant S as STT
+    participant L as LLM
+    participant T as TTS
+    C->>V: stops speaking at 0 ms
+    V->>S: turn end detected at 250 ms
+    S->>L: final text at 400 ms
+    L->>T: first tokens at 650 ms
+    T-->>C: first audio at about 780 ms
+```
+
+*Diagram:* Times caller ke rukne ke pal se cumulative hain; har stage agle me stream karta hai, 800 ms ke neeche rehne ka yahi ek tareeka hai.
 
 **3. Architecture.**
 
@@ -574,6 +771,20 @@ print(sample_top_p(logits, temperature=0))         # hamesha 0
 | Kya fail hua | Ek sachcha failure aur sabak | "Facts ke liye fine-tuning fail hui; refund rules har mahine badalte the, isliye unhe retrieval me daala." |
 | Result | Business numbers | "Handle time 34% kam, CSAT flat, per ticket cost 70% kam." |
 | Next | Zyada time hota to kya karte | "Online judge sampling aur agents ke edits se DPO." |
+
+```mermaid
+flowchart LR
+    B["Baseline prompt: 58 pct accepted"] -->|hybrid search plus reranker| I1["71 pct"]
+    I1 -->|policy snippets in prompt| I2["79 pct"]
+    I2 -->|LoRA on 8B, top intents| I3["79 pct at 1/8 the cost"]
+    I1 -.->|tried: fine-tune for facts| X["Failed: refund rules change monthly"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class I3 hot
+    class X dim
+```
+
+*Diagram:* Project ko isi chain ki tarah sunao: har arrow ek change aur uska number, saath me ek imaandaar dead end.
 
 **Interview tip:** "Alag kya karte?" Ek real jawab tayyar rakho, jaise "eval set week 4 ki jagah week 1 me banata".
 

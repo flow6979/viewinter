@@ -103,6 +103,25 @@ Note: early 2025 se CrewAI LangChain pe depend **nahi** karta. Ye standalone pac
 
 **Aise socho:** Naukri post ki job description: title (role), success kaisa dikhta hai (goal), aur kaisa insaan chahiye (backstory).
 
+```mermaid
+flowchart LR
+    R["role: Refund Resolver"] --> SP["System prompt: You are role, backstory, your goal is goal"]
+    G["goal"] --> SP
+    B["backstory: policy rules"] --> SP
+    T["tools: get_order schema"] --> SP
+    AD["allow_delegation True"] -.->|adds 2 tools| DT["delegate work, ask question to coworker"]
+    DT -.-> SP
+    SP -->|resent| C1["LLM call 1"]
+    SP -->|resent| C2["LLM call 2"]
+    SP -->|resent| C6["... LLM call 6"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class SP hot
+    class AD,DT dim
+```
+
+*Diagram:* Teen role texts aur tool schemas mil ke ek system prompt bante hain jo har call pe dobara jaata hai: task me 6 calls matlab persona ki 6 copies.
+
 **Step by step kaise kaam karta hai:**
 
 1. `role`: chhota title, jaise "Order Investigator". Delegation ke liye yahi agent ka naam bhi hai.
@@ -138,6 +157,22 @@ Ek worked number: teen role texts aksar 80–200 tokens hote hain. Ye us agent k
 **Ye kyun chahiye:** LLMs precise brief aur answer ke precise shape ke saath better karte hain. `expected_output` wahi shape hai. Tasks se kaam chain bhi hota hai: ek task ka output agle task ka context ban jaata hai.
 
 **Aise socho:** JIRA ticket. Title, acceptance criteria, assignee aur "blocked by" links.
+
+```mermaid
+flowchart LR
+    I["kickoff inputs: order_id, complaint"] --> T1["Task: description plus expected_output"]
+    T1 --> A1["Agent tool loop"]
+    A1 --> P["output_pydantic: parse RefundDecision"]
+    P --> GR{"guardrail function"}
+    GR -->|False plus feedback, max 3 retries| A1
+    GR -->|True plus value| O1["TaskOutput"]
+    O1 -->|context| T2["Next task"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class GR hot
+```
+
+*Diagram:* Task ka answer Pydantic shape me parse hota hai, phir guardrail check karta hai; fail hone pe feedback agent loop me wapas, pass hone pe aage context banke jaata hai.
 
 **Step by step kaise kaam karta hai:**
 
@@ -200,6 +235,26 @@ summarise = Task(
 **Ye kyun chahiye:** Ek object chahiye jo run ka owner ho: kaun se tasks, kis order me, kaun si shared settings (memory, knowledge, rate limits, tracing). Process main control knob hai.
 
 **Aise socho:** Cricket team. **Sequential** me batting order fixed hai: opener, one-down, two-down. **Hierarchical** me captain chalte-chalte decide karta hai agla over kaun dalega, aur kisi bhi player se madad maang sakta hai.
+
+```mermaid
+flowchart LR
+    subgraph SEQ["Sequential: about 6 calls"]
+        S1["Task 1: Investigator"] -->|output as context| S2["Task 2: Resolver"]
+        S2 -->|context| S3["Task 3: Writer"]
+    end
+    subgraph HIE["Hierarchical: 10-14 calls"]
+        MG["Manager LLM"] -->|delegate work| W1["Investigator"]
+        W1 -->|result| MG
+        MG -->|delegate work| W2["Resolver"]
+        W2 -->|result| MG
+        MG -->|ask question| W3["Writer"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MG hot
+```
+
+*Diagram:* Left: list ka order agla step tay karta hai aur output seedha aage jaata hai. Right: har hop manager LLM se guzarta hai, extra calls aur surprises yahin se aate hain.
 
 **Step by step kaise kaam karta hai:**
 
@@ -275,6 +330,24 @@ print(result.token_usage)                                    # poore run ke tota
 
 **Aise socho:** Memory shift manager ki diary hai ki kya hua. Knowledge shelf pe rakha policy binder hai.
 
+```mermaid
+flowchart LR
+    TO["Task output or self.remember"] --> INF["LLM infers scope, categories, importance"]
+    INF --> DB[("Memory: LanceDB via crew embedder")]
+    Q["Later task needs facts"] --> D{"recall depth"}
+    D -->|shallow: 1 vector search| DB
+    D -->|deep: LLM splits into sub-queries| SQ["parallel searches"]
+    SQ --> DB
+    KS["Knowledge: policy PDF"] -->|chunk and embed up front| KDB[("Knowledge store")]
+    DB -->|recalled facts| PR["Agent prompt"]
+    KDB -->|relevant chunks| PR
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class DB,KDB hot
+```
+
+*Diagram:* Memory run ke dauraan likhi jaati hai aur baad me recall hoti hai (deep recall me extra LLM calls); knowledge pehle se load hoti hai aur RAG ki tarah search hoti hai. Dono prompt me pahunchte hain.
+
 **Step by step kaise kaam karta hai:**
 
 1. `Crew(memory=True)` ek **unified `Memory`** object banata hai. Save pe LLM item ka scope, categories aur importance nikalta hai. Local storage default LanceDB hai. Embeddings crew ki `embedder` setting se aate hain.
@@ -298,6 +371,23 @@ Kya badla: purane CrewAI (0.x) me alag short-term, long-term aur entity memory t
 **Ye kyun chahiye:** Agent aur task texts config files me rakhne se non-engineers bhi prompts edit kar sakte hain, code chhota rehta hai aur review aasaan hota hai.
 
 **Aise socho:** Restaurant ka menu card (config) kitchen equipment (code) se alag rakha hai. Menu badlo, kitchen dobara wire nahi karni padti.
+
+```mermaid
+flowchart TD
+    CMD["crewai create crew support_bot"] --> J["Default: JSON-first"]
+    CMD -->|with classic flag| C["Classic: YAML plus crew.py"]
+    J --> J1["agents/*.jsonc: one file per agent"]
+    J --> J2["crew.jsonc: tasks, process, inputs"]
+    J --> J3["tools/, knowledge/, skills/"]
+    C --> C1["config/agents.yaml"]
+    C --> C2["config/tasks.yaml"]
+    C --> C3["crew.py: @CrewBase with @agent, @task, @crew"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class J hot
+```
+
+*Diagram:* Dono layouts prompts ko config files me rakhte hain; JSON-first ko `crewai run` seedha load karta hai, classic wala `crew.py` ke decorated methods se judta hai.
 
 **Step by step kaise kaam karta hai:**
 
@@ -338,6 +428,26 @@ investigate:
 **Ye kyun chahiye:** Crews autonomous hain, jo open-ended kaam ke liye badhiya aur un cheezon ke liye bura jo fixed tareeke se honi chahiye: input validate karo, category pe branch karo, API call karo, DB me save karo, retry karo. Flows ye control normal code me likhne dete hain aur crew sirf wahan call karte ho jahan LLM ka judgement chahiye. Ye state persistence aur resume bhi dete hain.
 
 **Aise socho:** IRCTC booking process. Login, train chuno, passengers bharo, pay karo, confirm: fixed steps aur clear branches (payment fail → retry page). Ek step, "alternate trains suggest karo", smart assistant ho sakta hai. Flow fixed hai; ek step ke andar assistant free hai.
+
+```mermaid
+flowchart LR
+    K["kickoff inputs"] --> S1["@start load_order"]
+    K --> S2["@start load_customer"]
+    S1 --> AND{"and_: both done"}
+    S2 --> AND
+    AND --> RT["@router route: returns a label"]
+    RT -->|refund| RF["@listen refund"]
+    RT -->|other| OT["@listen other"]
+    RF --> OR{"or_: either done"}
+    OT --> OR
+    OR --> SV["@listen save_reply"]
+    ST[("self.state: id, order, reply. @persist saves after steps")] -.- RT
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RT hot
+```
+
+*Diagram:* Do `@start` steps pehle chalte hain, `and_` dono ka wait karta hai, router ka label ek branch chunta hai, `or_` unhe jodta hai; har step same typed `self.state` padhta-likhta hai.
 
 **Step by step kaise kaam karta hai:**
 
@@ -381,6 +491,26 @@ flowchart LR
 **Ye kyun chahiye:** Zyada tar real CrewAI apps ka yahi shape hai: Flow me deterministic routing, jahan judgement chahiye wahan chhoti crew, aur paise ko chhone wali har cheez pe code checks.
 
 **Aise socho:** Support desk. Front desk tickets sort karta hai (Flow). Refund tickets do logon ki team ko jaate hain: ek order system check karta hai, ek policy ke under refund decide karta hai. Finance ka rule "bill se zyada refund kabhi nahi" machine check karti hai, logon pe bharosa nahi.
+
+```mermaid
+flowchart LR
+    IN["complaint plus order_id"] --> CL["@start classify"]
+    CL --> RT{"@router route"}
+    RT -->|refund| INV["Investigator plus Order lookup tool"]
+    RT -->|other| CN["canned reply"]
+    subgraph CREW["Sequential refund crew"]
+        INV -->|facts as context| RES["Resolver: RefundDecision"]
+        RES --> GR{"guardrail: refund within order amount?"}
+        GR -->|no, feedback| RES
+    end
+    GR -->|yes| RP["reply to customer"]
+    CN --> RP
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class GR hot
+```
+
+*Diagram:* Routing Flow code me karta hai; sirf refund tickets do-agent crew tak jaate hain, aur paise wala rule code guardrail lagata hai, prompt nahi.
 
 **Step by step kaise kaam karta hai:**
 
@@ -589,6 +719,23 @@ sequenceDiagram
 
 **Aise socho:** Meeting me chaar log har sentence se pehle apna designation bolte hain.
 
+```mermaid
+flowchart LR
+    subgraph ONE["Single agent, 3 tools"]
+        O1["4 calls x 2,500 tokens"] --> O2["10,000 input tokens"]
+    end
+    subgraph CRW["Crew: 3 agents, hierarchical"]
+        C1["6-9 worker calls"] --> C3["12 calls x 3,000 tokens"]
+        C2["4-6 manager calls"] --> C3
+        C3 --> C4["36,000 input tokens, about 3.6x"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class C4 hot
+```
+
+*Diagram:* Same kaam, do design: personas, manager calls aur aage bheja context crew ko ek agent se lagbhag 3–4× tokens tak le jaate hain.
+
 **Step by step kaise kaam karta hai:**
 
 1. Calls gino: 3 agents × 3 tasks, har ek ~2–3 calls, matlab 6–9 calls. Hierarchical 4–6 manager calls jodta hai.
@@ -608,6 +755,20 @@ sequenceDiagram
 **Ye kyun chahiye:** Frameworks pe sabse common senior sawal hai "ye kyun, X kyun nahi".
 
 **Aise socho:** Ready-made thali vs a la carte. Thali (CrewAI) jaldi aati hai aur zyada tar logon ke liye achhi hai. A la carte (LangGraph) exact control deta hai par har dish tumhe plan karni hai.
+
+```mermaid
+flowchart TD
+    Q{"What is the hard part?"}
+    Q -->|role split, fast iteration| CR["CrewAI: Flow plus small crews"]
+    Q -->|approvals, retries, durable branches| LG["LangGraph"]
+    Q -->|Azure or .NET team| MAF["Microsoft Agent Framework"]
+    Q -->|one agent with a few tools| SDK["No framework or a thin SDK"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CR hot
+```
+
+*Diagram:* Pehle pucho mushkil kya hai; CrewAI tab jeetta hai jab kaam roles wali team jaisa ho aur jaldi banana zaroori ho.
 
 **Step by step kaise kaam karta hai:**
 

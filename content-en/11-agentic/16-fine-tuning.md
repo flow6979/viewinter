@@ -70,6 +70,24 @@ flowchart LR
 4. If failures are "knows the facts but wrong style, format, or too slow and costly", consider fine-tuning.
 5. Fine-tune only when you have, or can make, at least a few hundred good examples, and the gain over step 2 is clear.
 
+```mermaid
+flowchart TD
+    E["1. Eval set: 50 to 200 real cases"] --> P["2. Best prompt plus few-shot"]
+    P --> M{"Failures left?"}
+    M -->|no| SHIP["Ship the prompt"]
+    M -->|missing facts| RAG["3. Add RAG, measure again"]
+    RAG --> M
+    M -->|style, format, cost| FT{"4. A few hundred good examples?"}
+    FT -->|no| DATA["Collect or synthesize data first"]
+    FT -->|yes| TRAIN["5. Fine-tune, compare against step 2"]
+    class E,P hot
+    class TRAIN hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Fine-tuning is the last branch, reached only after the prompt and RAG have been measured on the same eval set.
+
 | Need | Best tool | Why |
 |---|---|---|
 | Company docs, policies, prices that change weekly | RAG | Update a document, not a model. Can cite sources. |
@@ -141,6 +159,20 @@ As an application engineer you usually start from an already post-trained instru
 ```
 
 2. **Compute loss only on assistant tokens.** The system and user tokens are masked out (their loss is ignored). Otherwise the model also learns to write user messages, and the loss is dominated by long prompts.
+
+```mermaid
+flowchart LR
+    S["System: You are Swiggy support"]:::dim --> U["User: order 8812 is 40 min late"]:::dim
+    U --> A["Assistant: Sorry, 5 minutes away, Rs 50 coupon added"]:::hot
+    A -->|loss on these tokens only| L["Loss and gradient"]
+    S -.->|masked, loss ignored| X["No learning signal"]
+    U -.->|masked, loss ignored| X
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The model reads the system and user turns as context, but only the highlighted assistant reply is graded token by token.
+
 3. **Pick the size.** Roughly: a few hundred high-quality examples teach a format; 1,000 to 10,000 teach a narrow task well; tens of thousands for broad behaviour. The LIMA paper (2023) got a strong assistant from only 1,000 carefully chosen examples.
 4. **Train for 1 to 3 epochs.** Example: 5,000 examples × 3 epochs = 15,000 example passes. With batch size 16, that is about 940 update steps.
 5. **Watch for overfitting:** training loss keeps falling but the loss on held-out examples starts rising. The model is memorising answers. Stop earlier, use fewer epochs, or add data.
@@ -184,6 +216,26 @@ As an application engineer you usually start from an already post-trained instru
 3. A single 80 GB H100 cannot hold it. You need several GPUs and sharding tools like DeepSpeed ZeRO or PyTorch FSDP (fully sharded data parallel), which split these states across GPUs.
 4. Compare inference: 7B × 2 bytes = 14 GB. Training needs about 8× more.
 
+```mermaid
+flowchart LR
+    P["7B params"] --> W["Weights bf16: 2 B"]
+    P --> G["Gradients bf16: 2 B"]
+    P --> MC["Master copy fp32: 4 B"]:::hot
+    P --> M1["Adam moment 1 fp32: 4 B"]:::hot
+    P --> M2["Adam moment 2 fp32: 4 B"]:::hot
+    W --> T["16 B per param = 112 GB"]
+    G --> T
+    MC --> T
+    M1 --> T
+    M2 --> T
+    T -->|plus activations 10 to 50 GB| GPU["More than one 80 GB H100: shard with FSDP or ZeRO"]
+    INF["Inference needs only 2 B per param = 14 GB"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The weights are only 2 of the 16 bytes; the fp32 master copy and the two Adam moments (highlighted) add 12 more, which is why training needs about 8x inference memory.
+
 **Interview tip:** "Why is training so much heavier than inference?" Say: "Inference keeps 2 bytes per param. Training adds gradients, an fp32 master copy and two Adam moments, about 16 bytes per param, plus activations. That is why parameter-efficient methods train only a tiny fraction of weights."
 
 **Common mistake:**
@@ -218,15 +270,40 @@ Across a whole 7B model with all linear layers at r = 16, LoRA trains roughly 40
 
 ```mermaid
 flowchart LR
-    X["Input x"] --> W["Frozen W 4096 x 4096"]
-    X --> A["A: r x 4096, trainable"]
-    A --> B["B: 4096 x r, trainable"]
-    W --> S["Add"]
+    X["Input x: 4096 numbers"] --> W["Frozen W: 4096 x 4096 = 16.7M params"]
+    X --> A["A: 16 x 4096, trainable"]
+    A -->|squeezed to 16 numbers| B["B: 4096 x 16, starts at zero"]
+    W --> S["Add: W x plus scaled B A x"]
     B -->|scale by alpha over r| S
-    S --> Y["Output"]
+    S --> Y["Output: 4096 numbers"]
+    class W dim
+    class A,B hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
 
+*Diagram:* W is never touched (dimmed); only the thin A then B side path (131k params, 0.78% of W) learns, squeezing x down to r = 16 numbers and back up to 4096.
+
 7. **Merging:** after training, compute W' = W + (alpha / r)·B·A once and save it. Now there is no extra latency at inference. Or keep adapters separate and load many of them on one base model: servers like vLLM can serve many LoRA adapters at once, one per customer.
+
+```mermaid
+flowchart LR
+    subgraph MERGE["Option 1: merge once"]
+        W1["Frozen W"] --> WM["W prime = W plus scaled B A"]
+        WM --> S1["Serve like a normal model, zero extra latency"]
+    end
+    subgraph MULTI["Option 2: one base, many adapters"]
+        R1["Request from tenant A"] --> AD1["Adapter A: 80 MB"]
+        R2["Request from tenant B"] --> AD2["Adapter B: 80 MB"]
+        AD1 --> BASE["One shared base in GPU: 14 GB"]
+        AD2 --> BASE
+    end
+    class BASE hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Either bake the patch into W once, or keep one 14 GB base in memory and attach a different 80 MB adapter per request.
 
 | | Full fine-tuning | LoRA |
 |---|---|---|
@@ -258,6 +335,24 @@ flowchart LR
 4. During forward and backward passes, 4-bit weights are de-quantized to bf16 on the fly. Gradients flow only into the LoRA weights.
 5. Memory for 7B: 7B × 0.5 bytes ≈ 3.5 to 4 GB of weights, plus LoRA params, optimizer state and activations. Usually 8 to 16 GB total. 13B fits on a 24 GB card with modest sequence lengths.
 6. Cost: training is somewhat slower because of de-quantization, and quality is usually very close to 16-bit LoRA.
+
+```mermaid
+flowchart LR
+    subgraph GPU["One 24 GB GPU"]
+        Q["Base W in 4-bit NF4: about 4 GB, frozen"] -->|dequantize one layer at a time| D["Temporary bf16 copy of that layer"]
+        D --> F["Forward and backward pass in bf16"]
+        L["LoRA A and B in bf16: trainable"] --> F
+        F -->|gradients flow only here| L
+        F --> OPT["Paged 8-bit optimizer state"]
+    end
+    OPT -->|pages out on long-sequence spikes| CPU["CPU RAM"]
+    class Q dim
+    class L hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The 4-bit base is only unpacked to bf16 for the maths and never updated; gradients reach only the small bf16 LoRA box, and the optimizer spills to CPU RAM instead of crashing.
 
 ```python
 import torch
@@ -361,6 +456,25 @@ flowchart LR
 1. **Pairwise (Bradley-Terry) loss:** the probability that answer A beats B is sigmoid(score_A − score_B). Sigmoid squashes any number into 0 to 1.
 2. Loss = −log(sigmoid(score_chosen − score_rejected)). Only the gap matters, not absolute scores.
 3. Worked example: chosen scores 2.0, rejected scores 0.5. Gap 1.5, sigmoid(1.5) ≈ 0.82, loss ≈ 0.20 (small, good). If the scores were swapped, gap −1.5, sigmoid ≈ 0.18, loss ≈ 1.70 (large, the model gets corrected).
+
+```mermaid
+flowchart LR
+    P["Prompt"] --> C["Chosen answer"]
+    P --> R["Rejected answer"]
+    C --> RM1["Reward model"]
+    R --> RM2["Same reward model"]
+    RM1 -->|score 2.0| GAP["Gap = 2.0 - 0.5 = 1.5"]
+    RM2 -->|score 0.5| GAP
+    GAP --> SIG["sigmoid of 1.5 = 0.82"]
+    SIG --> LOSS["Loss = -log 0.82 = 0.20"]
+    LOSS -->|backprop widens the gap| RM1
+    class GAP hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* One model scores both answers; only the gap between the two scores enters the loss, and training keeps widening it.
+
 4. **Outcome vs process reward models:**
 
 | | Outcome reward model (ORM) | Process reward model (PRM) |
@@ -390,6 +504,26 @@ flowchart LR
 3. Loss = −log sigmoid(β × [ratio_chosen − ratio_rejected]). Push the chosen answer up and the rejected one down, relative to the reference.
 4. Worked example: compared with the reference, the policy raised the chosen answer's log-probability by 2.0 and lowered the rejected one by 1.0. Margin = 3.0. With β = 0.1: 0.3, sigmoid(0.3) ≈ 0.57, loss ≈ 0.55. Training keeps widening the margin.
 5. **β** plays the role of the KL strength. Typical 0.1 (range about 0.01 to 0.5). Small β lets the model move far from the reference; large β keeps it close.
+
+```mermaid
+flowchart LR
+    D["Row: prompt, chosen, rejected"] --> POL["Policy: trainable"]
+    D --> REF["Reference: frozen SFT copy"]
+    POL --> RC["Chosen: log-prob up 2.0 vs reference"]
+    REF --> RC
+    POL --> RR["Rejected: log-prob down 1.0 vs reference"]
+    REF --> RR
+    RC --> MAR["Margin 3.0 x beta 0.1 = 0.3"]
+    RR --> MAR
+    MAR --> L["Loss = -log sigmoid 0.3 = 0.55"]
+    L -->|gradient| POL
+    NO["No reward model, no value model, no sampling loop"]:::dim
+    class MAR hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Only two models; the frozen reference turns log-probs into ratios, and the loss directly widens the chosen-minus-rejected margin.
 
 ```python
 from datasets import load_dataset
@@ -455,16 +589,50 @@ trainer.train()
 
 ```mermaid
 flowchart LR
-    Q["Question with known answer"] --> POL["Policy model"]
-    POL --> G["Group of G answers"]
-    G --> CHK["Checker: tests or answer match"]
-    CHK --> R["Rewards like 1 0 0 1"]
-    R --> ADV["Advantage: reward minus group mean"]
-    ADV --> UPD["Clipped update plus KL"]
+    Q["Question: 17 x 24, gold answer 408"] --> POL["Policy model"]
+    POL --> A1["Answer 1: 408"]
+    POL --> A2["Answer 2: 418"]
+    POL --> A3["Answer 3: 398"]
+    POL --> A4["Answer 4: 408"]
+    A1 -->|reward 1| MEAN["Group mean 0.5, std 0.5"]
+    A2 -->|reward 0| MEAN
+    A3 -->|reward 0| MEAN
+    A4 -->|reward 1| MEAN
+    MEAN --> ADV["Advantages +1, -1, -1, +1"]
+    ADV --> UPD["Clipped update plus small KL"]
     UPD --> POL
+    class A1,A4 hot
+    class A2,A3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
 
+*Diagram:* The checker gives 1 or 0; correct answers (highlighted) sit above the group mean and get pushed up, wrong ones get pushed down, and no value model is needed.
+
 **Why no critic is needed:** In PPO, the value model estimates "how good is a typical answer to this prompt" so you can tell if an answer is above or below normal. GRPO estimates that baseline directly from the group's mean reward. You trade more samples per prompt for one fewer large model.
+
+```mermaid
+flowchart TD
+    subgraph PPO["PPO RLHF: 4 models, online"]
+        P1["Policy"]:::hot
+        P2["Frozen reference"]
+        P3["Reward model"]
+        P4["Value model"]
+    end
+    subgraph DPO["DPO: 2 models, fixed offline pairs"]
+        D1["Policy"]:::hot
+        D2["Frozen reference"]
+    end
+    subgraph GRPO["GRPO: 2 models plus a checker, online"]
+        G1["Policy"]:::hot
+        G2["Frozen reference"]
+        G3["Checker program, not a model"]:::dim
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* DPO drops the reward and value models by training on fixed pairs; GRPO replaces the value model with the group average and the reward model with a program.
 
 **The DeepSeek-R1 story (January 2025):**
 - **R1-Zero:** pure RL with GRPO on the base model, rewards only for correct answers and format. Over training, responses grew much longer, and the model started checking and revising its own work ("aha moment"). But it mixed languages and was hard to read.
@@ -526,6 +694,26 @@ trainer.train()
 | Signal | Rich: "how sure" and "which alternatives" | Only the final tokens |
 | Typical use | Labs building model families (Hinton 2015 idea) | Product teams, DeepSeek-R1 distilled models |
 
+```mermaid
+flowchart LR
+    IN["10,000 real tickets"] --> T["Teacher: big model"]
+    subgraph SOFT["Soft-label route"]
+        T -->|per token: payment 0.70, delivery 0.25| KL["Match the teacher distribution"]
+    end
+    subgraph SEQ["Synthetic-data route"]
+        T -->|generated answers| F["Filter: checks and judge"]
+        F --> SFT["Plain SFT on kept pairs"]
+    end
+    KL --> S["Student: 8B"]
+    SFT --> S
+    S --> EV["Eval against teacher on held-out set"]
+    class S hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The soft-label route needs the teacher's probabilities and the same tokenizer; the synthetic-data route needs only its text, so it works through an API.
+
 1. Collect 5,000 to 100,000 real task inputs (for example, support tickets).
 2. Run the teacher on each, with a strong prompt, to get high-quality outputs.
 3. Filter: keep answers that pass checks (correct JSON, verified facts, judge score above a threshold).
@@ -562,6 +750,21 @@ trainer.train()
 5. **Check diversity:** cluster embeddings and make sure no single intent is 40% of the data while others have five examples.
 6. Example funnel: generate 20,000 → rule filter 17,000 → dedup 11,000 → judge score ≥ 4 keeps 6,000 → decontaminate 5,950.
 
+```mermaid
+flowchart LR
+    SEED["50 to 200 real seed examples"] --> G["Generate 20,000"]
+    G -->|rule checks| R["17,000"]
+    R -->|dedup: MinHash, embeddings| D["11,000"]
+    D -->|judge score 4 or 5| J["6,000"]
+    J -->|remove overlap with eval sets| C["5,950 for training"]
+    EVAL["Eval and benchmark sets"]:::dim -.->|13-gram and embedding check| C
+    class C hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Under a third of what you generate survives; dedup and the judge filter remove the most, and decontamination checks against the eval sets last.
+
 **Quality > quantity:** LIMA (2023) reached strong assistant quality with 1,000 hand-curated examples. Microsoft's Phi models ("Textbooks Are All You Need", 2023) showed small models trained on carefully chosen, textbook-quality data can beat much larger ones.
 
 **Detecting eval contamination:**
@@ -590,6 +793,23 @@ trainer.train()
 3. **Task metrics:** exact match, JSON validity rate, pass rate on tests, or LLM-judge win rate in side-by-side comparison (randomise order to avoid position bias).
 4. **Regression suite:** general benchmarks or your own sample of other tasks (instruction following, safety refusals, maths). Example: task accuracy 72% → 88%, but safety refusals on harmful prompts dropped from 98% to 85%. Do not ship.
 5. **Online:** shadow traffic or an A/B test with business metrics (resolution rate, escalations, cost per conversation).
+
+```mermaid
+flowchart TD
+    FT["Fine-tuned model"] --> H{"Beats base plus best prompt on held-out set?"}
+    H -->|no| X["Do not ship"]
+    H -->|yes| RG{"General and safety regression holds?"}
+    RG -->|no, refusals 98 to 85 pct| X
+    RG -->|yes| AB{"Online A/B moves the business metric?"}
+    AB -->|no| X
+    AB -->|yes| SHIP["Ship"]
+    class SHIP hot
+    class X dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Three gates in a row; a win on the task eval alone is not enough if safety or the online metric fails.
 
 | Check | What it catches |
 |---|---|

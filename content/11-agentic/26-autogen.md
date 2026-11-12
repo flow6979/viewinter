@@ -65,6 +65,23 @@ flowchart LR
 
 **Aise socho:** Ek famous restaurant. Ek head chef purana menu leke chala jaata hai aur apni dukaan kholta hai (AG2). Original restaurant apni kitchen dobara banata hai (AutoGen 0.4). Baad me owners ise apne corporate catering arm (Semantic Kernel) ke saath ek naye brand (Agent Framework) me merge kar dete hain. Purani kitchen sirf repair ke liye khuli rehti hai.
 
+```mermaid
+flowchart TD
+    Y1["2023: Semantic Kernel open-sourced"] --> Y2["Late 2023: AutoGen 0.2 makes multi-agent chat popular"]
+    Y2 --> Y3["Nov 2024: AG2 fork takes the autogen and pyautogen PyPI names"]
+    Y2 --> Y4["Jan 2025: AutoGen 0.4 full rewrite"]
+    Y4 --> Y5["Mid 2025: 0.6-0.7 adds GraphFlow"]
+    Y5 --> Y6["Oct 2025: Agent Framework preview, AutoGen and SK to maintenance"]
+    Y1 --> Y6
+    Y6 --> Y7["Apr 2026: Agent Framework 1.0 GA"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class Y7 hot
+    class Y3 dim
+```
+
+*Diagram:* Upar se neeche padho: 0.2 se AG2 fork aur 0.4 rewrite nikle, aur rewrite plus Semantic Kernel mil ke Agent Framework bane.
+
 **Step by step kaise kaam karta hai:**
 
 | Kab | Kya hua |
@@ -97,6 +114,18 @@ Package names matter karte hain:
 
 **Aise socho:** Shaadi ka WhatsApp group. Planner task post karta hai, caterer aur decorator baari-baari reply karte hain, koi bolta hai "Done, final", aur chat ruk jaati hai. Group admin decide karta hai agla jawab kaun dega.
 
+```mermaid
+stateDiagram-v2
+    [*] --> SelectSpeaker: team.run with task
+    SelectSpeaker --> Speak: next agent chosen
+    Speak --> Broadcast: reply, maybe after tool calls
+    Broadcast --> CheckStop: every agent sees it
+    CheckStop --> SelectSpeaker: condition not met
+    CheckStop --> [*]: condition fires, TaskResult
+```
+
+*Diagram:* Har AutoGen team yahi ek loop hai; team types sirf `SelectSpeaker` ka tareeka badalte hain, aur termination condition hi ekmatra exit hai.
+
 **Step by step kaise kaam karta hai:**
 
 1. Har agent ka naam, description aur model client hota hai, plus tools.
@@ -128,6 +157,22 @@ Package names matter karte hain:
 
 **Aise socho:** Food delivery platform. Core dispatch system hai jo riders aur restaurants ke beech messages route karta hai. AgentChat ready-made screens wala customer app hai. Extensions plug-in partners hain: payment, maps, SMS.
 
+```mermaid
+flowchart TD
+    APP["Your app"] --> AC["AgentChat: AssistantAgent, teams, termination"]
+    AC --> CORE["Core: actor runtime, typed messages, topics"]
+    CORE --> RT1["SingleThreadedAgentRuntime: one process"]
+    CORE -.-> RT2["gRPC distributed runtime: experimental"]
+    AC --> EXT["Extensions: model clients, Docker executor, McpWorkbench"]
+    APP -.->|custom protocols only| CORE
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AC,EXT hot
+    class RT2 dim
+```
+
+*Diagram:* Zyada apps sirf AgentChat aur Extensions chhoote hain; Core ka actor runtime neeche hai, use seedha sirf custom ya distributed systems me karte hain.
+
 **Step by step kaise kaam karta hai:**
 
 1. **Core** (`autogen-core`): agents actors hain. Ye handlers se typed messages lete hain (`RoutedAgent` with `@message_handler`). Direct messages (request aur response) se ya topics pe publish karke baat karte hain jinhe doosre subscribe karte hain. Runtime messages deliver karta hai: ek process me `SingleThreadedAgentRuntime`, ya machines ke across experimental distributed gRPC runtime.
@@ -156,6 +201,24 @@ Install: `pip install -U "autogen-agentchat" "autogen-ext[openai]"`.
 **Ye kyun chahiye:** Team ke zyada tar agents "role aur tools wala ek LLM" hote hain. `AssistantAgent` ye cover karta hai, to tool loop tumhe khud nahi likhna padta.
 
 **Aise socho:** Naya employee jiske paas job title (system message), laptop (tools) aur manager ka rule hai "tool use karne ke baad jo mila uska summary do" (reflection).
+
+```mermaid
+flowchart TD
+    IN["New messages for this agent"] --> M1["Model call"]
+    M1 --> Q{"tool calls?"}
+    Q -->|no| TXT["Text reply"]
+    Q -->|yes| TL["Run tools: 1 round by default"]
+    TL --> R{"reflect_on_tool_use?"}
+    R -->|False, default| RAW["Reply is the raw tool output"]
+    R -->|True| M2["Second model call turns output into an answer"]
+    M2 --> TXT
+    TL -.->|max_tool_iterations above 1| M1
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class TL,R hot
+```
+
+*Diagram:* Default me `AssistantAgent` ek tool round ke baad ruk jaata hai aur raw tool output reply karta hai; `reflect_on_tool_use` ya zyada iterations se model calls badhte hain.
 
 **Step by step kaise kaam karta hai:**
 
@@ -213,6 +276,45 @@ asyncio.run(main())
 
 **Aise socho:** Meeting chalane ke paanch tareeke: table ke around ghoomo (round robin), chair chunta hai kaun bolega (selector), log khud mic pass karte hain (swarm), task list wala project manager (Magentic-One), ya likha hua agenda (graph).
 
+```mermaid
+flowchart LR
+    subgraph RR["RoundRobin: fixed turns"]
+        W["Writer"] --> C["Critic"]
+        C -->|again| W
+    end
+    subgraph SEL["Selector: 1 extra LLM call per turn"]
+        SL["Selector LLM reads chat and descriptions"] -->|picks| FL["Flights agent"]
+        SL -.-> HT["Hotels agent"]
+    end
+    subgraph SWM["Swarm: agent passes the mic"]
+        TA["Triage"] -->|transfer_to_refunds| RA["Refunds"]
+        RA -->|transfer_to_user| HU["Human via HandoffTermination"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class SL,TA hot
+    class HT dim
+```
+
+*Diagram:* Agla speaker kaun chunta hai: list ka order (round robin), ek alag LLM call (selector), ya khud active agent handoff tool se (swarm).
+
+```mermaid
+flowchart TD
+    T["Task"] --> O["Orchestrator"]
+    O --> TL[("Task ledger: facts, guesses, plan")]
+    O --> PL[("Progress ledger: done? stuck? who next?")]
+    PL -->|assign step| WS["WebSurfer"]
+    PL -->|assign step| FS["FileSurfer"]
+    PL -->|assign step| CD["Coder plus terminal"]
+    WS -->|result| O
+    PL -.->|stuck: re-plan| TL
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class O,PL hot
+```
+
+*Diagram:* Magentic-One: orchestrator do ledgers rakhta hai, har step ek specialist ko deta hai, aur progress ledger atka hua bataye to plan dobara likhta hai.
+
 **Step by step kaise kaam karta hai:**
 
 1. **RoundRobinGroupChat:** agents list order me baar baar bolte hain. Sabse sasta; reflection loops (writer, critic) ke liye achha.
@@ -256,6 +358,21 @@ flowchart LR
 
 **Aise socho:** Meeting tab khatam hoti hai jab chair bole "decided", ghadi 5 baja de, ya budget khatam ho jaaye, jo pehle ho.
 
+```mermaid
+flowchart LR
+    R["Agent response"] --> C1{"MaxMessageTermination 12"}
+    R --> C2{"TextMentionTermination APPROVE"}
+    C1 --> OR{"combined with OR"}
+    C2 --> OR
+    OR -->|either true| STOP["TaskResult with stop_reason, conditions reset"]
+    OR -->|both false| NEXT["Pick next speaker"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class OR,STOP hot
+```
+
+*Diagram:* Har response ke baad combined condition check hoti hai; OR me jo rule pehle fire ho, wahi run khatam karta hai.
+
 **Step by step kaise kaam karta hai:**
 
 1. Har agent response ke baad team naye messages condition ko deti hai.
@@ -278,6 +395,24 @@ Ek worked number: `MaxMessageTermination(12)` wala 3-agent round robin task ke b
 **Ye kyun chahiye:** LLMs arithmetic aur data crunching me kamzor hain par Python likhne me achhe. Code likh ke chalane se real data se exact answers milte hain, jaise "revenue se top 3 cities".
 
 **Aise socho:** Chartered accountant (coder) formula likhta hai; junior (executor) use band kamre me Excel me chalata hai aur result padh ke sunata hai.
+
+```mermaid
+sequenceDiagram
+    participant Coder as Coder agent
+    participant Exec as CodeExecutorAgent
+    participant Dk as Docker container
+    Coder->>Exec: python code block
+    Exec->>Dk: run extracted code
+    Dk-->>Exec: stderr KeyError city
+    Exec-->>Coder: error output
+    Coder->>Exec: fixed code
+    Exec->>Dk: run again
+    Dk-->>Exec: stdout top 3 cities by revenue
+    Exec-->>Coder: result
+    Coder->>Exec: DONE, termination fires
+```
+
+*Diagram:* Coder khud code nahi chalata: executor use Docker me chalata hai, errors message banke wapas aate hain, aur coder theek karke dobara bhejta hai jab tak kaam na ho.
 
 **Step by step kaise kaam karta hai:**
 
@@ -365,6 +500,20 @@ Ye prototyping tool hai. Docs khud kehte hain ki ye production ke liye nahi hai 
 
 **Aise socho:** Kitchen ka corporate IT version: strict SOPs, approved suppliers, audit logs, har branch me chalta hai.
 
+```mermaid
+flowchart LR
+    APP["Your .NET, Python or Java app"] --> K["Kernel"]
+    K --> SVC["AI services: Azure OpenAI connector"]
+    K --> PL["Plugins: kernel functions"]
+    SVC -->|model asks via function calling| F["Filter: log, approve, block"]
+    F --> PL
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class K,F hot
+```
+
+*Diagram:* Kernel ke paas model connectors aur plugins dono hain; model ka har function call filters se guzarta hai, MAF ka middleware idea yahin se aaya.
+
 **Step by step kaise kaam karta hai:**
 
 1. **Kernel** AI services (model connectors) aur **plugins** (kernel functions ki tarah mark kiye functions ke groups) rakhta hai.
@@ -416,6 +565,27 @@ Preview ke dauraan kya badla: early previews `ChatAgent(chat_client=...)` aur th
 
 **Aise socho:** Hospital me doctor (agent) decide karta hai kaun se tests karwane hain. Admission process (workflow) fixed hai: registration, triage, doctor, billing, discharge.
 
+```mermaid
+flowchart LR
+    subgraph AGT["Agent: open-ended"]
+        A1["Agent: client, instructions"] -->|loops over tool calls| A2["Tools, MCP, approval_mode"]
+        A2 --> A1
+        SE[("Session")] -.-> A1
+    end
+    subgraph WF["Workflow: controlled"]
+        W1["Executor: intake function"] -->|typed message| W2["Executor: an Agent"]
+        W2 -->|edge condition| W3["Executor: billing"]
+        W2 -->|request_info| H["Human"]
+        H -->|response_handler| W2
+        CP[("Checkpoint storage")] -.- W2
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class A1,W2 hot
+```
+
+*Diagram:* Left: agent apne tool steps khud chunta hai. Right: steps aur edges tum tay karte ho; agent ek executor ho sakta hai, aur workflow human ke liye ruk ke checkpoint se resume kar sakta hai.
+
 **Step by step kaise kaam karta hai:**
 
 1. **Chat client**: provider se baat karta hai, jaise `OpenAIChatClient(model="gpt-4.1-mini")`, Azure OpenAI, Foundry, Anthropic ya Ollama clients.
@@ -450,6 +620,20 @@ Preview ke dauraan kya badla: early previews `ChatAgent(chat_client=...)` aur th
 **Ye kyun chahiye:** Ye core MAF pattern dikhata hai: open kaam ke liye tools wala agent, multi-turn chat ke liye session, aur business rule ke liye code gate wala workflow.
 
 **Aise socho:** MakeMyTrip ka travel agent plan draft karta hai; finance desk total check karta hai; budget se upar ho to draft notes ke saath wapas jaata hai.
+
+```mermaid
+flowchart LR
+    IN["3 nights Goa from Mumbai, 2 people, Rs 15,000"] --> PL["planner Agent: search_trains, hotel_price"]
+    PL -->|draft plan| CK["checker Agent"]
+    CK --> G{"gate executor: reply says APPROVED?"}
+    G -->|no, send conversation back| PL
+    G -->|yes| OUT["yield_output: final plan, about Rs 14,600"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class G hot
+```
+
+*Diagram:* Workflow planner, checker, gate me ghoomta hai; plan kab final hai ye sirf gate ka code tay karta hai, aur `max_iterations=6` loop pe cap lagata hai.
 
 **Step by step kaise kaam karta hai:**
 
@@ -553,6 +737,29 @@ asyncio.run(main())
 
 **Aise socho:** AutoGen ek group call hai jahan host ek-ek karke logon ko unmute karta hai. MAF workflows fixed lanes wali relay race hai jahan har baton handover pe photo khinchti hai.
 
+```mermaid
+flowchart LR
+    subgraph SS1["Superstep 1"]
+        P1["planner runs"]
+    end
+    subgraph SS2["Superstep 2"]
+        C1["checker runs"]
+    end
+    subgraph SS3["Superstep 3"]
+        G1["gate runs"]
+    end
+    P1 -->|message on edge| C1
+    P1 -.-> K1[("checkpoint 1")]
+    C1 -->|message on edge| G1
+    C1 -.-> K2[("checkpoint 2")]
+    G1 -->|over budget| P2["planner again in superstep 4"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class K1,K2 hot
+```
+
+*Diagram:* MAF workflow supersteps me aage badhta hai: jin executors ke paas message pending hai wo chalte hain, output edges pe jaata hai, aur har boundary pe state checkpoint ho sakti hai.
+
 **Step by step kaise kaam karta hai (AutoGen team):**
 
 1. `run_stream(task)` task ko group chat manager pe publish karta hai (Core ke message runtime pe bana).
@@ -626,6 +833,22 @@ sequenceDiagram
 **Ye kyun chahiye:** Senior sawal kabhi "AutoGen aata hai?" nahi hota, balki "aaj kya chunoge aur kyun?".
 
 **Aise socho:** Phone chunna: jo tumhari company ka IT support karta hai (Azure pe MAF), jisme sabse zyada control hai (LangGraph), ya jo box se nikalte hi sabse aasaan hai (CrewAI).
+
+```mermaid
+flowchart TD
+    Q{"Your situation"}
+    Q -->|new project, .NET or Azure| MAF["Microsoft Agent Framework"]
+    Q -->|existing AutoGen 0.4 app| KEEP["Keep it, migrate team by team"]
+    Q -->|existing 0.2 or AG2 app| AG2["AG2, or migrate to MAF"]
+    Q -->|Python, complex long-running graphs| LG["LangGraph"]
+    Q -->|role-shaped pipeline, fast build| CR["CrewAI"]
+    KEEP -.->|RoundRobin to Sequential, Selector to GroupChat, Swarm to Handoff| MAF
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MAF hot
+```
+
+*Diagram:* Situation se chuno; purana AutoGen app dotted edge wali one-to-one mapping se ek-ek team karke Agent Framework pe jaata hai.
 
 **Step by step kaise kaam karta hai:**
 

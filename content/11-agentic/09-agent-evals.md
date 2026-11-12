@@ -66,6 +66,28 @@ flowchart LR
 3. Dono sahi hain. Par raasta alag, shabd alag. `expected == actual` dono ko fail kar dega.
 4. Agar har step 95% sahi ho aur agent 10 steps le, to poora run sahi hone ka chance 0.95^10 ≈ 60% hai.
 
+```mermaid
+flowchart LR
+    subgraph RUN1["Run 1"]
+        R1["get_order"] --> C1["check_delay"] --> I1["issue_refund"] --> A1["Your ₹450 refund is done"]
+    end
+    subgraph RUN2["Run 2"]
+        R2["get_order"] --> I2["issue_refund"] --> A2["₹450 refund shuru, 3-5 din"]
+    end
+    A1 --> X["exact match: expected == actual"]
+    A2 --> X
+    X -->|dono FAIL| F["Agent ke liye galat test"]
+    A1 --> J["Goal check: ₹450 refund hua?"]
+    A2 --> J
+    J -->|dono PASS| P["Outcome aur path grade karo, exact text nahi"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class J,P hot
+    class X,F dim
+```
+
+*Diagram:* Same input ne do alag raaste aur shabd liye; exact string match dono runs fail karta hai (dimmed), jabki goal check (₹450 refund hua?) dono pass karta hai.
+
 **Ek line me:** agent non-deterministic hai, multi-step hai, aur ek hi goal tak pahunchne ke kai sahi raaste hain, isliye simple "expected == actual" test kaam nahi karta.
 
 **Terms:**
@@ -424,6 +446,23 @@ def agreement(examples, human_labels):
 
 **Ek example:** Swiggy policy bot ne galat refund window bataya. Check kiya: "refund policy" wala chunk top-5 me tha hi nahi. Fix retriever me hai, prompt me nahi.
 
+```mermaid
+flowchart LR
+    Q["Refund window kitna hai?"] --> RT["Retriever"]
+    RT -->|top-5 chunks| CH["delivery, coupons, ... refund policy chunk gayab"]
+    CH --> GEN["LLM jawab likhta hai"]
+    GEN --> ANS["Galat refund window"]
+    RT -.-> RM["Retrieval metrics: recall, precision, hit@k"]
+    GEN -.-> GM["Generation metrics: faithfulness, relevance"]
+    RM -->|top 5 me kuch nahi| FIX["Retriever fix karo, prompt nahi"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RM,FIX hot
+    class GM dim
+```
+
+*Diagram:* Dono hisson ko alag score karo: retrieval metrics dikhate hain ki policy chunk top 5 me aaya hi nahi, to fix retriever me hai, prompt kitna bhi tune karo.
+
 **Ek line me:** agent agar retrieve karta hai to retrieval aur generation dono ko alag evaluate karo.
 
 - **Retrieval:** context precision, context recall, MRR, nDCG, hit@k. Sab ek hi baat poochte hain: sahi chunks mile ya nahi, aur wo top pe rank hue ya nahi?
@@ -449,6 +488,24 @@ def agreement(examples, human_labels):
 4. **80 synthetic** Hindi/Hinglish paraphrases LLM se banaye, phir ek human ne review karke repetitive wale hataye.
 5. Sab ko `razorpay-merchant-golden-v1` naam se save kiya. Har row me `metadata.intent` aur `metadata.source`.
 6. Ek incident hua (agent ne GST galat calculate kiya). Wo case add karke **v2** bana. Results hamesha dataset version ke saath compare hote hain.
+
+```mermaid
+flowchart LR
+    P["150 prod traces: thumbs-down, escalated"] --> V1["razorpay-merchant-golden-v1"]
+    E["40 haath se likhe edge cases"] --> V1
+    AD["30 adversarial: injection, doosre merchant ka data"] --> V1
+    S["80 synthetic paraphrases"] --> HR["Human review: repetitive hatao"]
+    HR --> V1
+    V1 --> RUN["Eval runs, har version se compare"]
+    RUN --> INC["Prod incident: GST galat calculate"]
+    INC -->|nayi row ban jaata hai| V2["golden-v2"]
+    V2 --> RUN
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class P,INC,V2 hot
+```
+
+*Diagram:* Chaar sources ek versioned set me jaate hain; synthetic rows pehle human se guzarti hain, aur har prod incident agle version me nayi row ban kar wapas aata hai.
 
 **Ek line me:** eval utna hi accha jitna dataset: real prod traces, edge cases, adversarial cases, thoda synthetic, aur sab versioned.
 

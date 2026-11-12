@@ -14,6 +14,24 @@ RAG (Retrieval-Augmented Generation) means: before the LLM writes an answer, fin
 
 > **Example:** A company HR policy bot. An employee asks "how many days of paternity leave do I get?". The LLM has never seen your company's policy. RAG pulls the right paragraph from the policy PDF into the prompt, and the LLM writes the answer with a citation.
 
+```mermaid
+flowchart LR
+    subgraph NO["Without RAG"]
+        Q1["How many days of paternity leave?"] --> M1["LLM memory only"]
+        M1 --> A1["Guess: 5 days, no source"]:::dim
+    end
+    subgraph YES["With RAG"]
+        Q2["Same question"] --> S2["Search HR policy PDF"]
+        S2 --> C2["Chunk p.4: paternity leave is 15 days"]:::hot
+        C2 --> M2["LLM reads the chunk"]
+        M2 --> A2["15 days, source policy.pdf p.4"]:::hot
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Without RAG the model guesses from memory; with RAG the right policy chunk goes into the prompt, so the answer is correct and carries a page citation.
+
 Why an LLM alone is not enough:
 - **Knowledge cutoff:** the model does not know data from after training.
 - **Private data:** it has never seen your internal docs, tickets or contracts.
@@ -32,6 +50,20 @@ What RAG gives you:
 ## ⭐ RAG vs fine-tuning vs long context
 
 **In one line:** RAG = give new *knowledge*; fine-tuning = teach *behaviour/style*; long context = stuff everything into the prompt.
+
+```mermaid
+flowchart TD
+    S["New requirement"] --> K{"About knowledge or behaviour?"}
+    K -->|behaviour, tone, format| FT["Fine-tune"]
+    K -->|knowledge, facts, docs| T{"Corpus tiny, 1-2 docs?"}
+    T -->|yes| LC["Long context: paste it all"]
+    T -->|no, GBs or changing| RAG["RAG: retrieve per query"]:::hot
+    FT -.->|often combined| RAG
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Knowledge needs go to RAG unless the corpus is tiny; behaviour or format changes go to fine-tuning, and in practice the two are often combined.
 
 | | RAG | Fine-tuning | Long context |
 |---|---|---|---|
@@ -56,16 +88,22 @@ What RAG gives you:
 
 ```mermaid
 flowchart LR
-    D["Docs: PDF, wiki, tickets"] --> I["Ingest and parse"]
-    I --> C["Chunk"]
-    C --> E["Embed"]
-    E --> S[("Vector DB plus BM25 index")]
-    Q["User query"] --> QE["Embed query"]
-    QE --> R["Retrieve top 50"]
+    subgraph OFF["Offline indexing, async"]
+        D["Docs: PDF, wiki, tickets"] --> I["Ingest and parse"]
+        I --> C["Chunk"]
+        C --> E["Embed"]
+        E --> S[("Vector DB plus BM25 index")]
+    end
+    subgraph ON["Online query, latency critical"]
+        Q["User query"] --> QE["Embed query"]
+        QE --> R["Retrieve top 50"]
+        R --> RR["Rerank to top 5"]
+        RR --> G["LLM generates with citations"]
+    end
     S --> R
-    R --> RR["Rerank to top 5"]
-    RR --> G["LLM generates with citations"]
 ```
+
+*Diagram:* The offline half runs whenever docs change; only the online half runs on each user request, and it reads the index the offline half built.
 
 Offline (indexing):
 - **Ingest:** extract text from PDF/HTML/Confluence, OCR, cleaning, handle tables.
@@ -85,6 +123,21 @@ Online (query):
 ## ⭐ Why RAG fails (and where the fix is)
 
 **In one line:** most RAG failures come from retrieval, not the LLM: the right chunk was never found, or it was found but in the wrong position or only half of it.
+
+```mermaid
+flowchart TD
+    B["Bad answer"] --> C{"Was the answer in the retrieved chunks?"}
+    C -->|no| RP["Retrieval problem"]:::hot
+    C -->|yes| GP["Generation problem"]
+    RP --> T{"Right chunk in top 50 at all?"}
+    T -->|no| F1["Fix chunking, hybrid, query rewrite"]
+    T -->|yes, at rank 4-5| F2["Add a reranker"]
+    GP --> F3["Fix prompt, send fewer chunks, check faithfulness"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Check the retrieved context first: most bad answers end on the retrieval branch, where a bigger LLM would not help at all.
 
 | Failure | What happens | Fix (page) |
 |---|---|---|

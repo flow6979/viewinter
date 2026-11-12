@@ -418,6 +418,23 @@ sequenceDiagram
 
 > **Example:** "LangGraph kyun, plain Python kyun nahi?" Jawab: "Persistence, HITL, streaming free milte hain; par 3-step pipeline ke liye plain code + retries kaafi hai."
 
+```mermaid
+flowchart LR
+    Q["Multi-agent kyun nahi?"] --> D["Default: single agent plus achhe tools"]
+    D --> S{"Kab switch?"}
+    S -->|parallel subtasks| M["Multi-agent"]
+    S -->|alag permissions| M
+    S -->|15-20 se zyada tools| M
+    D --> ME["Measure: eval baseline vs multi-agent, cost per task"]
+    M --> ME
+    ME --> DEC["Numbers se decide"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class D,S,ME hot
+```
+
+*Diagram:* Highlighted teen hisse har trade-off sawal ke jawab ka shape hain: default batao, kab switch karoge batao, aur kaise measure karoge batao.
+
 | Agar ye poochein | Ye bolo | Kyunki | Kab doosra chunoge |
 |---|---|---|---|
 | "Framework kyun, custom code kyun nahi?" | "LangGraph jaisa low-level framework; heavy abstractions avoid karta hoon taaki prompts aur control flow dikhte rahein" | persistence, HITL, streaming free milte hain | bahut simple flow, ya extreme control/perf chahiye |

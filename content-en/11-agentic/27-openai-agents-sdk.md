@@ -106,6 +106,24 @@ It is **model-provider agnostic in design**: OpenAI models work best (Responses 
 
 **Picture it:** A recipe card (Agent) and a cook who follows it today for one customer (Runner run). The card does not change per customer.
 
+```mermaid
+flowchart TD
+    AG["Agent: instructions, tools, handoffs - config only"] --> RUN["Runner.run: input, context, session, max_turns 10"]
+    RUN --> CALL["Turn n: call model for current agent"]
+    CALL --> D{"What did the model return?"}
+    D -->|tool calls| T["Run tools, append outputs"]
+    T --> CALL
+    D -->|handoff call| H["Switch current agent"]
+    H --> CALL
+    D -->|text, no tool calls| OUT["RunResult: final_output, last_agent"]
+    CALL -.->|turn 11| ERR["MaxTurnsExceeded"]
+    class CALL,D hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The Agent at the top is only settings; the highlighted model call is the Runner's loop, and both tool calls and handoffs go back into it until a text-only reply (or turn 11 raises MaxTurnsExceeded).
+
 **How it works, step by step:**
 
 1. Main `Agent` fields: `name`, `instructions` (the system prompt; can be a function of context), `tools`, `handoffs`, `handoff_description`, `model`, `model_settings`, `input_guardrails`, `output_guardrails`, `output_type`, `tool_use_behavior`.
@@ -167,6 +185,27 @@ asyncio.run(stream())
 
 **Picture it:** A kirana shop owner's helpers. Some are his own staff (function tools: he trained them). Some are services he calls, like the courier (hosted tools). Some come from an agency with a standard contract (MCP servers).
 
+```mermaid
+flowchart LR
+    subgraph SRC["Three sources of tools"]
+        FT["function_tool pnr_status: type hints and docstring"]
+        HT["Hosted: WebSearchTool, FileSearchTool"]
+        MC["MCP server tools"]
+    end
+    FT -->|SDK builds strict JSON schema| REQ["Tool list in every model request"]
+    HT --> REQ
+    MC --> REQ
+    REQ --> M["Model"]
+    M -->|function call pnr 2451234567| SDK["SDK validates args, runs your Python"]
+    SDK -->|tool output text| M
+    M -.->|hosted call| OAI["Runs on OpenAI servers, no code from you"]
+    class SDK hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* All three kinds end up as entries in one tool list; only function tools come back to your process (highlighted) to run, hosted tools run on OpenAI's side.
+
 **How it works, step by step:**
 
 1. Put `@function_tool` on a function. Name, description and parameter schema come from the name, docstring and type hints. (`agents.decorators.tool` is the same decorator under a shorter name.)
@@ -222,6 +261,26 @@ travel_agent = Agent(
 
 **Picture it:** At a hospital, the reception desk *transfers* you to the cardiology OPD; from then on the cardiologist talks to you (handoff). A doctor who *sends your blood sample to the lab* still talks to you; the lab only returns a report (agent as tool).
 
+```mermaid
+flowchart LR
+    subgraph HO["Handoff: transfer the customer"]
+        U1["User"] --> TR1["Triage"]
+        TR1 -->|transfer_to_refund_agent, full history| RF["Refund agent"]
+        RF -->|answers the user from now on| U1b["User"]
+    end
+    subgraph AT["Agent as tool: ask a colleague"]
+        U2["User"] --> TR2["Triage"]
+        TR2 -->|to_hindi with one input string| HI["Hindi translator runs its own loop"]
+        HI -->|final output as tool result| TR2
+        TR2 -->|triage still writes the reply| U2b["User"]
+    end
+    class RF,TR2 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The highlighted agent is the one that answers the user: after a handoff it is the specialist, with agent-as-tool it stays the caller and the specialist only returns a result.
+
 **How it works, step by step:**
 
 1. **Handoff:** list agents in `handoffs=[billing, refunds]`. Each becomes a tool named `transfer_to_<agent_name>` (for example `transfer_to_refund_agent`), described by the target's `handoff_description`.
@@ -276,6 +335,24 @@ triage = Agent(
 
 **Picture it:** A metro station gate. The ticket check (input guardrail) happens before you board; if it beeps (tripwire), you do not travel. The exit gate (output guardrail) checks again at the end.
 
+```mermaid
+flowchart LR
+    IN["User input"] --> IG["Input guardrails: first agent only"]
+    IG --> TRI["Triage agent"]
+    TRI -->|handoff| BIL["Billing agent: its input guardrails never run"]
+    TG["Tool guardrails: every guarded tool call"] --> TOOL["issue_refund tool"]
+    BIL --> TOOL
+    BIL --> OUT["Final output"]
+    OUT --> OG["Output guardrails: final agent only"]
+    OG --> USER["Reply to user"]
+    class IG,TG,OG hot
+    class BIL dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Input guardrails fire once at the entrance (first agent), output guardrails once at the exit (final agent); only tool guardrails follow the run across handoffs.
+
 **How it works, step by step:**
 
 1. Write `@input_guardrail async def check(ctx, agent, input) -> GuardrailFunctionOutput`. Return `output_info` (anything, for logs) and `tripwire_triggered` (bool).
@@ -286,6 +363,25 @@ triage = Agent(
 6. **Tool guardrails** (`@tool_input_guardrail`, `@tool_output_guardrail`) run on every guarded function-tool call, even after handoffs. Use them for checks like "refund amount ≤ order amount".
 
 Example numbers: the main agent is a large model at about 3 seconds per turn. A small-model guardrail takes about 0.5 seconds. Run in parallel, users wait ~3 s instead of ~3.5 s. Blocking first, an off-topic message costs only the 0.5 s check and no tool calls.
+
+```mermaid
+flowchart LR
+    subgraph PAR["run_in_parallel True: user waits about 3 s"]
+        I1["User input"] --> G1["Guardrail, small model 0.5 s"]
+        I1 --> A1["Main agent 3 s, may already call tools"]
+        G1 -->|tripwire| X1["Raise, cancel main agent"]
+    end
+    subgraph BLK["run_in_parallel False: 0.5 s then 3 s"]
+        I2["User input"] --> G2["Guardrail 0.5 s"]
+        G2 -->|ok| A2["Main agent 3 s"]
+        G2 -->|tripwire| X2["Raise, zero main-model spend"]
+    end
+    class A1,G2 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Parallel saves the 0.5 s but the main agent may spend tokens or run a tool before the trip; blocking makes the guardrail a gate in front of the agent.
 
 ```python
 from pydantic import BaseModel
@@ -334,6 +430,23 @@ except InputGuardrailTripwireTriggered as e:
 
 **Picture it:** A clinic file with your patient number. The receptionist pulls the file before you see the doctor and adds today's notes after.
 
+```mermaid
+sequenceDiagram
+    participant App
+    participant Runner
+    participant S as SQLiteSession u-77-chat
+    participant M as Model
+    App->>Runner: run with what about my other order, session
+    Runner->>S: get_items
+    S-->>Runner: 6 items from turn 1
+    Runner->>M: turn 1 history plus new message
+    M-->>Runner: answer about the other order
+    Runner->>S: add_items, new items of this run
+    Runner-->>App: final_output
+```
+
+*Diagram:* The session is read before the model call and written after it, so turn 2 sees turn 1 without your code passing history.
+
 **How it works, step by step:**
 
 1. Create a session with an id, for example per user chat: `SQLiteSession("u-77-chat", "support.db")`.
@@ -367,6 +480,23 @@ except InputGuardrailTripwireTriggered as e:
 
 **Picture it:** A courier's bag has a parcel (what the customer sees) and a delivery slip clipped to the back (context: address, payment status). The customer never reads the slip, but every hand that touches the parcel can.
 
+```mermaid
+flowchart LR
+    AUTH["Auth layer"] -->|user_id u-77, is_gold true| CTX["Context object SupportCtx"]
+    CTX --> TL["Tools read ctx.context.user_id"]
+    CTX --> GR["Guardrails and hooks"]
+    CTX --> DI["Dynamic instructions: Gold member line"]
+    DI -->|only this text reaches the model| M["Model"]
+    M -->|JSON for output_type| V{"Valid RefundDecision?"}
+    V -->|yes| FO["final_output: RefundDecision object"]
+    V -->|no| ER["ModelBehaviorError"]
+    class CTX,TL hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The context object travels to tools, guardrails and instructions but never to the model; only text you put in instructions does, and output_type is checked before the run ends.
+
 **How it works, step by step:**
 
 1. Define any class, for example `@dataclass class SupportCtx: user_id: str; is_gold: bool`.
@@ -389,6 +519,24 @@ except InputGuardrailTripwireTriggered as e:
 **Why it exists:** An agent that fails 1 time in 20 is impossible to debug from logs alone. You need to see the exact prompt, tool arguments and the order of steps. The SDK records this with zero setup. See [AI Observability](10-agent-observability.md).
 
 **Picture it:** A Swiggy order timeline: placed, accepted, picked up, delivered, each with a timestamp. A trace is that timeline for one agent run.
+
+```mermaid
+flowchart TD
+    T["Trace: Refund workflow, group_id u-77-chat"] --> AS1["agent_span Triage"]
+    AS1 --> GU["guardrail_span only_food"]
+    AS1 --> GS1["generation_span model call"]
+    AS1 --> HS["handoff_span to Refund agent"]
+    T --> AS2["agent_span Refund agent"]
+    AS2 --> GS2["generation_span model call"]
+    AS2 --> FS1["function_span get_order"]
+    AS2 --> FS2["function_span issue_refund"]
+    T -.->|trace processors| P["OpenAI dashboard, or Langfuse, or OTel"]
+    class FS2 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* One run is one trace; every agent, model call, tool, handoff and guardrail is a nested span, so a wrong refund leads you straight to its function_span.
 
 **How it works, step by step:**
 
@@ -441,6 +589,25 @@ except InputGuardrailTripwireTriggered as e:
 
 **Picture it:** The same call-centre team, now on the phone line instead of chat, plus a back office with its own desk and files.
 
+```mermaid
+flowchart LR
+    subgraph VP["VoicePipeline: three hops, reuse your text agent"]
+        A1["Audio in"] --> STT["Speech to text"]
+        STT --> WF["Your normal agent workflow"]
+        WF --> TTS["Text to speech"]
+        TTS --> O1["Audio out"]
+    end
+    subgraph RT["RealtimeAgent: one hop, lowest latency"]
+        A2["Audio in"] --> RM["Realtime model, speech to speech, barge-in"]
+        RM --> O2["Audio out"]
+    end
+    class WF,RM hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The pipeline adds up three latencies but keeps your text agent unchanged; realtime does speech to speech in one model with interruptions, using a different runner.
+
 **How it works, step by step:**
 
 1. **Voice pipeline** (`agents.voice.VoicePipeline`): speech-to-text → your normal agent workflow → text-to-speech. Easy to add to an existing text agent; latency is the sum of three steps.
@@ -468,6 +635,26 @@ except InputGuardrailTripwireTriggered as e:
 4. A run loop that handles the tripwire, approvals and the session.
 
 Worked example: order SW-1042 cost ₹640 and came 48 minutes late. Policy: 30+ minutes late → 50% refund = ₹320. ₹320 > ₹300, so the run pauses for approval.
+
+```mermaid
+flowchart LR
+    U["User: SW-1042 came 48 min late"] --> G{"only_food guardrail, blocking"}
+    G -->|off topic| NO["Fixed reply, no main-model cost"]
+    G -->|food order| TRI["Triage, ctx says Gold member"]
+    TRI -.->|transfer_to_order_status_agent| SA["Order status agent"]
+    TRI -->|transfer_to_refund_agent| RA["Refund agent"]
+    RA -->|get_order| GO["Rs 640, 48 min late, so 50 percent"]
+    GO --> AP{"issue_refund 320: above 300?"}
+    AP -->|yes, pause and save RunState| HU["Human approves"]
+    HU --> RD["RefundDecision refund_inr 320"]
+    S[("SQLiteSession u-77-chat")] -.-> TRI
+    class RA,AP,HU hot
+    class SA dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Follow the highlighted path for this example: the guardrail passes, triage hands off to refunds, and the Rs 320 refund pauses for a human because it is above Rs 300.
 
 **Step 1: context and tools.**
 
@@ -672,6 +859,21 @@ Cost example: triage on a small model at ~1,500 input tokens per turn, refund ag
 **Why it exists:** "Why this framework and not X?" is a standard senior question. A clear answer shows you match tools to the problem.
 
 **Picture it:** Choosing between an auto, a cab and a train. All move you; distance, luggage and budget decide.
+
+```mermaid
+flowchart TD
+    Q1{"Runs last hours or days with pauses?"} -->|yes| LG["LangGraph or a durable engine"]
+    Q1 -->|no| Q2{"Agent mainly edits files and runs shell?"}
+    Q2 -->|yes| CA["Claude Agent SDK"]
+    Q2 -->|no| Q3{"Mostly OpenAI models, triage plus specialists?"}
+    Q3 -->|yes| OA["OpenAI Agents SDK"]
+    Q3 -->|no, Gemini on Google Cloud| AD["Google ADK"]
+    class OA hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Ask durability first, then the kind of work, then the model provider; the Agents SDK wins when the answer is a short OpenAI-centric routing chat.
 
 **How it works, step by step:**
 

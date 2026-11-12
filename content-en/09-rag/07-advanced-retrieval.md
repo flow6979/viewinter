@@ -20,6 +20,38 @@ Basic RAG means: embed the query, fetch the top-k chunks, hand them to the LLM. 
 - **HyDE (Hypothetical Document Embeddings):** the LLM first writes a *fake answer*; embed that answer and search with it. Answer-like text sits closer to real answer chunks than the question does.
 - **Step-back prompting:** derive a more general question from a specific one ("80C limit in 2023?" → "what are the 80C rules?").
 
+```mermaid
+flowchart LR
+    U["yesterday's order still not here, money back?"] --> LLM["LLM writes 3 phrasings"]
+    LLM --> Q1["refund for undelivered order"]
+    LLM --> Q2["order not delivered compensation"]
+    LLM --> Q3["late delivery money back policy"]
+    Q1 --> R1["Retrieve top 20"]
+    Q2 --> R2["Retrieve top 20"]
+    Q3 --> R3["Retrieve top 20"]
+    R1 --> F["RRF merge"]
+    R2 --> F
+    R3 --> F
+    F --> T["Top 5, refund policy chunk first"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Multi-query: each phrasing finds a slightly different set, and RRF rewards the chunk that shows up in all three, at the cost of 3 retrieval calls.
+
+```mermaid
+flowchart LR
+    Q["Question: 80C limit?"] --> L["LLM writes a fake answer"]
+    L --> H["Section 80C allows deduction up to 1.5 lakh for PPF, ELSS, insurance"]
+    H --> E["Embed the fake answer"]:::hot
+    E -->|cosine 0.88| C["Real 80C rules chunk"]:::hot
+    Q -.->|question embedding, cosine 0.61| C
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* HyDE: the fake answer looks like a real answer chunk, so its embedding lands closer to the right chunk than the short question does; the fake text is only used for search.
+
 | Technique | When to use | Cost |
 |---|---|---|
 | Rewriting | Chat follow-ups, messy queries | 1 small LLM call |
@@ -59,6 +91,34 @@ flowchart LR
 - **GraphRAG:** extract entities and relations into a knowledge graph and build community summaries. Good for global questions like "what are the main themes across this whole dataset?", where top-k chunks are not enough.
 - GraphRAG's cost: many LLM calls at indexing, and updating the graph is expensive. Not a default choice.
 
+```mermaid
+flowchart TD
+    Q["User question"] --> P["Plan: which index or tool"]
+    P --> R["Retrieve"]
+    R --> G{"Grade chunks: good enough?"}
+    G -->|yes| A["Answer with citations"]:::hot
+    G -->|no, tries left| W["Rewrite query"]
+    W --> R
+    G -->|no, tries used up| WEB["Fallback: web search or say I don't know"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Agentic and corrective RAG add a grading step and a loop back to retrieval; every extra lap is another LLM call, which is where the 2-5x latency comes from.
+
+```mermaid
+flowchart LR
+    D["Docs"] --> X["LLM extracts entities and relations"]
+    X --> G[("Knowledge graph")]
+    G --> CM["Detect communities"]
+    CM --> S["LLM writes community summaries"]
+    S --> A["Global question answered from summaries"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* GraphRAG does its heavy LLM work at indexing time; a global question is answered from community summaries instead of a handful of top-k chunks.
+
 **Interview tip:** "Start with a simple pipeline plus eval. Go agentic only when questions are truly multi-step."
 
 ## ⭐ Giving context: lost-in-the-middle and citations
@@ -70,6 +130,22 @@ flowchart LR
 - **Citations:** give each chunk an id (`[1] hr-policy.pdf p.12`) and tell the prompt "write the source id after each claim". Show clickable sources in the UI.
 - Verify citations: check that each quoted id was actually in the context. Needed for both trust and debugging.
 - Tell the prompt: "If the answer isn't in the context, say you don't know." This is the cheapest hallucination guard.
+
+```mermaid
+flowchart LR
+    subgraph CTX["Context window, in order"]
+        P1["Position 1: best chunk, well used"]:::hot
+        P2["Position 2"]:::dim
+        P3["Position 3: middle, least used"]:::dim
+        P4["Position 4"]:::dim
+        P5["Position 5: end, well used"]
+    end
+    P1 --> P2 --> P3 --> P4 --> P5
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Models use the start and end of the context most and skim the middle, so put the reranker's best chunk first and keep the list short.
 
 **Interview tip:** "A bigger top-k isn't free: cost, latency and lost-in-the-middle. I retrieve 50, rerank, and send 5 with citations."
 **Common mistake:** dumping 20 chunks into the LLM thinking "more context = better answer".

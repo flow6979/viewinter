@@ -68,6 +68,24 @@ flowchart LR
 
 - Focus here: **when, what and how** the agent retrieves, and the production problems on the data side.
 
+```mermaid
+flowchart LR
+    subgraph OFF["Offline: indexing"]
+        D["Docs"] --> CH["Chunk"]
+        CH --> EM["Embed"]
+        EM --> IX[("Vector + BM25 index")]
+    end
+    subgraph ON["Online: once per question"]
+        Q["Question"] --> HS["Hybrid search: BM25 + dense, RRF"]
+        HS --> RR["Rerank top-k"]
+        RR --> P["Prompt + chunks"]
+        P --> L["LLM answer"]
+    end
+    IX --> HS
+```
+
+*Diagram:* The fixed two-step pipeline from the RAG pages; the rest of this page makes the online half agentic by deciding when, where and how often to run it.
+
 ## ⭐ Agentic RAG: retrieval as a tool
 
 **Why do we need it?** Classic RAG searches once per question, in one index, using the user's raw text. It fetches 4 docs even for "Hi". For a question that needs two sources, one source gets missed.
@@ -595,6 +613,23 @@ sequenceDiagram
     R-->>A: top-k allowed chunks
     A-->>U: Answer from allowed data
 ```
+
+```mermaid
+flowchart LR
+    subgraph PRE["Pre-filter: correct"]
+        Q1["Aman asks: appraisal budget?"] --> F1["Search with acl_groups in eng, all"]
+        F1 --> R1["Top-4 from eng and all chunks only"]:::hot
+    end
+    subgraph POST["Post-filter: wrong"]
+        Q2["Aman asks: appraisal budget?"] --> F2["Search all chunks, top-4"]
+        F2 --> R2["4 HR chunks"]:::dim
+        R2 -->|filter after| Z["0 chunks left, one bug means a leak"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* With a pre-filter HR chunks never enter the search; with a post-filter all four slots go to HR chunks, recall drops to zero and one missed check leaks them.
 
 **Now the terms:**
 - **ACL (access control list):** `acl_groups` / `tenant_id` metadata on every chunk, set at ingestion time.

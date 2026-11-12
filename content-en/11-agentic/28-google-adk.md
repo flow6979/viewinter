@@ -68,6 +68,23 @@ flowchart LR
 
 **Picture it:** A Zomato cloud kitchen. The head chef (`LlmAgent`) decides what to cook based on the order. Fixed stations like "wash, cut, fry" in order are workflow agents. The order ticket that travels with the dish is session state. The kitchen manager who takes the order, runs the kitchen and writes every step in a log book is the `Runner`. The log book entries are events.
 
+```mermaid
+flowchart TD
+    RN["Runner with session service"] --> ROOT["root_agent: LlmAgent front_desk"]
+    ROOT -->|sub_agents| LA["LlmAgent refund_desk"]
+    ROOT -->|sub_agents| SEQ["SequentialAgent checkout"]
+    SEQ --> S1["LlmAgent fetch_order"]
+    SEQ --> S2["LlmAgent write_reply"]
+    LA -->|tools| T1["issue_refund function"]
+    LA -->|tools| T2["AgentTool web_search"]
+    RN -.->|every step yields| EV["Event with state_delta, saved to session"]
+    class RN,EV hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Everything below the Runner is a tree of agents (LLM or workflow) with tools at the leaves; the Runner executes the tree and turns each step into a saved event.
+
 **How it works, step by step:**
 
 1. You write a root agent. It can be an `LlmAgent`, a workflow agent, or a `Workflow` graph.
@@ -104,6 +121,20 @@ flowchart LR
 
 **Picture it:** A Swiggy support executive with a script (instruction), a phone list of departments (tools and sub-agents), and the chat history on screen (session events).
 
+```mermaid
+flowchart LR
+    REQ["instruction with state filled, history from events, tool schemas"] --> M["Gemini"]
+    M -->|function call| T["ADK runs the tool"]
+    T -->|result added to history| REQ
+    M -->|plain text, no tool calls| F["Final answer"]
+    F -->|output_key intent| ST[("state intent")]
+    class M hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* An LlmAgent is this small loop: the model either asks for a tool (and ADK loops) or gives plain text, which output_key can save into state.
+
 **How it works, step by step:**
 
 1. You set `name`, `model`, `instruction`, `description` and `tools`.
@@ -114,6 +145,19 @@ flowchart LR
 6. `generate_content_config` sets temperature, max tokens and safety settings.
 
 Worked example: a triage agent with `output_key="intent"` replies `"refund"`. After that turn, `state = {"intent": "refund"}`. The next agent's instruction `"Handle a {intent} request"` becomes `"Handle a refund request"`.
+
+```mermaid
+flowchart LR
+    U["User: food came cold"] --> TA["triage, output_key intent"]
+    TA -->|replies refund| SD["Event state_delta: intent is refund"]
+    SD --> ST[("Session state")]
+    ST -->|fills the intent placeholder| NA["Next agent instruction: Handle a refund request"]
+    class SD hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Agents never parse each other's messages: one writes a state key through an event's state_delta, the next reads it through a placeholder in its instruction.
 
 ```python
 from google.adk.agents import LlmAgent   # same class as: from google.adk import Agent
@@ -149,6 +193,27 @@ triage = LlmAgent(
 
 **Picture it:** An IRCTC booking counter. Fill form, then pay, then print ticket: always in that order (sequential). Two clerks checking ID and payment at the same time (parallel). A proofreader who checks the ticket again until it is right, max three tries (loop).
 
+```mermaid
+flowchart LR
+    subgraph SQ["SequentialAgent"]
+        A["fill form"] --> B["pay"]
+        B --> C["print ticket"]
+    end
+    subgraph PA["ParallelAgent"]
+        P0["start"] --> X["check ID"]
+        P0 --> Y["check payment"]
+        X --> J["both done"]
+        Y --> J
+    end
+    subgraph LP["LoopAgent, max_iterations 3"]
+        D["draft"] --> R["review"]
+        R -->|not good, try again| D
+        R -->|exit_loop sets escalate| E["done"]
+    end
+```
+
+*Diagram:* Three fixed shapes with no LLM choosing the order: a straight line, a fan-out that joins, and a loop that ends on exit_loop or after 3 rounds.
+
 **How it works, step by step:**
 
 1. **`SequentialAgent(sub_agents=[a, b, c])`**: runs a, then b, then c. All share the same session state, so `a`'s `output_key` is visible to `b`.
@@ -165,6 +230,20 @@ triage = LlmAgent(
 | Pause for a human | custom work | built-in human-in-the-loop input |
 
 Worked example: a parallel step calls a flights agent (2.1 s) and a hotels agent (1.6 s). Sequential would take 3.7 s; parallel takes about 2.1 s, the slowest branch.
+
+```mermaid
+flowchart LR
+    S["START"] --> TR["triage LlmAgent"]
+    TR -->|one word| RT{"route_by_intent: plain Python"}
+    RT -->|route refund| RA["refund_agent"]
+    RT -->|route delivery| DA["delivery_agent"]
+    RT -->|route other| FA["faq_agent"]
+    class RT hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* This is the graph the 2.0 Workflow below builds: only triage uses the LLM; the highlighted function picks the next node for free by yielding a route.
 
 ```python
 from google.adk import START, Event, Workflow
@@ -202,6 +281,20 @@ support_flow = Workflow(
 **Why it exists:** Real flows have rules like "if the cart value is above ₹5,000, run the fraud agent first, else skip it". That is plain code, not a prompt.
 
 **Picture it:** The kitchen manager follows a laminated rule card for special cases instead of asking the chef each time.
+
+```mermaid
+flowchart TD
+    IN["orchestrate node, rerun_on_resume True"] --> C{"state cart_value above 5000?"}
+    C -->|yes, cart 7200| F["ctx.run_node fraud_agent"]
+    C -->|no, cart 1800| R["ctx.run_node reply_agent"]
+    F --> R
+    R --> OUT["yield Event output reply"]
+    class C hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The branch is an if-statement in Python, not a prompt; after a pause the whole node reruns from the top, so each child call must be safe to repeat.
 
 **How it works, step by step:**
 
@@ -243,6 +336,22 @@ root_agent = Workflow(name="checkout", edges=[("START", orchestrate)])
 
 **Picture it:** A support executive's desk: a calculator (function tool), Google on the browser (built-in search), a phone to a senior colleague who answers and hangs up (`AgentTool`), and a shared office printer anyone can use (MCP server).
 
+```mermaid
+flowchart LR
+    FN["Python function with docstring"] --> TL["One tool list the model sees"]
+    BI["google_search built-in"] --> SA["search_agent holding only that tool"]
+    SA -->|wrapped in AgentTool| TL
+    MCP["McpToolset over stdio or HTTP"] --> TL
+    OA["OpenAPIToolset: one tool per endpoint"] --> TL
+    TL --> AG["LlmAgent helper"]
+    AG -->|function call| CTX["ADK injects ToolContext: state, actions"]
+    class TL hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Five different sources look identical to the model; note the built-in search sits in its own agent and joins through AgentTool to avoid the mixing limit.
+
 **How it works, step by step:**
 
 1. **Function tool:** pass a plain Python function in `tools=[...]`. ADK builds the JSON schema from type hints and the docstring. Return a dict like `{"status": "ok", "eta_min": 25}`.
@@ -254,6 +363,24 @@ root_agent = Workflow(name="checkout", edges=[("START", orchestrate)])
 7. **Long-running tools and confirmation:** a tool can ask for human confirmation before it runs (tool confirmation flow).
 
 **Sub-agent transfer vs `AgentTool`:**
+
+```mermaid
+flowchart LR
+    subgraph TRF["sub_agents: transfer"]
+        P1["front_desk"] -->|transfer_to_agent| X1["refund_desk"]
+        X1 -->|replies to user from now on| U1["User"]
+    end
+    subgraph AGT["AgentTool: call and return"]
+        P2["helper"] -->|call web_search| X2["search_agent"]
+        X2 -->|answer as tool result| P2
+        P2 -->|helper writes the reply| U2["User"]
+    end
+    class X1,P2 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The highlighted agent talks to the user next: with transfer control moves to the sub-agent; with AgentTool it comes back to the parent.
 
 | | `sub_agents=[x]` (transfer) | `tools=[AgentTool(agent=x)]` |
 |---|---|---|
@@ -303,6 +430,25 @@ helper = LlmAgent(
 
 **Picture it:** A hospital visit file (session) holds today's notes. The patient's master record (memory) holds allergies from all past visits.
 
+```mermaid
+flowchart TD
+    SS[("Session service: InMemory, Database or VertexAi")] --> SE["Session: app support, user u42"]
+    SE --> EV["events: 30 per chat"]
+    SE --> ST["state"]
+    ST --> K1["order_id: this session only"]
+    ST --> K2["user:diet veg: every session of u42"]
+    ST --> K3["app:refund_limit 2000: all users"]
+    ST --> K4["temp:raw_api_json: this invocation, never saved"]
+    SE -->|add_session_to_memory| MS[("Memory service: Memory Bank")]
+    MS -->|load_memory or PreloadMemoryTool| NX["A later session of u42"]
+    class MS,NX hot
+    class K4 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The session holds one chat's events and state, with key prefixes setting how far each value reaches; the memory service is the separate long-term store later chats search.
+
 **How it works, step by step:**
 
 1. Session service options: `InMemorySessionService` (dev only), `DatabaseSessionService` (SQL database such as Postgres), `VertexAiSessionService` (managed by Google Cloud).
@@ -322,6 +468,23 @@ helper = LlmAgent(
 
 Worked example: a Postgres session table at 2 KB per event, 30 events per chat and 100,000 chats a day is about 6 GB of events per day. Plan retention, for example keep 30 days.
 
+```mermaid
+flowchart LR
+    subgraph OK["Saved"]
+        T1["tool_context.state order_id 8812"] --> E1["Event carries state_delta"]
+        E1 --> C1["Runner commits to session service"]
+    end
+    subgraph BAD["Lost"]
+        T2["Fetch session, then set session.state x"] --> C2["Only your local copy changed"]
+    end
+    class C1 hot
+    class C2 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Step 4 as a picture: a state change persists only when it rides on an event; editing a fetched session object changes nothing in storage.
+
 **Interview tip:** "Session vs memory in ADK?" Say: "Session is short-term: one conversation's events and state, stored by a session service. Memory is long-term and searchable across sessions, stored by a memory service such as Vertex AI Memory Bank. User-level facts can also live in `user:`-prefixed state."
 
 **Common mistake:**
@@ -335,6 +498,29 @@ Worked example: a Postgres session table at 2 KB per event, 30 events per chat a
 **Why it exists:** You need checks that the model cannot talk its way around: block a refund above the limit, mask PII in prompts, cache answers, log every tool call.
 
 **Picture it:** A bank teller's supervisor who checks every withdrawal slip above ₹50,000 before cash leaves the counter.
+
+```mermaid
+sequenceDiagram
+    participant R as Runner
+    participant CB as Your callbacks
+    participant M as Gemini
+    participant T as issue_refund
+    R->>CB: before_agent_callback
+    R->>CB: before_model_callback
+    CB-->>R: None, continue
+    R->>M: LlmRequest
+    M-->>R: call issue_refund amount 2500
+    R->>CB: after_model_callback
+    R->>CB: before_tool_callback refund_guard
+    CB-->>R: dict blocked, above 2000
+    Note over R,T: real tool is skipped, the dict becomes the tool result
+    R->>CB: after_tool_callback
+    R->>M: tool result blocked
+    M-->>R: final text, a human will call back
+    R->>CB: after_agent_callback
+```
+
+*Diagram:* The six hooks wrap the agent, each model call and each tool call; refund_guard returns a dict, so issue_refund never runs for Rs 2,500.
 
 **How it works, step by step:**
 
@@ -374,6 +560,23 @@ def refund_guard(tool: BaseTool, args: dict[str, Any],
 **Why it exists:** This is the shape of most real ADK apps: one coordinator that routes, specialists with tools, a code guardrail, and a Runner in your API server.
 
 **Picture it:** The front-desk executive listens and transfers you to "delivery desk" or "refund desk". The refund desk has a supervisor rule for big amounts.
+
+```mermaid
+flowchart LR
+    APP["API server: runner.run_async"] --> FD["front_desk LlmAgent"]
+    FD -->|transfer: where is order 8812| DD["delivery_desk: get_order"]
+    FD -->|transfer: refund Rs 640| RD["refund_desk: get_order, issue_refund"]
+    RD --> CB{"refund_guard: amount above 2000?"}
+    CB -->|no, 640| IR["issue_refund runs"]
+    CB -->|yes| BL["blocked, needs_human set"]
+    APP --- SS[("Session service: order_id 8812 in state")]
+    class RD,CB,IR hot
+    class BL dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Turn 2 of the example follows the highlighted path: transfer to refund_desk, guard check, and Rs 640 passes because it is under the Rs 2,000 limit.
 
 **How it works, step by step:**
 
@@ -587,6 +790,23 @@ Worked example on cost: if triage runs on a flash model at roughly one-tenth the
 
 **Picture it:** A driving test route. Same route every time; the examiner checks both the turns you took and where you ended up.
 
+```mermaid
+flowchart LR
+    CASE["Eval case: user turns, expected tools, reference answer"] --> RUN["Run the agent"]
+    RUN --> TRJ["Actual tools: issue_refund only"]
+    RUN --> ANS["Final answer text"]
+    TRJ -->|vs get_order then issue_refund| S1["tool_trajectory_avg_score 0.0, fail"]
+    ANS -->|similarity vs reference| S2["response_match_score 0.85, pass at 0.8"]
+    S1 --> GATE{"All 50 cases pass?"}
+    S2 --> GATE
+    GATE -->|46 of 50| BLOCK["Block deploy, fix the instruction"]
+    class S1,BLOCK hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each case is scored twice: the path of tool calls and the final text; here the answer looks fine but skipping get_order fails the trajectory and blocks the deploy.
+
 **How it works, step by step:**
 
 1. Save good conversations as eval cases from `adk web`, or write `.test.json` / `.evalset.json` files by hand.
@@ -609,6 +829,22 @@ Worked example: 50 cases, trajectory threshold 1.0. After a prompt change, 46 pa
 **Why it exists:** A demo on a laptop has no persistence, no scaling, no auth and no traces.
 
 **Picture it:** Moving from a home kitchen to a licensed restaurant: fridge logs, CCTV, fire exits.
+
+```mermaid
+flowchart LR
+    CI["CI: adk eval"] -->|gate| CR["Cloud Run container: Runner and agents"]
+    U["Users"] -->|SSE stream| CR
+    CR --> DB[("Cloud SQL Postgres: sessions")]
+    CR --> MB[("Memory Bank: long-term memory")]
+    CR --> GM["Gemini on Vertex AI"]
+    CR -.->|OTel traces| TR["Cloud Trace or Langfuse"]
+    CR -->|A2A via agent card URL| RA["Another team's agent"]
+    class CR hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* A typical production layout: a stateless container with durable sessions and memory outside it, traces exported, evals gating deploys, and A2A only to other teams.
 
 **How it works, step by step:**
 
@@ -639,6 +875,21 @@ Worked example: 50 cases, trajectory threshold 1.0. After a prompt change, 46 pa
 **Why it exists:** "Why ADK and not X?" is a standard senior question. You need reasons, not brand loyalty.
 
 **Picture it:** Buying a phone in an ecosystem. An Android phone works best with Google services, but you can still install other apps.
+
+```mermaid
+flowchart TD
+    Q1{"On Google Cloud, or need Gemini built-ins or Agent Engine?"} -->|yes| ADK["Google ADK"]
+    Q1 -->|no| Q2{"Complex long-running flow needing explicit control?"}
+    Q2 -->|yes| LG["LangGraph"]
+    Q2 -->|no| Q3{"OpenAI-centric bot with routing?"}
+    Q3 -->|yes| OA["OpenAI Agents SDK"]
+    Q3 -->|no, quick role-based pipeline| CR["CrewAI"]
+    class ADK hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Start from your platform and runtime needs, not the model brand; ADK is the first stop when Google Cloud features matter.
 
 **How it works, step by step:**
 

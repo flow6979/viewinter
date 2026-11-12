@@ -159,6 +159,25 @@ flowchart LR
 2. Worker run chalata hai aur progress events bhejta hai: "1/5 trades load", "2/5 capital gains".
 3. User app band karke 5 minute baad lauta. App `GET /runs/r9` poll karti hai (ya stream dobara join), status milta hai, aur end me report ka link (ya webhook).
 
+```mermaid
+sequenceDiagram
+    participant U as User app
+    participant A as API
+    participant Q as Queue
+    participant W as Worker
+    U->>A: POST Build my Q2 tax report
+    A->>Q: run r9 enqueue
+    A-->>U: 202 Accepted, run_id r9, queued
+    Q->>W: r9 deliver
+    W-->>U: progress 1/5 trades loaded
+    W-->>U: progress 2/5 capital gains
+    Note over U: user app band karta hai, kaam chalta rehta hai
+    U->>A: 5 min baad GET /runs/r9
+    A-->>U: status done plus report link
+```
+
+*Diagram:* API milliseconds me run_id deta hai aur kaam queue ko de deta hai; app band hone ke baad bhi worker chalta rehta hai, aur app baad me usi run_id se result le leta hai.
+
 | | Sync (streaming) run | Background run |
 |---|---|---|
 | Duration | seconds | minutes–hours |
@@ -253,6 +272,22 @@ print(snap.next)        # ('write_report',)
 2. 3 second baad, jab `run_1` abhi chal raha hai, Riya likhti hai "Cancel kar do".
 3. Ek thread pe do runs saath chale to state gadbad hogi, isliye Platform `multitask_strategy` dekhta hai. Yahan `interrupt` hai: `run_1` rukta hai (progress thread me rehta hai) aur `run_2` chalta hai.
 4. Agent ko poori baat dikhti hai (late + cancel) aur wo cancel flow chalata hai.
+
+```mermaid
+sequenceDiagram
+    participant R as Riya
+    participant P as Platform
+    participant T as Thread t_88
+    R->>P: Order late hai
+    P->>T: run_1 start, streaming
+    R->>P: Cancel kar do, 3 s baad
+    P->>P: run_1 abhi busy, multitask_strategy check
+    P->>T: run_1 interrupt, progress thread me safe
+    P->>T: run_2 start, late plus cancel dono ke saath
+    T-->>R: cancel flow chalta hai
+```
+
+*Diagram:* Ek thread pe do messages; dono ek saath chalane ki jagah Platform interrupt strategy lagata hai, to run_1 progress save karke rukta hai aur run_2 ko poori baat dikhti hai.
 
 **Ab terms (Platform concepts):**
 - **Assistant:** graph + config (model, prompt, tools) ka versioned instance. Ek graph se kai assistants, jaise "support-hindi", "support-english".

@@ -114,6 +114,27 @@ flowchart LR
 
 **Aise socho:** Pinecone vectors ka Swiggy Instamart hai. Dark store kabhi nahi dikhta. Tum order dete ho (writes aur queries), aur har order aur shelf space ka paisa dete ho.
 
+```mermaid
+flowchart LR
+    W["Upsert to tenant-swiggy"] --> LOG["Write log"]
+    LOG -->|seconds later| IB["Index builder"]
+    subgraph OS["Object storage, source of truth"]
+        NS1["tenant-swiggy index files"]
+        NS2["tenant-zomato index files"]
+        NS3["tenant-ola index files"]
+    end
+    IB --> NS1
+    Q["Query for tenant-swiggy"] --> QN["Query node with SSD and RAM cache"]
+    QN -->|cache miss only| NS1
+    QN --> R["Top 5, read units grow with namespace size"]
+    class Q,QN,NS1 hot
+    class NS2,NS3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Writes aur reads object storage ke upar alag raaste hain; query sirf apna namespace chhooti hai, aur indexing se pehle ka 'seconds later' gap hi eventual consistency hai.
+
 **Kaise kaam karta hai, step by step:**
 1. **History (interviewer "kya badla" poochhte hain):** Pinecone pod-based indexes se shuru hua, fixed-size machines (p1, s1, p2) jo tum chunte aur ghante ke hisaab se pay karte. 2024 me **serverless** indexes aaye, jo storage (object storage) ko compute se alag karte hain. 2026 me SDKs ne naye pod indexes banana band kar diya, aur pods se serverless ka migration path hai.
 2. **Data model:** index → namespaces → records. Record me `_id`, dense aur/ya sparse vector, aur flat metadata hota hai. Python SDK v10 (API 2026-07) **schema-based document indexes** laata hai: index banate waqt searchable fields declare karte ho (`dense_vector`, `sparse_vector`, ya full-text search wala `string`). Jin fields pe sirf filter lagana hai unhe declare nahi karte; wo filtering ke liye apne aap index ho jaate hain.
@@ -181,6 +202,40 @@ for match in results.matches:
 **Ye kyun chahiye:** real queries me lagbhag hamesha filters hote hain ("sirf ye tenant, sirf English, sirf last 30 din"). Jab filter zyada tar nodes hata de to plain HNSW graph toot jaata hai. Qdrant isi ke around bana: filtered vector search ko accurate aur fast banana, ek efficient binary me jo tum self-host kar sako.
 
 **Aise socho:** Qdrant IRCTC search jaisa hai jo pehle proper index se train class aur date se narrow karta hai, phir bache hue me best seats dhoondhta hai, na ki saari seats search karke zyada tar phenk de.
+
+```mermaid
+flowchart TD
+    C["Collection support"] --> S1["Shard 1"]
+    C --> S2["Shard 2, replica on another node"]
+    S1 --> SG1["Segment A, sealed"]
+    S1 --> SG2["Segment B, growing"]
+    SG1 --> V["int8 vectors in RAM, 4x smaller"]
+    SG1 --> O["float32 originals on disk for rescoring"]
+    SG1 --> PI["Payload index: tenant with is_tenant, lang"]
+    SG1 --> H["HNSW with extra filter links"]
+    class V,PI,H hot
+    class SG2 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har sealed segment ke paas apne quantized vectors, disk pe originals, payload indexes aur HNSW hote hain; growing segment optimizer ke index karne tak brute force se search hota hai.
+
+```mermaid
+flowchart LR
+    Q["Query: tenant swiggy, lang en, top 5"] --> PL["Planner reads payload index counts"]
+    PL --> D{"How many points match?"}
+    D -->|few, e.g. 2000| BF["Exact brute force over the matches"]
+    D -->|many| FH["Filterable HNSW, ef 128"]
+    FH -->|10 candidates with oversampling 2x| RS["Rescore with float32 originals"]
+    BF --> R["Top 5"]
+    RS --> R
+    class PL,D hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Planner payload-index counts dekh ke chhote filtered set ke liye exact brute force chunta hai, aur bade set ke liye filter-aware HNSW plus rescoring.
 
 **Kaise kaam karta hai, step by step:**
 1. **Data model:** collection → points. Point me id (sirf unsigned integer ya UUID), ek ya zyada **named vectors** (dense, sparse, ya multi-vector), aur JSON **payload** hota hai.
@@ -255,6 +310,36 @@ for p in res.points:
 
 **Aise socho:** Weaviate ek library hai jisme librarian bhi hai. Tum kitaabein (objects) do; librarian chune hue embedding model se catalogue cards (vectors) likhta hai, aur title ke words (BM25) aur topic (vectors) dono se ek saath dhoondh sakta hai.
 
+```mermaid
+flowchart LR
+    OBJ["Insert: Refunds take 5-7 days"] --> VEC["Vectorizer module text2vec-openai"]
+    VEC --> VI["Vector index HNSW"]
+    OBJ --> INV["Inverted index for BM25 and filters"]
+    QT["Query: refund kitne din me"] --> VEC2["Same vectorizer module"]
+    VEC2 --> VI
+    QT --> INV
+    VI --> F["Fusion with alpha 0.5"]
+    INV --> F
+    F --> RR["Reranker module"]
+    RR --> GEN["Generative module writes the answer"]
+    class VEC,VEC2,F hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Same vectorizer module insert pe objects aur search pe query text embed karta hai; BM25 aur vector results alpha se fuse hote hain, phir optional reranker aur generative modules usi query me chalte hain.
+
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE: tenant created
+    ACTIVE --> INACTIVE: idle, free the RAM
+    INACTIVE --> ACTIVE: customer returns
+    INACTIVE --> OFFLOADED: long idle, move to S3
+    OFFLOADED --> ACTIVE: reload from S3
+```
+
+*Diagram:* Har tenant apna shard hai jo RAM, local disk aur S3 ke beech move karta hai; isi se ek cluster idle customers ki lambi list sasti me rakh leta hai.
+
 **Kaise kaam karta hai, step by step:**
 1. **Data model:** collection (purana naam: class) → objects. Har object me typed **properties** (text, int, date, geo...), ek UUID, aur ek ya zyada **named vectors** hote hain. Cross-references objects ko jodte hain.
 2. **Modules:** **vectorizer** module (jaise `text2vec-openai`, `text2vec-cohere`, `text2vec-ollama`, `multi2vec-clip`) insert pe objects aur search pe query text embed karta hai. Apne vectors bhi la sakte ho (`self_provided`). Generative aur reranker modules same query me RAG answer aur reranking jodte hain.
@@ -323,6 +408,25 @@ client.close()
 
 **Aise socho:** Milvus Flipkart ka bada warehouse operation hai. Receiving docks (streaming nodes) maal lete hain, packing team (data nodes) boxes (indexes) banati hai, pickers (query nodes) orders serve karte hain, aur asli stock ek bade saste godown (object storage) me padha hai.
 
+```mermaid
+flowchart LR
+    CL["Client SDK"] --> PX["Proxy, access layer"]
+    PX --> CO["Coordinator"]
+    PX -->|inserts| SN["Streaming nodes, growing segments"]
+    SN --> WAL["WAL Woodpecker"]
+    SN -->|seal segment| OS[("Object storage S3 or MinIO")]
+    CO -->|schedule| DN["Data nodes: compaction, index build"]
+    DN --> OS
+    PX -->|searches| QN["Query nodes load sealed segments"]
+    OS --> QN
+    CO --> ET[("etcd metadata")]
+    class SN,DN,QN hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Ingest, index building aur search teen alag node types hain jo object storage share karte hain, isliye QPS ke liye query nodes badhao bina ingest chhede.
+
 **Kaise kaam karta hai, step by step:**
 1. **Data model:** database → collection → partitions → segments. Collection ka **schema** hota hai: primary key, ek ya zyada vector fields (float, float16, bfloat16, binary, int8, sparse), scalar fields, aur optional dynamic JSON fields.
 2. **Architecture (2.6):** access layer (proxies), ek coordinator, worker nodes (fresh writes ke liye streaming nodes, search ke liye query nodes, compaction aur index building ke liye data nodes), aur storage: metadata ke liye etcd, data ke liye object storage (S3/MinIO), aur WAL (2.6 me Woodpecker, pehle Kafka/Pulsar).
@@ -387,6 +491,18 @@ for h in hits[0]:
 
 **Aise socho:** Chroma vector DBs ki Maggi hai: packet se plate tak do minute. Hostel ki raat ke liye badhiya; 500 logon ki canteen ke liye bade kitchen pe jaana padta hai (Chroma Cloud ya koi aur DB).
 
+```mermaid
+flowchart LR
+    E["EphemeralClient, in memory"] -->|need to keep data| P["PersistentClient, SQLite plus HNSW on disk"]
+    P -->|several processes| H["chroma run plus HttpClient"]
+    H -->|multi-tenant production| C["CloudClient, SPANN on object storage"]
+    class P hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har step pe wahi chhota API; agla limit aane pe hi right me badhte ho: notebook, ek disk, server, phir serverless cloud.
+
 **Kaise kaam karta hai, step by step:**
 1. **Modes:** in-memory (`EphemeralClient`), disk pe embedded (`PersistentClient`, SQLite plus local HNSW index), client-server (`chroma run` with `HttpClient`), aur **Chroma Cloud** (`CloudClient`).
 2. **Data model:** tenant → database → collection → records jinke `ids`, `embeddings`, `documents` (text), aur `metadatas` hote hain.
@@ -443,6 +559,23 @@ print(res["ids"][0], res["distances"][0])
 
 **Aise socho:** LanceDB aisa hai jaise data ko Google Drive pe ek achhe se indexed Excel file me rakhna. Koi server nahi chalana; jiske paas access hai wo file khole aur search kare.
 
+```mermaid
+flowchart LR
+    subgraph APP["Your Python process"]
+        L["lancedb library, search runs here"]
+    end
+    L -->|reads columns and index files| S3[("S3 bucket with Lance files")]
+    S3 --> V1["version 1: create_table"]
+    S3 --> V2["version 2: merge_insert"]
+    S3 --> V3["version 3: optimize and compact"]
+    class L,V3 hot
+    class V1,V2 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Koi database server nahi: tumhare process ke andar library seedha S3 se Lance files padhti hai, aur har write ek naya version banata hai jisme cleanup tak time-travel kar sakte ho.
+
 **Kaise kaam karta hai, step by step:**
 1. **Lance format:** columnar format (Arrow-compatible, Parquet jaisa) jo fast random row access aur vectors ke liye bana. Har write naya **version** banata hai, to time travel aur aasaan rollback milta hai.
 2. **Embedded:** `lancedb.connect("./data")` ya `lancedb.connect("s3://bucket/path")`. Search tumhare process ke andar chalta hai; storage remote ho sakta hai.
@@ -498,6 +631,22 @@ print([(r["id"], r["_distance"]) for r in res])
 **Ye kyun chahiye:** code assistants jaise AI apps har user ya har repo ka alag index rakhte hain: millions of namespaces, kisi bhi pal zyada tar idle. Sabko RAM me rakhna bahut mehenga hai. turbopuffer sab kuch object storage pe rakhta hai aur sirf jo query ho raha hai use cache karta hai.
 
 **Aise socho:** ek cloud kitchen jo kachcha maal door ke saste godown me rakhta hai aur kitchen ke fridge me sirf aaj ke popular items. Kisi rare dish ka pehla order slow, repeat orders fast.
+
+```mermaid
+flowchart LR
+    W["Writes, batched"] -->|about 1 commit per second| WAL[("WAL on object storage, durable")]
+    Q["Query for namespace repo-42"] --> C{"Namespace in NVMe or RAM cache?"}
+    C -->|warm| F["Answer in 10-30 ms"]
+    C -->|cold| S3[("Object storage")]
+    S3 -->|load centroid index| L["Fill cache, hundreds of ms to 1 s"]
+    L --> F2["Answer, next query is warm"]
+    class F hot
+    class S3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Namespace ki sirf pehli (cold) query object storage ka chakkar lagati hai; uske baad cache se tens of ms me jawab aata hai.
 
 **Kaise kaam karta hai, step by step:**
 1. **Storage:** object storage source of truth hai. Har namespace ka apna path hai. Writes object storage pe WAL me jaate hain; successful write durable hai.
@@ -614,6 +763,22 @@ flowchart TD
 
 **Aise socho:** trip ke liye packing. Kapde (raw vectors) bag ka zyada hissa lete hain, bag khud (index) thoda jodta hai, vacuum bags (quantization) kapde chhote karte hain, aur do bag (replicas) sab double kar dete hain.
 
+```mermaid
+flowchart LR
+    R["10M x 1024 x 4 bytes = 41 GB raw"] --> H["+ HNSW graph 1.5 GB"]
+    H --> M["+ metadata 1 GB"]
+    M --> HR["+ 20% headroom = 53 GB"]
+    HR -->|x 2 replicas| T["106 GB RAM"]
+    R -->|int8 quantize| Q["10.2 GB in RAM, originals on SSD"]
+    Q -->|same extras, x 2 replicas| T2["about 30 GB RAM"]
+    class Q,T2 hot
+    class T dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Raw vectors hi bill ka bada hissa hain; int8 quantization aur originals disk pe rakhne se 2 replicas ki RAM ~106 GB se ~30 GB ho jaati hai.
+
 **Kaise kaam karta hai, step by step.** Scenario: support RAG product, 10M chunks, 1024-dim embedding model, availability ke liye 2 replicas.
 
 | Item | Math | Size |
@@ -654,6 +819,22 @@ Aur numbers jo bolne chahiye:
 **Ye kyun chahiye:** teams apni pehli choice se aage nikal jaati hain (Chroma se Qdrant, Pinecone se self-hosted, pgvector se dedicated DB). Planned migration boring hota hai; unplanned migration weekend ka outage.
 
 **Aise socho:** ghar shift karna. Furniture (data) pack aur label ho to aaraam se shift hota hai. Fitted wardrobes (vendor-specific features) peeche reh jaate hain.
+
+```mermaid
+flowchart LR
+    CS[("Canonical chunk store: id, text, metadata, vector, model")] -->|backfill| NEW["New DB, e.g. Qdrant"]
+    APP["App writes"] --> OLD["Old DB, e.g. Pinecone"]
+    APP -->|dual write| NEW
+    NEW --> CMP{"Golden queries: overlap, recall, p99, cost OK?"}
+    CMP -->|yes| CUT["Flag flips reads to new DB"]
+    CMP -->|no| FIX["Fix filter and tenancy mapping"]
+    CUT --> RB["Keep old DB for rollback, then stop dual writes"]
+    class CS,CUT hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Canonical chunk store hi escape hatch hai: woh naye DB ko backfill karta hai jab dual writes dono ko fresh rakhte hain, aur reads golden-query comparison pass hone ke baad hi flip hote hain.
 
 **Kaise kaam karta hai, step by step:**
 1. **Canonical copy rakho** har chunk ki vector DB ke bahar: `id, doc_id, tenant, text, metadata, embedding_model, vector`, S3 pe Parquet ya Postgres me rows. Yahi tumhara escape hatch aur backup hai.
@@ -704,10 +885,39 @@ flowchart LR
 - Pinecone serverless aur Milvus "Bounded" eventually consistent hain (seconds). Qdrant `wait=True`, Milvus `Strong`/`Session`, aur turbopuffer ka default read-your-writes dete hain.
 - "User PDF upload kare aur turant uske baare me poochhe" ke liye ya to us request ke liye strong read use karo, ya write confirm hone tak "indexing..." dikhao.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App
+    participant DB as Vector DB
+    U->>App: upload refund policy PDF
+    App->>DB: upsert chunks
+    DB-->>App: ack, write is in the log
+    U->>App: ask about refunds
+    App->>DB: search right away
+    DB-->>App: chunk not indexed yet, missing
+    Note over DB: index catches up in seconds
+    App->>DB: strong read or wait=True
+    DB-->>App: chunk found
+```
+
+*Diagram:* Ack ka matlab durable hai, searchable nahi; eventual consistency me pehli search chunk miss kar sakti hai, isliye us request ke liye strong read lo ya indexing state dikhao.
+
 **3. Deletes.**
 - Zyada tar indexes tombstones se delete karte hain, aur space compaction ke baad wapas aata hai. Bahut zyada delete churn optimizer chalne tak recall aur latency ko nuksan karta hai.
 - Deterministic ids (`doc7#c3`) ya `doc_id` field use karo taaki "ye document delete karo" ek call ho (id prefix se delete, ya filter se delete).
 - GDPR erasure: snapshots, backups aur LanceDB ke purane versions bhi sambhalo, unme data ab bhi hota hai.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Live: upsert
+    Live --> Tombstoned: delete, skipped at query time
+    Tombstoned --> Compacted: background merge frees space
+    Compacted --> Erased: snapshots, backups, old versions cleaned
+    Erased --> [*]
+```
+
+*Diagram:* Delete pehle sirf tombstone hota hai; space compaction ke baad wapas aata hai, aur GDPR erasure tabhi poora hai jab backups aur purane versions bhi saaf hon.
 
 **4. Tenant isolation.**
 

@@ -68,6 +68,22 @@ Poora loop "Agent loop aur ReAct" me hai, `tool_use`/`tool_result` "Tool calling
 
 Kaunsa step pehle, kaunsa baad me, kab rukna: ye sab LLM ne khud decide kiya. Yahi agent ki pehchaan hai.
 
+```mermaid
+flowchart LR
+    U["User: order late, refund please"] --> L["LLM decides next step"]:::hot
+    L -->|step 1| T1["get_order_status: 40 min late"]
+    T1 --> L
+    L -->|step 2, 40 is over 30| T2["check_refund_policy: full refund"]
+    T2 --> L
+    L -->|step 3| T3["issue_refund"]
+    T3 --> L
+    L -->|done| R["Reply: Refund done"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Highlighted LLM node se nikalne wala har arrow model ka apna faisla hai; tumhara code sirf maanga hua tool chalata hai aur result wapas deta hai.
+
 **Ab terms:**
 
 - **LLM (brain):** sochta hai aur agla action chunta hai.
@@ -419,6 +435,18 @@ Swiggy run ka hisaab (system prompt + tool schemas = 800 tokens maan lo):
 
 3 turns me input 3.4x ho gaya. 20 steps wala agent ho to har step pichhli saari history dobara bhejta hai, isliye cost steps ke saath roughly **quadratic** badhti hai.
 
+```mermaid
+flowchart LR
+    C1["Call 1 input: 800 setup + 30 user = 830"] -->|append tool_use + tool_result, +110| C2["Call 2 input: 940"]
+    C2 -->|append 2 more messages, +90| C3["Call 3 input: 1,030"]
+    C3 --> T["Billed input: 830 + 940 + 1,030 = 2,800"]:::hot
+    S["One single call would be 830"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har call pichla sab kuch dobara bhejti hai, isliye bill hone wala input (highlighted) teeno calls ka jod hai, single call ka 3.4x.
+
 ### Context window
 
 - **Context window** = model ek call me maximum kitne tokens dekh sakta hai (aaj kal 128k–1M).
@@ -500,6 +528,26 @@ print(d.eligible, d.amount_inr)                       # True 450  (typed Pydanti
 ```
 
 Section 3 tools ka order fix karta hai, section 4 policy hai jo kabhi nahi tootni chahiye, aur section 6 batata hai kab rukna hai. Iske bina agent loop me ghoomta rehta hai.
+
+```mermaid
+flowchart LR
+    subgraph SP["System prompt"]
+        R["1 Role + goal"]
+        C["2 Context: tier, date, language"]
+        T["3 Tool usage"]
+        K["4 Constraints"]
+        O["5 Output"]
+        E["6 Escalation"]
+    end
+    T -->|get_kyc_status first| B1["Which tool, in what order"]
+    K -->|only last 4 digits of PAN| B2["Rule that never breaks"]
+    O -->|max 3 lines| B3["Reply shape"]
+    E -->|after 2 failed verifications| B4["Stop and call a human"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Prompt ka har section loop ka ek behaviour control karta hai; escalation section (highlighted) hi agent ko hamesha ghoomne se rokta hai.
 
 **Ab terms:**
 
@@ -595,6 +643,17 @@ Zomato restaurant onboarding (documents → FSSAI check → listing) me path fix
 
 **Ek example:** Paytm support evolution: L0 FAQ answer (single call) → L1 intent router → L2 tool agent (order lookup, refund) → L3 multi-agent (payments + KYC + disputes specialists) → L4 background agent jo khud fraud patterns monitor karke tickets kholta hai.
 
+```mermaid
+flowchart LR
+    L0["L0 Single call: FAQ answer"] --> L1["L1 Router: intent to team"]
+    L1 --> L2["L2 Tool agent: refund loop"]
+    L2 --> L3["L3 Multi-agent: payments, KYC, disputes"]
+    L3 --> L4["L4 Autonomous: fraud monitor opens tickets"]
+    L0 -.->|LLM control, risk and guardrails grow| L4
+```
+
+*Diagram:* Right ki taraf har step pe control flow ka zyada hissa LLM ke paas jaata hai, isliye galti ki keemat aur zaroori guardrails bhi badhte hain.
+
 | Level | Kya | Kaun decide karta | Example | Risk |
 |---|---|---|---|---|
 | L0 Single call | prompt → answer | koi nahi | summarize ticket | low |
@@ -622,6 +681,20 @@ Zomato restaurant onboarding (documents → FSSAI check → listing) me path fix
 1. `get_order_status("ORD-9")` → `"pending"`. Model: "abhi final nahi", phir wahi call → `"pending"`.
 2. 9 baar same call, same result. 9 LLM calls ka bill, user ko jawab nahi.
 3. **Fix:** `max_steps=6` (fallback reply), repeat detection (same name + args + result → observation "status nahi badla, abhi ka status batao"), aur prompt: "pending ho to ETA batao, dobara check mat karo".
+
+```mermaid
+flowchart LR
+    L["LLM"] -->|get_order_status ORD-9| T["Tool result: pending"]
+    T --> RD{"Same name, args and result as last call?"}
+    RD -->|no| L
+    RD -->|yes| OB["Observation: status unchanged, tell the user"]:::hot
+    OB --> L
+    L -->|step 6 is max_steps| FB["Fallback reply"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Repeat check ke bina loop 9 baar ghoomta hai; dono highlighted guards atke hue loop ko user ke liye jawab me badal dete hain.
 
 | Failure | Symptom | Fix |
 |---|---|---|

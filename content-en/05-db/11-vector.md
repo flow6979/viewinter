@@ -19,9 +19,38 @@ A vector DB searches by "meaning", not by exact words. Turn text, an image or a 
 
 > **Example:** on Flipkart you search "comfortable chair for office". The product title says "ergonomic chair". Vector search matches the two.
 
+```mermaid
+flowchart LR
+    T1["Sasta phone 15000 ke andar"] --> M["Embedding model, 1536 dims"]
+    T2["budget smartphone under 15k"] --> M
+    T3["red phone cover"] --> M
+    M --> V1["vector A"]:::hot
+    M --> V2["vector B"]:::hot
+    M --> V3["vector C"]:::dim
+    V1 <-->|cosine 0.91, near| V2
+    V1 <-->|cosine 0.42, far| V3
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Different words, same meaning: A and B land close (0.91) with no shared keyword, while the phone cover is related but far away.
+
 Memory math (useful in interviews):
 - 10 million vectors × 1536 dims × 4 bytes (float32) ≈ **61 GB** for raw vectors alone. The index (HNSW links) adds ~10–30% on top.
 - That is why quantization (float16, int8, PQ) and reducing dims (`dimensions` parameter, Matryoshka embeddings) matter.
+
+```mermaid
+flowchart LR
+    N["10M vectors x 1536 dims"] --> F32["float32: 61 GB"]
+    F32 --> F16["float16 halfvec: 31 GB"]
+    F16 --> I8["int8: 15 GB"]
+    I8 --> PQ["PQ, 96 bytes each: about 1 GB"]:::hot
+    F32 --> H["plus HNSW links: 10-30% more"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each step trades a little accuracy for memory; PQ shrinks 61 GB of raw vectors to about 1 GB, which is why billion-scale indexes rely on it.
 
 **Interview tip:** say "an embedding = semantic coordinates. A vector DB's job is just this: find the query's nearest K among billions of points, fast, with filters."
 
@@ -41,6 +70,19 @@ Memory math (useful in interviews):
 - Use the metric the model was trained with. The model card says so.
 - Watch distance (smaller = better) vs similarity (bigger = better). pgvector `<=>` returns cosine **distance** = 1 − cosine similarity.
 
+```mermaid
+flowchart LR
+    A["Doc A: long article, vector length 9"] --> SAME["Same direction, angle 0"]
+    B["Doc B: short note, vector length 2"] --> SAME
+    SAME --> COS["Cosine 1.0: same topic"]:::hot
+    SAME --> DOT["Dot product 18: length inflates it"]
+    SAME --> L2["L2 distance 7: looks far apart"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Two docs on the same topic but of different length: cosine ignores length and calls them identical, while dot product and L2 are pulled by magnitude.
+
 **Interview tip:** "Why cosine?" In text, document length can inflate the vector's magnitude; cosine only looks at direction, so a long and a short document on the same topic still match.
 
 **Common mistake:** building the index on one metric (L2) and querying with another (cosine). The index won't be used, or results will be wrong.
@@ -48,6 +90,19 @@ Memory math (useful in interviews):
 ## ⭐ Exact vs approximate nearest neighbour
 
 **In one line:** exact kNN compares against every vector (100% correct, slow); ANN uses an index to look at only some candidates (95–99% correct, very fast).
+
+```mermaid
+flowchart LR
+    Q["Query vector"] --> EX["Exact: compare with all 10M"]
+    EX --> T1["10M distance calcs, seconds"]:::dim
+    Q --> IX["ANN index: HNSW or IVF"]
+    IX --> C["About 2000 candidates checked"]:::hot
+    C --> T2["Top 10 in ms, recall about 0.95"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Exact search touches every vector; ANN uses the index to check a few thousand candidates and accepts missing a few true neighbours.
 
 | | Exact kNN (brute force / flat) | ANN (HNSW, IVF, PQ) |
 |---|---|---|
@@ -116,10 +171,43 @@ flowchart TD
 - Raise `nprobe` = recall up, latency up. If the data distribution shifts, retrain.
 - Less memory than HNSW, faster build, but usually a bit slower at the same recall.
 
+```mermaid
+flowchart LR
+    Q["Query vector"] --> CT["Compare with 1000 centroids"]
+    CT --> C1["Cluster 17: nearest"]:::hot
+    CT --> C2["Cluster 402: 2nd nearest"]:::hot
+    CT --> C3["Cluster 5"]:::dim
+    CT --> C4["Other 997 clusters"]:::dim
+    C1 --> S["Scan only these 2 lists, nprobe = 2"]
+    C2 --> S
+    S --> T["Top K"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* With nprobe = 2 only the two nearest clusters' lists are scanned; the other 998 are skipped, which is the speed-up and also where recall can be lost.
+
 **PQ (Product Quantization):**
 - Split a 1536-dim vector into 96 small sub-vectors; replace each sub-vector with the ID (1 byte) of one of 256 codes.
 - A 6 KB vector becomes ~96 bytes (~64x smaller). Distances become approximate.
 - Common combo: **IVF-PQ** (FAISS, Milvus). Get candidates with PQ first, then **re-rank** with the original vectors.
+
+```mermaid
+flowchart LR
+    V["1536-dim vector, 6144 bytes"] --> S1["Sub-vector 1, 16 dims"]
+    V --> S2["Sub-vector 2, 16 dims"]
+    V --> S96["... Sub-vector 96, 16 dims"]
+    S1 -->|nearest of 256 codes| C1["code 17"]:::hot
+    S2 -->|nearest of 256 codes| C2["code 203"]:::hot
+    S96 -->|nearest of 256 codes| C96["code 88"]:::hot
+    C1 --> P["PQ code: 96 bytes, 64x smaller"]
+    C2 --> P
+    C96 --> P
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each 16-dim slice is replaced by the 1-byte id of its closest codebook entry, so the vector shrinks from 6144 to 96 bytes and distances become approximate.
 
 | Index | Memory | Speed | Recall | Note |
 |---|---|---|---|---|
@@ -160,6 +248,24 @@ How to choose:
 ## ⭐ Metadata filtering: pre-filter vs post-filter
 
 **In one line:** in a query like "similar among Bengaluru restaurants", you apply the filter before the vector search (pre) or after it (post), and both have trade-offs.
+
+```mermaid
+flowchart LR
+    subgraph PRE["Pre-filter"]
+        A1["1M restaurants"] --> A2["Filter city = Bengaluru, 40k left"]
+        A2 --> A3["Vector search on 40k"]
+        A3 --> A4["10 results"]:::hot
+    end
+    subgraph POST["Post-filter"]
+        B1["1M restaurants"] --> B2["ANN top 10 over all cities"]
+        B2 --> B3["Filter city = Bengaluru"]
+        B3 --> B4["Only 2 left"]:::dim
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Pre-filter searches only matching rows and always returns 10; post-filter searches first and throws most of its top 10 away, unless you oversample.
 
 | | Pre-filter | Post-filter |
 |---|---|---|

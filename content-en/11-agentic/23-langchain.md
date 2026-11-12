@@ -97,6 +97,24 @@ flowchart TD
 
 **Picture it:** An IRCTC app that used to ship every train's timetable inside the APK. Now the app is small and downloads only the routes you travel.
 
+```mermaid
+flowchart TD
+    APP["Your code"] --> LC["langchain: create_agent, init_chat_model, middleware"]
+    APP -->|install only what you use| PP["Partner packages: langchain-openai, langchain-anthropic, langchain-chroma"]
+    LC --> LG["langgraph: the runtime under create_agent"]
+    LC --> CORE["langchain-core: messages, BaseChatModel, BaseTool, Runnables"]
+    PP --> CORE
+    TS["langchain-text-splitters"] --> CORE
+    COM["langchain-community: long tail, lower bar"] --> CORE
+    CL["langchain-classic: LLMChain, RetrievalQA, hub"] -.->|only for old code| CORE
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class LC,CORE,PP hot
+    class CL,COM dim
+```
+
+*Diagram:* Everything plugs into the small `langchain-core` interfaces; you install `langchain` plus only the partner packages you use, while the old chains sit apart in `langchain-classic`.
+
 **How it works, step by step:**
 
 1. `langchain-core`: base classes and interfaces. Messages, `BaseChatModel`, `BaseTool`, retrievers, vector store interface, Runnables. Very few dependencies.
@@ -131,6 +149,24 @@ flowchart TD
 **Why it exists:** OpenAI, Anthropic and Google each name things differently (`max_tokens`, `stop_reason`, `tool_use` blocks vs `tool_calls`). A common interface lets you switch models with one string, and run A/B tests or fallbacks without new code.
 
 **Picture it:** A UPI app. Paytm, PhonePe and GPay talk to different banks, but you always see "enter amount, enter PIN". The chat model interface is that screen.
+
+```mermaid
+flowchart LR
+    S["init_chat_model: openai:gpt-5.5"] --> P{"Read the prefix"}
+    P -->|openai| O["ChatOpenAI from langchain-openai"]
+    P -->|anthropic| A["ChatAnthropic from langchain-anthropic"]
+    P -->|google_genai| G["ChatGoogleGenerativeAI"]
+    O --> I["Same 5 methods: invoke, stream, batch, bind_tools, with_structured_output"]
+    A --> I
+    G --> I
+    I --> R["AIMessage: .text plus usage_metadata 812 in, 64 out"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class S,O,I hot
+    class A,G dim
+```
+
+*Diagram:* The prefix picks one partner class (here OpenAI); whichever is picked, your code only ever calls the same five methods.
 
 **How it works, step by step:**
 
@@ -180,6 +216,20 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 
 **Picture it:** A courier waybill. Every courier company has its own form, but Shiprocket gives you one standard label with sender, receiver, weight. `content_blocks` is that label.
 
+```mermaid
+flowchart LR
+    SY["SystemMessage"] --> HU["HumanMessage: where is SW1234"]
+    HU --> AI1["AIMessage: tool_calls get_order_status, id call_1"]
+    AI1 -->|same id call_1| TM["ToolMessage: tool_call_id call_1"]
+    TM --> AI2["AIMessage: Out for delivery"]
+    AI2 --> CB["content_blocks: text, reasoning, image, citation"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AI1,TM hot
+```
+
+*Diagram:* The tool call and its `ToolMessage` share the id `call_1`, so they must be kept or trimmed together; `content_blocks` gives the same block types whatever the provider.
+
 **How it works, step by step:**
 
 1. A conversation is a list: system, human, AI, tool, AI, and so on.
@@ -202,6 +252,28 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 **Why it exists:** Writing JSON schemas by hand for every function is slow and error-prone. Tools also need things the model must not control, like the logged-in `user_id`. Mixing those into model-visible arguments is a security hole.
 
 **Picture it:** A Swiggy delivery partner's app. The partner (model) sees buttons: "mark picked up", "call customer". The app fills in the order ID and partner ID itself. The partner never types them.
+
+```mermaid
+flowchart LR
+    subgraph SEEN["Model sees"]
+        N["name and docstring description"]
+        AR["args: order_id"]
+    end
+    subgraph HIDDEN["Hidden: ToolRuntime"]
+        CTX["context.user_id from login session"]
+        ST["runtime.state and runtime.store"]
+    end
+    SEEN -->|schema| M["Model"]
+    M -->|tool call order_id SW1234| F["get_order_status"]
+    CTX --> F
+    ST --> F
+    F -->|ownership check passes| RES["ToolMessage: Out for delivery, total Rs 349"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CTX,F hot
+```
+
+*Diagram:* The model only sees the name, description and `order_id`; `user_id` arrives through `ToolRuntime` from your server, so the model cannot ask for another user's order.
 
 **How it works, step by step:**
 
@@ -226,6 +298,21 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 
 **Picture it:** A Zomato cloud-kitchen franchise kit. Every outlet gets the same layout and process. You choose the menu (tools) and the head chef (model), and add rules on the wall (middleware).
 
+```mermaid
+flowchart LR
+    ST(["START: messages"]) --> MO["model node: system prompt, history, tool schemas"]
+    MO --> Q{"tool_calls in reply?"}
+    Q -->|yes| TO["tools node: run calls in parallel, append ToolMessages"]
+    TO -->|loop back| MO
+    Q -->|no| EN(["END: final state"])
+    TO -.->|after every step| CP[("Checkpointer by thread_id")]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MO,TO hot
+```
+
+*Diagram:* `create_agent` compiles exactly this two-node LangGraph loop: model, tools, model, until a reply has no tool calls.
+
 **How it works, step by step:**
 
 1. The graph has a `model` node and a `tools` node. Middleware can add nodes before and after them.
@@ -249,6 +336,23 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 **Why it exists:** The old criticism was: "the prebuilt agent works until you need one small change, then you must rewrite everything". Middleware is the answer. Summarisation, approvals, retries, PII masking and dynamic prompts become plug-ins on the same loop, not forks of it.
 
 **Picture it:** Security checks at an airport. Same journey for every passenger, but there is a check before boarding (before_model), a check on arrival (after_model), and a scanner the bag passes through (wrap_tool_call). You add or remove checks without rebuilding the airport.
+
+```mermaid
+flowchart TD
+    BA["before_agent: once per run"] --> BM["before_model: summarise, limits"]
+    BM --> WM["wrap_model_call: retry, fallback around the model"]
+    WM --> AM["after_model: human approval may interrupt"]
+    AM --> Q{"tool calls?"}
+    Q -->|yes| WT["wrap_tool_call: log, auth, retry around each tool"]
+    WT -->|next step| BM
+    Q -->|no| AA["after_agent: once per run"]
+    AM -.->|jump_to end| AA
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class BM,WM,AM,WT hot
+```
+
+*Diagram:* Node hooks sit before and after the model node, wrap hooks surround every model and tool call; with `middleware=[a, b, c]` before-hooks run a, b, c and after-hooks run c, b, a.
 
 **How it works, step by step:**
 
@@ -308,6 +412,22 @@ def log_tools(request, handler):
 
 **Picture it:** A bank form with boxes for each field instead of a blank page. The clerk can process it without reading an essay.
 
+```mermaid
+flowchart TD
+    S["response_format=TicketSummary"] --> Q{"Provider has native structured output?"}
+    Q -->|yes| PS["ProviderStrategy: constrained decoding"]
+    Q -->|no| TS["ToolStrategy: hidden respond-with-schema tool"]
+    PS --> V["Pydantic validation: refund_inr ge 0"]
+    TS --> V
+    V -->|valid| OUT["state: structured_response"]
+    V -->|error sent back, retry| TS
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class PS,V,OUT hot
+```
+
+*Diagram:* LangChain picks the native path when the provider supports it; only the tool path can fail validation and loop back for a retry.
+
 **How it works, step by step:**
 
 1. Define a Pydantic model, dataclass, TypedDict or JSON schema.
@@ -354,6 +474,25 @@ print(out["structured_response"])   # TicketSummary(category='missing_item', ord
 
 **Picture it:** A library catalogue system that works the same whether the books are in a small school library or the National Library.
 
+```mermaid
+flowchart LR
+    subgraph TWO["2-step RAG: 1 LLM call"]
+        Q1["Question"] --> R1["Retriever k=4"]
+        R1 --> M1["Model answers once"]
+    end
+    subgraph AGT["Agentic RAG: 2-4 LLM calls"]
+        Q2["Question"] --> A2["Agent model"]
+        A2 -->|search_policy tool call| R2["Retriever"]
+        R2 -->|chunks as ToolMessage| A2
+        A2 -->|enough context| M2["Final answer"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class R1,A2 hot
+```
+
+*Diagram:* Left: retrieval always runs once before a single model call. Right: the agent decides when and how often to search, which costs more calls but handles comparisons.
+
 **How it works, step by step:**
 
 1. Load files with a document loader into `Document(page_content, metadata)` objects.
@@ -385,6 +524,24 @@ print(out["structured_response"])   # TicketSummary(category='missing_item', ord
 **Why it exists:** In 2023 LangChain introduced LCEL so any chain gets streaming, batching, async and tracing for free by composing Runnables with `|`. Teams then built complex branching logic in LCEL, which was hard to read and debug. LangGraph took over control flow; LCEL stayed for short, linear pipelines.
 
 **Picture it:** A pipe fitting system. Great for connecting a tap, a filter and a bottle in a line. Bad for building a whole house's plumbing with loops and valves; for that you want a proper plan (LangGraph).
+
+```mermaid
+flowchart LR
+    IN["dict: text = Biryani arrived cold"] --> P["ChatPromptTemplate"]
+    P -->|list of messages| M["chat model gpt-5.4-mini"]
+    M -->|AIMessage| SP["StrOutputParser"]
+    SP -->|plain str| OUT["late"]
+    subgraph SEQ["RunnableSequence built with the pipe operator"]
+        P
+        M
+        SP
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class P,M,SP hot
+```
+
+*Diagram:* Each pipe passes one Runnable's output type to the next (dict, messages, AIMessage, str); the whole box is itself one Runnable with `invoke`, `batch` and `stream`.
 
 **How it works, step by step:**
 
@@ -429,6 +586,23 @@ print(classify.batch([{"text": "No spoon"}, {"text": "Too salty"}]))       # par
 **Why it exists:** This one example uses every block above: chat model, tools with runtime context, a retriever tool, `create_agent`, built-in middleware, a checkpointer and human-in-the-loop.
 
 **Picture it:** A Swiggy support desk with a policy binder, an order lookup screen, and a supervisor who must sign every refund.
+
+```mermaid
+flowchart LR
+    U["Customer: raita missing in SW1234"] --> AG["create_agent gpt-5.5"]
+    AG --> T1["get_order_status: user from ToolRuntime"]
+    AG --> T2["search_policy: vector store retriever"]
+    AG --> T3["issue_refund"]
+    T3 -.->|HumanInTheLoopMiddleware interrupt| H["Supervisor: approve or reject"]
+    H -->|Command resume| AG
+    MW["Summarization at 6,000 tokens, ModelCallLimit 8"] -.-> AG
+    AG --- CP[("Checkpointer per thread_id")]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class T3,H hot
+```
+
+*Diagram:* Two tools run freely; `issue_refund` pauses the run until a supervisor answers, and the checkpointer is what lets it resume.
 
 **How it works, step by step:**
 
@@ -609,6 +783,21 @@ sequenceDiagram
 
 **Picture it:** Moving from a home tiffin service to a licensed restaurant: fridge logs, CCTV, a cash register and fire safety, not just good food.
 
+```mermaid
+flowchart LR
+    UI["Web UI"] -->|SSE stream_mode messages| API["FastAPI service"]
+    API --> AG["create_agent with call limits, retry, fallback"]
+    AG --> PG[("PostgresSaver: threads, pending approvals")]
+    AG --> STR[("Store: long-term memory")]
+    AG -.->|spans| LS["LangSmith tracing"]
+    EV["Eval set 50-200 conversations"] -.->|gate every change in CI| AG
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class PG,LS hot
+```
+
+*Diagram:* The laptop demo becomes production when state moves to Postgres, every step is traced, and an eval set gates changes.
+
 **How it works, step by step:**
 
 1. **Persistence:** `PostgresSaver` (or another LangGraph checkpointer) for threads; a LangGraph `Store` for long-term memory across threads. See [Memory & Context](05-memory-context.md).
@@ -632,6 +821,22 @@ sequenceDiagram
 **Why it exists:** "Why LangChain?" is a favourite interview question, usually followed by "isn't it too much abstraction?". You need a fair answer, not a fan answer.
 
 **Picture it:** Choosing between Ola, a rented car and your own scooter. Each is right for some trips.
+
+```mermaid
+flowchart TD
+    Q{"What is hard in your problem?"}
+    Q -->|one loop with tools, many providers| LC["LangChain create_agent"]
+    Q -->|branching, multi-agent, durable approvals| LG["LangGraph directly"]
+    Q -->|messy documents and retrieval| LI["LlamaIndex, maybe as a tool"]
+    Q -->|typed outputs in a small service| PA["Pydantic AI"]
+    Q -->|all-in on one provider| SDK["Provider SDK"]
+    LC -.->|outgrow the loop| LG
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class LC hot
+```
+
+*Diagram:* Pick by the hard part of the problem; a `create_agent` app can drop one level to LangGraph without a rewrite.
 
 **How it works, step by step:**
 

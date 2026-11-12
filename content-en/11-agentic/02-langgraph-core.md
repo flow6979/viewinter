@@ -236,14 +236,18 @@ If the amount were 7200, step 4 would `goto="ops_review"`. If the message had no
 
 ```mermaid
 flowchart LR
-    S["START"] --> C["classify"]
+    S["START"] --> C["classify"]:::hot
     C --> RF{"route fn"}
-    RF -->|refund| R["refund_flow"]
-    RF -->|food_quality| Q["quality_team"]
-    RF -->|other| E["END"]
-    R -->|Command goto small amount| A["auto_refund"]
-    R -->|Command goto large amount| O["ops_review"]
+    RF -->|refund| R["refund_flow"]:::hot
+    RF -->|food_quality| Q["quality_team"]:::dim
+    RF -->|other| E["END"]:::dim
+    R -->|Command goto, 450 is under 500| A["auto_refund"]:::hot
+    R -->|Command goto, large amount| O["ops_review"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* The highlighted path is the ORD-1 run: 450 is under the 500 limit, so `Command` jumps straight to auto_refund; dimmed branches exist but did not run.
 
 **Now the terms:**
 
@@ -321,6 +325,21 @@ for chunk in graph.stream({"messages": [("user", "I want a refund for ORD-1")]},
 - Three chunks = three nodes ran, in the order the state changed.
 - With `stream_mode="values"` you get the **whole** state after every step, not just the diff.
 - `graph.invoke(...)` runs all of this but returns only the final state.
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant G as Compiled graph
+    C->>G: stream with stream_mode updates
+    G-->>C: chunk classify, order_id ORD-1
+    G-->>C: chunk refund_flow, refund_approved True
+    G-->>C: chunk auto_refund, Refund done
+    C->>G: invoke with the same input
+    Note over G: same 3 nodes run, nothing sent yet
+    G-->>C: final state only
+```
+
+*Diagram:* The same three nodes run both times: `stream` hands you a chunk after each node, `invoke` waits and returns only the final state.
 
 | Method | What it does |
 |---|---|
@@ -404,6 +423,20 @@ sequenceDiagram
 
 - On Postgres, run `checkpointer.setup()` the first time (it creates the tables).
 - **Time-travel:** take an old checkpoint from `get_state_history`, and `invoke(None, config)` with its config = **replay** (execute again from that point). `update_state(old_config, values)` creates a new checkpoint (a branch) = **fork**. Example: go to checkpoint 2, change `order_id` to `ORD-2`, and run from there; the old history stays safe.
+
+```mermaid
+flowchart LR
+    C1["CP1 input arrived"] --> C2["CP2 after classify, ORD-1"]
+    C2 --> C3["CP3 after refund_flow"]
+    C3 --> C4["CP4 Refund done"]
+    C2 -->|update_state order_id ORD-2| F2["CP2b fork, ORD-2"]:::hot
+    F2 -->|invoke None| F3["CP3b"]:::hot
+    F3 --> F4["CP4b"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Forking from checkpoint 2 starts a new branch (highlighted) while CP3 and CP4 stay in history untouched; a replay would rerun from CP2 without changing it.
 
 The code below attaches a checkpointer, runs the graph, reads the latest state, then replays and forks.
 
@@ -541,6 +574,20 @@ graph.invoke(Command(resume={"approved": True, "by": "ops@phonepe"}), cfg)
 - `messages`: `(AIMessageChunk("Seller"), {"langgraph_node": "compare_sellers", ...})`, then `" B"`, then `" is"`...
 - `custom`: `{"progress": "comparing 3 sellers"}`
 
+```mermaid
+flowchart LR
+    N["compare_sellers node runs"] --> V["values: whole state after the step"]
+    N --> U["updates: only the compare_sellers diff"]
+    N --> M["messages: tokens Seller, B, is ..."]
+    N --> CU["custom: progress, comparing 3 sellers"]
+    M -->|filter by langgraph_node| UI["Chat UI"]:::hot
+    CU --> UI
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* One node run, four views of it; a chat UI (highlighted) usually listens to `messages` plus `custom`.
+
 | Mode | Each chunk holds | Use |
 |---|---|---|
 | `values` | the full state after every step | simple UIs, debugging |
@@ -595,6 +642,29 @@ for mode, chunk in graph.stream(inputs, cfg, stream_mode=["messages", "custom"])
 3. The subgraph runs its own nodes inside (PAN verify → OTP → face match) and returns `{"verified": True, ...}`
 4. The wrapper maps it to the parent's key: `{"kyc_verified": True}`. Only this one key changed in the parent state.
 
+```mermaid
+flowchart LR
+    subgraph P["Parent graph: OnboardingState"]
+        PS["pan, phone, kyc_verified, other keys"]
+        W["run_kyc wrapper"]:::hot
+    end
+    subgraph K["KYC subgraph: own schema"]
+        K1["PAN verify"]
+        K2["Aadhaar OTP"]
+        K3["Face match"]
+    end
+    PS -->|only pan and phone| W
+    W -->|invoke| K1
+    K1 --> K2
+    K2 --> K3
+    K3 -->|verified True| W
+    W -->|kyc_verified True| PS
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Only two keys cross the boundary going in and one key comes back; the parent's other keys never reach the KYC team's graph.
+
 **Now the terms:**
 
 - **Shared keys** (e.g. `messages` in both): `builder.add_node("kyc", kyc_graph)`, use the compiled graph directly as a node.
@@ -637,6 +707,28 @@ builder.add_node("kyc", run_kyc)
 4. If attempt 3 also failed, the error would come out of the graph.
 
 **One example: the recursion limit.** `recursion_limit=15`. One ReAct round = 2 supersteps (agent + tools). So after about 7 rounds you get `GraphRecursionError`. You catch it and tell the user "could not finish right now, I have opened a ticket".
+
+```mermaid
+flowchart LR
+    subgraph RP["RetryPolicy on fetch_quote"]
+        A1["Attempt 1: 503"]
+        A2["Attempt 2: 503"]
+        A3["Attempt 3: 200 OK"]:::hot
+    end
+    subgraph RL["recursion_limit 15 on the run"]
+        R7["About 7 ReAct rounds, 2 supersteps each"]
+        GE["GraphRecursionError"]
+        FB["Caught: ticket opened, clear reply"]:::hot
+    end
+    A1 -->|wait 0.5s| A2
+    A2 -->|wait 1.0s| A3
+    R7 -->|limit crossed| GE
+    GE --> FB
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Left: a transient error is retried with doubling waits until it succeeds. Right: the recursion limit is a safety net you catch and turn into a graceful reply.
 
 **Now the terms:**
 
@@ -691,6 +783,25 @@ except GraphRecursionError:                          # loop limit crossed
 2. Friday, `thread_id = "chat-fri"`: the messages are empty, a new chat.
 3. A node reads `store.get(("users", "u42", "prefs"), "diet")` → `{"value": "veg"}`.
 4. The agent suggests only veg restaurants.
+
+```mermaid
+flowchart LR
+    subgraph MON["Thread chat-mon"]
+        M1["User: I am vegetarian"]
+    end
+    subgraph FRI["Thread chat-fri"]
+        F1["New chat, empty messages"]
+        F2["Agent suggests veg only"]
+    end
+    ST[("Store: users, u42, prefs - diet is veg")]:::hot
+    M1 -->|store.put| ST
+    F1 -->|store.get| ST
+    ST -->|veg| F2
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each thread has its own checkpointer history, but both reach the same Store namespace (highlighted), so Friday's chat knows Monday's fact.
 
 **Now the terms:**
 

@@ -63,6 +63,28 @@ flowchart LR
 
 **Picture it:** Cooking at home vs running a cloud kitchen for Swiggy. At home a pan and a stove are enough. A cloud kitchen needs order tickets, a fridge log, a pass where the head chef checks plates, and CCTV. A framework is that kitchen setup. Great at 500 orders a day, overkill for making Maggi.
 
+```mermaid
+flowchart LR
+    subgraph RAW["Raw loop: you write all of it"]
+        M1["Model call"] --> T1["Run tool"] --> A1["Append result"] --> M1
+    end
+    subgraph FW["Framework: same loop plus production parts"]
+        L["Model to tool loop"]
+        L --> ST["Typed state with merge rules"]
+        L --> CP[("Checkpointer: save after each step")]
+        L --> HI["Pause for human approval"]
+        L --> SS["Stream tokens to UI"]
+        L --> TR["Trace spans to dashboard"]
+        L --> HO["Handoffs to other agents"]
+    end
+    RAW -->|40 lines grow to about 900| FW
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CP,HI hot
+```
+
+*Diagram:* The loop itself is the same 4 steps on both sides; the highlighted parts on the right are what you would otherwise hand-write (the 40 to 900 lines jump).
+
 **How it works, step by step:**
 
 1. Start with the raw loop: model call, check if it asked for a tool, run it, append the result, repeat with a step cap.
@@ -109,6 +131,24 @@ A worked number: on one team, the raw loop was 40 lines. Adding Postgres persist
 3. Code runs the tool: returns `"Mumbai: 31°C, humid, 80% chance of rain"`.
 4. Code sends the result back. Model answers: "Yes, carry one."
 5. That is 2 LLM calls and 1 tool call. Every framework below does exactly these 4 steps.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Your code or framework
+    participant M as Model
+    participant W as get_weather tool
+    U->>C: Do I need an umbrella in Mumbai
+    C->>M: LLM call 1 with tool schema
+    M-->>C: tool_use get_weather city Mumbai
+    C->>W: get_weather Mumbai
+    W-->>C: 31 C, humid, 80 pct chance of rain
+    C->>M: LLM call 2 with tool_result
+    M-->>C: Yes, carry one - stop_reason end_turn
+    C-->>U: Yes, carry one
+```
+
+*Diagram:* 2 LLM calls and 1 tool call; only the middle lane changes between versions (raw loop: you, LangGraph: create_agent, OpenAI: Runner).
 
 **Version 1: raw loop (Anthropic Python SDK).**
 
@@ -245,6 +285,24 @@ print(result.final_output)
 
 Example: a refund agent has 4 nodes (classify, fetch order, decide, approve). Refunds over ₹5,000 hit `interrupt` and wait for a human. The pod restarts overnight. Next morning the human clicks approve, and the run resumes from the saved checkpoint, not from scratch.
 
+```mermaid
+flowchart LR
+    S["Start: thread_id user-42"] --> C1["classify"]
+    C1 --> F["fetch order"]
+    F --> D{"decide: amount above ₹5,000?"}
+    D -->|no| E["auto refund, end"]
+    D -->|yes| AP["approve node calls interrupt"]
+    AP -->|state saved, pod restarts overnight| CK[("Postgres checkpoint")]
+    CK -->|human clicks approve, resume| R["refund issued"]
+    C1 -.->|save| CK
+    F -.->|save| CK
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AP,CK hot
+```
+
+*Diagram:* Every node saves to the checkpoint; the run pauses at interrupt and resumes next morning from Postgres, not from classify.
+
 | | |
 |---|---|
 | Mental model | state machine / graph; you own the control flow |
@@ -280,6 +338,26 @@ Example: a refund agent has 4 nodes (classify, fetch order, decide, approve). Re
 
 Example: a "fix failing test" bot for a repo. Allowed tools: read, edit, run tests. It reads the test, edits the file, runs tests, repeats. You wrote no file tools and no compaction logic, only the options and a hook that blocks writes outside `src/`.
 
+```mermaid
+flowchart LR
+    APP["Your app: prompt plus options"] --> H["Agent SDK harness"]
+    H -->|call| CL["Claude model"]
+    CL -->|tool_use| H
+    H --> HK{"Hook: path inside src?"}
+    HK -->|yes| BT["Built-in tools: read, edit, bash, search"]
+    HK -->|no| BL["Blocked"]
+    H --> MCP["Your tools as MCP servers"]
+    H --> SA["Subagent: fresh context window"]
+    SA -->|summary only| H
+    H --> CO["Compaction when window fills"]
+    H -->|stream messages| APP
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class H hot
+```
+
+*Diagram:* You only write the options and the hook; the harness owns the loop, the built-in tools, subagents and compaction.
+
 | | |
 |---|---|
 | Mental model | a ready-made general agent harness you configure, not a graph you draw |
@@ -313,6 +391,25 @@ Example: a "fix failing test" bot for a repo. Allowed tools: read, edit, run tes
 6. Every run is traced: agent spans, LLM spans, tool spans, handoffs.
 
 Example: a support bot. `triage = Agent(name="Triage", instructions="Route to the right desk.", handoffs=[billing_agent, refund_agent])`. A user says "I was charged twice". Triage hands off to `billing_agent`. An input guardrail first checks the message is not a jailbreak attempt; it costs one cheap model call.
+
+```mermaid
+flowchart LR
+    U["User: I was charged twice"] --> IG{"Input guardrail: jailbreak?"}
+    IG -->|tripped| X["Exception, run stops"]
+    IG -->|ok| TR["Triage agent"]
+    TR -->|handoff| BI["billing_agent"]
+    TR -.->|not chosen| RF["refund_agent"]
+    BI --> OG{"Output guardrail"}
+    OG --> ANS["Answer to user"]
+    TR -.-> TC[("Trace: agent, LLM, tool, handoff spans")]
+    BI -.-> TC
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class TR,BI hot
+    class RF dim
+```
+
+*Diagram:* The guardrail runs before triage; triage hands the whole conversation to billing_agent (refund_agent stays idle), and every hop lands in one trace.
 
 | | |
 |---|---|
@@ -404,6 +501,24 @@ print(result.output.carry_umbrella)     # a real bool, already validated
 
 Example: market research. Researcher searches 5 sources, Analyst writes 3 findings, Writer makes a 300-word brief. 3 agents, 3 tasks, about 6–10 LLM calls.
 
+```mermaid
+flowchart LR
+    subgraph SEQ["Sequential process"]
+        R1["Researcher: 5 sources"] --> A1["Analyst: 3 findings"] --> W1["Writer: 300-word brief"]
+    end
+    subgraph HIER["Hierarchical process"]
+        MG["Manager agent"] -->|delegate| R2["Researcher"]
+        R2 -->|result| MG
+        MG -->|delegate| A2["Analyst"]
+        MG -->|delegate| W2["Writer"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MG hot
+```
+
+*Diagram:* Sequential: each task's output feeds the next in a fixed order. Hierarchical: a manager LLM decides who works next, which costs extra calls and is harder to debug.
+
 | | |
 |---|---|
 | Mental model | a team of role-played agents running tasks |
@@ -434,6 +549,22 @@ Example: market research. Researcher searches 5 sources, Analyst writes 3 findin
 4. For multi-step logic, write a **Workflow**: steps that listen for events and emit new events.
 
 Example: an HR policy bot over 2,000 PDF pages. LlamaIndex parses, chunks into about 6,000 chunks, indexes, and the agent has two tools: `search_policy` and `get_leave_balance`.
+
+```mermaid
+flowchart LR
+    PDF["2,000 PDF pages"] --> PR["Parse and chunk"]
+    PR -->|about 6,000 chunks| IX[("Vector index")]
+    IX --> QE["Query engine"]
+    QE -->|wrapped as tool| T1["search_policy"]
+    U["Employee question"] --> AG["Agent"]
+    AG --> T1
+    AG --> T2["get_leave_balance"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class IX hot
+```
+
+*Diagram:* Most of the work is the left half (ingest and index); the agent on the right just sees the index as one more tool.
 
 | | |
 |---|---|
@@ -573,6 +704,24 @@ flowchart LR
 
 Example: primary model times out at p99 (99th percentile latency) 12 seconds. The gateway rule is "after 8 seconds, fall back to a smaller model". Users now see at most ~9 seconds, and the cost report shows the fallback handled 3% of traffic.
 
+```mermaid
+sequenceDiagram
+    participant A as App
+    participant G as Gateway
+    participant P as Primary model
+    participant B as Smaller backup model
+    A->>G: chat, model support-chat, team key
+    G->>G: check virtual key and team budget
+    G->>P: forward request
+    Note over G,P: no reply after 8 s
+    G->>B: fallback request
+    B-->>G: answer at about 9 s
+    G->>G: log tokens, cost, fallback used
+    G-->>A: answer in the same API format
+```
+
+*Diagram:* The app makes one call; the gateway checks budget, gives up on the primary at 8 s, falls back, and logs it so the 3% fallback share shows up in metrics.
+
 **Interview tip:** "Why a gateway?" Say: "One API across providers, central keys and per-team budgets, retries and fallbacks, one place for cost logging and PII redaction. And it reduces lock-in to any one model vendor."
 
 **Common mistake:**
@@ -588,6 +737,24 @@ Example: primary model times out at p99 (99th percentile latency) 12 seconds. Th
 **Why it exists:** Frameworks run the loop, but the agent is only as useful as the data and tools it can reach. Choosing these independently of the framework keeps you portable.
 
 **Picture it:** The framework is the delivery app. The vector DB is the warehouse with a good index. MCP is the standard plug socket every appliance fits.
+
+```mermaid
+flowchart TD
+    APP["Your business code"] --> AD["Thin adapter: run_agent"]
+    AD --> FW["Framework: LangGraph, Agent SDK, CrewAI"]
+    FW --> OBS["Tracing and evals: Langfuse, LangSmith"]
+    FW --> GW["Gateway: LiteLLM, OpenRouter"]
+    GW --> P1["OpenAI"]
+    GW --> P2["Anthropic"]
+    GW --> P3["Gemini or open models"]
+    FW --> MCP["MCP servers: your tools"]
+    FW --> VDB[("Vector DB: pgvector, Qdrant")]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class FW hot
+```
+
+*Diagram:* Only the highlighted box is the framework; tracing, gateway, MCP tools and the vector DB are chosen separately and stay when you swap it.
 
 **How it works, step by step:**
 
@@ -646,6 +813,25 @@ flowchart TD
 **Why it exists:** In 2023–2025 several popular agent APIs were deprecated or rewritten (for example, LangChain's older agent classes moving to LangGraph, AutoGen's 0.4 rewrite, the Claude Code SDK being renamed the Claude Agent SDK). Teams that put framework calls everywhere had painful upgrades.
 
 **Picture it:** Renting a furnished flat. Fine to use their sofa. But keep your documents and valuables in your own bag, so you can move in a day.
+
+```mermaid
+flowchart LR
+    subgraph LOCK["Locked in"]
+        B1["Business code"] --> F1["Framework classes everywhere"]
+        F1 --> D1[("DB schema = framework messages")]
+    end
+    subgraph FREE["Portable"]
+        B2["Business code"] --> AD["run_agent adapter: 1 module"]
+        OWN["Owned: prompts, MCP tools, eval sets, OTel traces"] --> AD
+        AD --> F2["Framework, replaceable"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AD hot
+    class F2 dim
+```
+
+*Diagram:* On the left the framework leaks into every file and the DB; on the right only the adapter touches it, so a swap means rewriting one module and rerunning evals.
 
 **How it works, step by step:**
 

@@ -25,16 +25,32 @@ Har page ka shape same hai. Aise use karo:
 5. **Checklist.** Item tabhi tick karo jab bina dekhe samjha sako. Site inhi ticks se tumhara progress dikhati hai.
 6. **Quick look.** Page ka ek minute ka summary. Interview se pehle wali raat padho.
 
+```mermaid
+flowchart LR
+    W["Words you need first"] --> B["Big picture diagram"]
+    B --> S["Star sections first"]
+    S --> T["Say the interview tip out loud"]
+    T --> C["Tick checklist only if you can explain it"]
+    C -->|night before| Q["Quick look"]
+    S -.->|lost| B
+```
+
+*Diagram:* Ek page ko padhne ka poora raasta; koi section mushkil lage to dotted arrow ki tarah wapas Big picture pe jao, phir aage badho.
+
 ## Padhne ka order
 
 ```mermaid
 flowchart LR
-    S1["1 LLM kaise kaam karta hai"] --> S2["2 RAG"]
-    S2 --> S3["3 Agents"]
-    S3 --> S4["4 Production"]
-    S4 --> S5["5 LLM engineering depth"]
+    S1["1 How LLMs work, about 1 h"]:::hot --> S2["2 RAG, about 3 h"]
+    S2 --> S3["3 Agents, about 4 h"]
+    S3 --> S4["4 Production, about 4 h"]
+    S4 --> S5["5 LLM engineering depth, about 5 h"]
     S5 --> S6["6 Interview practice"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Highlighted stage 1 se shuru karo; aage ke saare stages isi ke words use karte hain. Interview practice se pehle lagbhag 17 ghante ki padhai.
 
 ### Stage 1: model kaise kaam karta hai (lagbhag 1 ghanta)
 

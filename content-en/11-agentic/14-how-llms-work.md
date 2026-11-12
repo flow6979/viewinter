@@ -102,6 +102,23 @@ Tiny training corpus, with how often each word appears: `hug` ×10, `pug` ×5, `
 5. **Again.** `h ug` (10 + 5 = 15) is top. Add `hug`. Now `hug` is one token and `hugs` is `hug` + `s`.
 6. **Stop at the target size.** Real tokenizers repeat this until the vocabulary has 32K to 200K tokens. The ordered list of merges is saved and replayed on new text.
 
+```mermaid
+flowchart LR
+    C["Corpus: hug x10, pug x5, pun x12, bun x4, hugs x5"] --> S0["Start: single letters b g h n p s u"]
+    S0 --> M1["Count pairs: u+g = 20 is top"]
+    M1 --> T1["Merge 1: new token ug"]:::hot
+    T1 --> M2["Count again: u+n = 16 is top"]
+    M2 --> T2["Merge 2: new token un"]:::hot
+    T2 --> M3["Count again: h+ug = 15 is top"]
+    M3 --> T3["Merge 3: new token hug"]:::hot
+    T3 --> R["Repeat until 32K to 200K tokens"]
+    R --> L["Saved merge list is replayed on new text"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Follow the dark boxes: each round merges the most frequent neighbour pair into one new token, so common chunks like hug end up as a single token.
+
 Modern tokenizers run BPE on **bytes**, not characters. So any text, emoji or language can be encoded, and nothing is ever "unknown".
 
 **Tokens vs words, in numbers:**
@@ -116,6 +133,23 @@ Modern tokenizers run BPE on **bytes**, not characters. So any text, emoji or la
 Why does Hindi cost more? The tokenizer was trained on mostly English data, so few Hindi letter groups earned their own token. A Hindi word gets split into many small pieces. Since APIs bill per token, the same answer in Hindi can cost 2–3 times more and use more of the context window. Newer tokenizers with larger vocabularies narrow this gap.
 
 **Why "strawberry" letter counting fails:** The model never sees letters. It sees something like `str` + `aw` + `berry` (the exact split depends on the tokenizer), which become three IDs. To count the r's it must have memorised how each token is spelled. It often has not. The same reason explains trouble with reversing words, counting characters and some arithmetic on long numbers.
+
+```mermaid
+flowchart LR
+    W["strawberry"] --> TK["Tokenizer"]
+    TK --> P1["str"]
+    TK --> P2["aw"]
+    TK --> P3["berry"]
+    P1 --> IDS["3 integer IDs, for example 496, 675, 15717"]
+    P2 --> IDS
+    P3 --> IDS
+    IDS --> M["Model sees only IDs, never letters"]:::hot
+    M -->|how many r| G["Must recall the spelling of each token, often guesses"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The word is split into 3 pieces before the model sees it; the three r's are hidden inside IDs, so counting them is a memory test, not a reading task (IDs here are illustrative).
 
 **A bigger vocabulary is a trade-off:**
 - Bigger vocabulary: fewer tokens per text, so faster and cheaper per sentence, and better for many languages.
@@ -166,6 +200,24 @@ print("tokens:", len(enc.encode(prompt)), "words:", len(prompt.split()))
 5. Tiny example with 3 numbers per vector: `cat = [0.9, 0.1, 0.0]`, `dog = [0.8, 0.2, 0.1]`, `invoice = [0.0, 0.1, 0.9]`. Cat and dog point the same way (cosine ≈ 0.98). Cat and invoice do not (cosine ≈ 0.01).
 6. Inside the model, these first vectors are only a start. After attention layers, each vector also carries meaning from its context. So "bank" ends up with different vectors in "river bank" and "bank loan".
 
+```mermaid
+flowchart LR
+    subgraph TB["Embedding table: 32,000 rows x 4,096 numbers"]
+        R0["row 0"]:::dim
+        R1["row 4,821"]:::hot
+        R2["row 31,999"]:::dim
+    end
+    ID["Token ID 4,821: bank"] -->|look up one row| R1
+    R1 --> V["Starting vector: 4,096 numbers"]
+    V --> L["Attention layers mix in context"]
+    L -->|in river bank| WV["bank vector leans to water"]
+    L -->|in bank loan| MV["bank vector leans to money"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* An embedding is just one row of a learned table; the same starting row turns into different vectors once attention mixes in the neighbouring words.
+
 **Tie to semantic search:** A separate **embedding model** (for example a sentence-transformer or an embeddings API) turns a whole sentence into one vector. You store the vectors of your documents in a vector database. At query time you embed the question and find the nearest document vectors. "How do I get my money back?" finds a doc titled "Refund policy" even though no words match. That is the core of RAG.
 
 **Interview tip:** "What is the difference between the embeddings inside an LLM and the embeddings you use for search?" Say: "Inside the LLM, each token has a vector that gets refined layer by layer. For search we use a separate model trained so that one vector per sentence or chunk captures meaning, usually with contrastive training. Same idea, different model and goal."
@@ -200,6 +252,23 @@ print("tokens:", len(enc.encode(prompt)), "words:", len(prompt.split()))
 Use 2-number value vectors where the first number means "water" and the second means "money": `V_the = [0, 0]`, `V_river = [1, 0]`, `V_bank = [0.5, 0.5]` (ambiguous on its own).
 
 Output for bank = 0.10 × [0, 0] + 0.66 × [1, 0] + 0.24 × [0.5, 0.5] = **[0.78, 0.12]**. The new "bank" vector leans strongly to "water". In "the bank approved my loan", the word "loan" would get the high weight, and bank would lean to "money". This is how context changes meaning.
+
+```mermaid
+flowchart LR
+    Q["Query of bank"] -->|dot product| KT["Key of the"]
+    Q -->|dot product| KR["Key of river"]:::hot
+    Q -->|dot product| KB["Key of bank"]
+    KT -->|score 0.1 to weight 0.10| S["Softmax: weights add up to 1"]
+    KR -->|score 2.0 to weight 0.66| S
+    KB -->|score 1.0 to weight 0.24| S
+    FUT["Later tokens"]:::dim -.->|causal mask, weight 0| S
+    S --> MIX["Weighted sum of the value vectors"]
+    MIX --> OUT["New bank vector: 0.78 water, 0.12 money"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Q is compared with every earlier K, softmax turns the scores into weights, and those weights mix the V vectors; river wins 0.66, so bank now means river bank. Future tokens are masked to weight 0.
 
 **Causal mask.** When generating, a token must not see the future. So scores for later positions are set to minus infinity before softmax, which makes their weight exactly 0. Token 3 can attend to tokens 1, 2 and 3 only. This is why these models are called "causal" or "decoder-only".
 
@@ -294,6 +363,36 @@ print(np.round(w, 2))   # lower-triangular: token i only attends to tokens 0..i
    - Llama 3 8B, GQA with 8 KV heads: 2 × 32 × 8 × 128 × 2 = **128 KB per token**. The same chat uses 0.5 GB.
 5. A 4 times smaller cache means 4 times more concurrent users or 4 times longer contexts on the same GPU.
 
+```mermaid
+flowchart LR
+    subgraph MHA["MHA: 4 KV heads cached"]
+        direction TB
+        a1["Q1"] --> ak1["KV 1"]
+        a2["Q2"] --> ak2["KV 2"]
+        a3["Q3"] --> ak3["KV 3"]
+        a4["Q4"] --> ak4["KV 4"]
+    end
+    subgraph GQA["GQA: 2 KV heads cached"]
+        direction TB
+        b1["Q1"] --> bk1["KV A"]
+        b2["Q2"] --> bk1
+        b3["Q3"] --> bk2["KV B"]
+        b4["Q4"] --> bk2
+    end
+    subgraph MQA["MQA: 1 KV head cached"]
+        direction TB
+        c1["Q1"] --> ck["KV"]
+        c2["Q2"] --> ck
+        c3["Q3"] --> ck
+        c4["Q4"] --> ck
+    end
+    class ak1,ak2,ak3,ak4,bk1,bk2,ck hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Drawn with 4 query heads: the dark boxes are what gets stored in the KV cache for every token. Query heads stay the same; only the number of K/V heads shrinks (Llama 3: 32 query heads share 8 KV heads, a 4x smaller cache).
+
 | | MHA | GQA | MQA |
 |---|---|---|---|
 | KV heads (for 32 query heads) | 32 | 8 (typical) | 1 |
@@ -325,6 +424,33 @@ DeepSeek models go further with MLA (multi-head latent attention), which compres
 5. **Context extension:** a model trained on 4K or 8K positions sees new, untrained angles beyond that and breaks. Fixes squeeze or stretch the angles so long positions look like familiar ones:
    - **Position interpolation:** divide positions by a factor (for example 4), so 32K positions map onto the trained 8K range.
    - **NTK-aware scaling and YaRN:** scale the fast-rotating pairs (nearby detail) less and the slow ones (long distance) more. YaRN needs only a short fine-tune. Llama 3.1 reaches 128K tokens with this kind of RoPE scaling.
+
+```mermaid
+flowchart LR
+    Q["Query at position 10"] -->|rotate by 10 x theta| RQ["Rotated Q"]
+    K["Key at position 7"] -->|rotate by 7 x theta| RK["Rotated K"]
+    RQ --> DOT["Dot product"]
+    RK --> DOT
+    DOT -->|the two rotations cancel except the gap| G["Score depends only on distance 3"]:::hot
+    G --> SAME["Positions 103 and 100 give the same score"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* RoPE rotates Q and K by their positions; in the dot product only the difference survives, so attention sees relative distance, not absolute position.
+
+```mermaid
+flowchart LR
+    P["New prompt reaches position 32,000"] -->|no fix| U["Angle never seen in training, output breaks"]:::dim
+    P -->|position interpolation, divide by 4| I["Looks like position 8,000"]
+    P -->|YaRN, stretch slow pairs, keep fast pairs| Y["Long range fits, nearby detail kept"]
+    I --> T["Inside the trained 0 to 8K range"]:::hot
+    Y --> T
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Context extension squeezes long positions back into the range of angles the model already learned; YaRN squeezes only the slow-rotating pairs, so nearby word order stays sharp.
 
 **Interview tip:** "Why RoPE over learned positions?" Say: "RoPE encodes position by rotating Q and K, so the attention score depends only on relative distance. It adds no parameters, and with interpolation tricks like YaRN you can extend the context well past the training length with a small fine-tune."
 
@@ -373,6 +499,17 @@ sequenceDiagram
     end
 ```
 
+```mermaid
+flowchart LR
+    W["7B model: 14 GB of weights in GPU memory"] -->|read once per step, about 4 ms| B1["Batch of 1: 1 token per read"]:::dim
+    W -->|same read, about the same 4 ms| B64["Batch of 64: 64 tokens per read"]:::hot
+    B64 --> C["Cost per output token falls about 64x"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each decode step is paid for by reading all the weights; sharing that one read across 64 users is why batching makes output tokens cheap.
+
 **Interview tip:** "Walk me through what happens when you send a prompt." Say: "The text is tokenized into IDs. Each ID is looked up as an embedding vector. In prefill, all prompt tokens go through every transformer layer in parallel, attention uses a causal mask, and K and V are cached. The final position's vector is projected to logits over the vocabulary, softmax gives probabilities, and a sampler picks a token. Then decode repeats one token at a time using the KV cache until a stop token or max tokens. Tokens are detokenized and streamed back."
 
 **Common mistake:**
@@ -404,6 +541,21 @@ sequenceDiagram
 5. **Min-p:** keep tokens whose probability is at least `min_p × top probability`. With min_p = 0.2, the cut-off is 0.2 × 0.659 = 0.132, so `purple` (0.099) is dropped. It works well at higher temperatures.
 6. **Repetition controls:** a repetition penalty lowers the logits of tokens that already appeared (for example divides a positive logit by 1.1). OpenAI-style APIs offer `frequency_penalty` (grows with each repeat) and `presence_penalty` (flat, once a token has appeared). Use them lightly; high values damage names and code.
 7. **Order in most libraries:** apply penalties, then temperature, then top-k / top-p / min-p filters, then sample.
+
+```mermaid
+flowchart LR
+    L["Logits: hot 2.0, sweet 1.0, purple 0.1"] -->|divide by T = 1, softmax| SM["Probabilities 0.659, 0.242, 0.099"]
+    SM -->|top-p 0.9 keeps the top tokens until the sum hits 0.9| H["hot 0.659"]:::hot
+    SM --> S["sweet 0.242"]:::hot
+    SM -.->|cut, outside the nucleus| P["purple 0.099"]:::dim
+    H --> RN["Renormalise: hot 0.731, sweet 0.269"]
+    S --> RN
+    RN --> PICK["Sample one token"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Temperature reshapes the probabilities, top-p cuts the long tail (purple is dropped), and the survivors are renormalised before one token is drawn.
 
 **Which settings for which job:**
 
@@ -485,6 +637,23 @@ print({w: picks.count(w) for w in vocab})          # roughly 730 hot, 270 sweet,
 4. **Lost in the middle:** a 2023 study ("Lost in the Middle") showed models use facts at the start and end of a long context far better than facts in the middle. Accuracy also tends to drop as total length grows, even on long-context models.
 5. **What to do:** retrieve only relevant chunks, put instructions at the start and the question at the end, summarise old turns, and keep a stable prefix so prompt caching can reuse it. Details in [Memory & Context](05-memory-context.md).
 
+```mermaid
+flowchart LR
+    subgraph WIN["One context window, for example 128K tokens"]
+        direction LR
+        SP["System prompt and tools: start, well used"]:::hot
+        DOCS["Retrieved docs and old turns: middle, often missed"]:::dim
+        UQ["User question: end, well used"]:::hot
+        OUT["Output and thinking tokens: also count"]
+        SP --> DOCS --> UQ --> OUT
+    end
+    OUT -->|every token adds| COST["Money, prefill time, KV cache memory"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Everything the model uses, including its own output, shares one window; facts at the start and end get used well, while the middle is where lost-in-the-middle bites.
+
 **Interview tip:** "We have a 1M-token model. Why not put all our docs in every prompt?" Say: "Cost and latency scale with tokens on every call, the KV cache limits how many users we can serve, and quality drops with long, noisy context because of lost-in-the-middle. Retrieval of the top relevant chunks is usually cheaper, faster and more accurate. Long context is great for one-off analysis of a single large document."
 
 **Common mistake:**
@@ -499,6 +668,26 @@ print({w: picks.count(w) for w in vocab})          # roughly 730 hot, 270 sweet,
 
 **Picture it:** A big hospital with 8 specialists on each floor. At reception (the router), each patient is sent to the 2 most suitable doctors, not to all 8. The hospital has the knowledge of 8 doctors, but each patient takes only 2 doctors' time. The building still has to hold all 8 doctors' rooms, though.
 
+```mermaid
+flowchart LR
+    T["Token vector after shared attention"] --> R["Router: 8 scores"]
+    R -->|top-2, weight 0.7| E3["Expert 3"]:::hot
+    R -->|top-2, weight 0.3| E6["Expert 6"]:::hot
+    R -.-> E1["Expert 1"]:::dim
+    R -.-> E2["Expert 2"]:::dim
+    R -.-> E4["Expert 4"]:::dim
+    R -.-> E5["Expert 5"]:::dim
+    R -.-> E7["Expert 7"]:::dim
+    R -.-> E8["Expert 8"]:::dim
+    E3 --> SUM["Weighted sum: 0.7 x E3 + 0.3 x E6"]
+    E6 --> SUM
+    SUM --> NX["Output to the next layer"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* One MoE layer for one token: the router scores all 8 experts but only the top 2 (dark) actually run; their outputs are mixed 0.7 / 0.3 and the other 6 sit idle for this token.
+
 **How it works, step by step (Mixtral 8x7B):**
 1. In each layer, attention is shared as usual. The single FFN is replaced by 8 expert FFNs.
 2. The **router** is a tiny linear layer. For each token it outputs 8 scores, one per expert.
@@ -508,6 +697,28 @@ print({w: picks.count(w) for w in vocab})          # roughly 730 hot, 270 sweet,
 6. **The numbers:** Mixtral has about **47B total** parameters (not 56B, because attention and embeddings are shared) but only about **13B active** per token. So per token it computes like a 13B model.
 7. **Memory:** all 47B parameters must sit in VRAM, because any token might need any expert. At 2 bytes each that is about 94 GB. So it needs the memory of a 47B model.
 8. **Training trick:** a load-balancing loss pushes the router to use all experts evenly. Otherwise a few experts get all the traffic and others never learn.
+
+```mermaid
+flowchart LR
+    subgraph VRAM["GPU memory: all 8 experts loaded, about 47B params, 94 GB"]
+        E1["Expert 1"]:::hot
+        E2["Expert 2"]:::hot
+        E3["Expert 3"]:::dim
+        E4["Expert 4"]:::dim
+        E5["Expert 5"]:::hot
+        E6["Expert 6"]:::dim
+        E7["Expert 7"]:::hot
+        E8["Expert 8"]:::dim
+    end
+    A["Token chai"] --> E2
+    A --> E5
+    B["Token GPU"] --> E1
+    B --> E7
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Two tokens in the same layer pick different experts, so every expert must stay in VRAM: compute per token is like a 13B model, but memory is like a 47B model.
 
 | | Dense 13B | MoE 47B total / 13B active | Dense 47B |
 |---|---|---|---|
@@ -545,6 +756,44 @@ Bigger examples: DeepSeek-V3 has 671B total and about 37B active, with many smal
 4. **Self-consistency:** sample, say, 5 independent reasoning paths at temperature around 0.7 and take the majority final answer. If 4 of 5 say "42", answer 42. It costs 5 times the tokens but gives a solid accuracy gain on maths-style tasks.
 5. **Reasoning effort knobs:** many APIs let you set effort or a thinking-token budget (low, medium, high). More budget = slower, costlier, usually more accurate on hard tasks.
 
+```mermaid
+flowchart LR
+    P["Maths problem with a checkable answer"] --> G["Model samples a group of 4 answers"]
+    G --> A1["Answer 1: correct"]:::hot
+    G --> A2["Answer 2: wrong"]:::dim
+    G --> A3["Answer 3: correct"]:::hot
+    G --> A4["Answer 4: wrong"]:::dim
+    A1 --> V["Reward each answer against the group average"]
+    A2 --> V
+    A3 --> V
+    A4 --> V
+    V -->|push up above-average thinking| U["Update the weights"]
+    U -->|repeat on many problems| G
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* GRPO, the RL loop behind DeepSeek-R1: answers that beat their group's average are reinforced, so useful habits like checking work grow on their own.
+
+```mermaid
+flowchart LR
+    Q["Hard question"] -->|temperature 0.7| P1["Path 1 says 42"]
+    Q --> P2["Path 2 says 42"]
+    Q --> P3["Path 3 says 17"]:::dim
+    Q --> P4["Path 4 says 42"]
+    Q --> P5["Path 5 says 42"]
+    P1 --> V["Majority vote"]
+    P2 --> V
+    P3 --> V
+    P4 --> V
+    P5 --> V
+    V --> A["Final answer 42, 4 of 5"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Self-consistency spends 5x the tokens at answer time: independent reasoning paths vote, and the odd one out (17) is outvoted.
+
 **When to use vs not:**
 
 | Use a reasoning model | Use a standard model |
@@ -577,6 +826,22 @@ A common production pattern: a reasoning model plans once, and cheaper fast mode
 4. **Reasoning RL (optional):** RL on verifiable tasks, as in the section above.
 5. You usually customise the last stages yourself with methods like LoRA. See [Fine-tuning and Post-training](16-fine-tuning.md).
 
+```mermaid
+flowchart LR
+    D["Web, books, code: trillions of tokens"] --> PT["Pretraining: predict the next token"]
+    PT --> BM["Base model: only continues text"]
+    BM --> SFT["SFT: prompt and ideal answer examples"]
+    SFT --> IM["Instruct model: follows the chat format"]
+    IM --> PREF["Preference tuning: RLHF or DPO on A-better-than-B pairs"]
+    PREF --> CM["Chat model you call through the API"]:::hot
+    CM -.->|optional| RRL["Reasoning RL on checkable tasks"]
+    CM -.->|your part| LORA["Your own LoRA fine-tune"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Three stages turn raw text into an assistant: pretraining gives knowledge, SFT gives the format, preference tuning gives judgement; the dotted steps are optional extras.
+
 **Interview tip:** "What is the difference between a base model and an instruct model?" Say: "A base model is only pretrained, so it continues text. An instruct or chat model has gone through SFT and preference tuning, so it follows instructions, uses a chat template and refuses harmful requests."
 
 **Common mistake:**
@@ -596,6 +861,20 @@ A common production pattern: a reasoning model plans once, and cheaper fast mode
 3. Sampling still has to pick a token. It picks one, say "2014", and writes it in a confident sentence.
 4. Later tokens are conditioned on "2014", so the model builds a consistent story around the guess.
 5. Common triggers: rare facts, recent events, exact numbers, citations and URLs, long contexts, and leading questions ("Why did X happen?" when X never happened).
+
+```mermaid
+flowchart LR
+    Q["Founding year of a small company?"] -->|no source in prompt| NB["Probabilities spread: 2014 0.22, 2016 0.20, 2012 0.18"]
+    NB -->|sampler must still pick one| G["2014"]:::dim
+    G -->|next tokens build on it| F["Confident, fluent, wrong answer"]:::dim
+    Q -->|RAG puts the source in the prompt| WB["Source text: founded in 2016"]
+    WB -->|probability concentrates| R["2016 at 0.95"]:::hot
+    R --> C["Grounded answer with a citation"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Top path: with no knowledge the probabilities are flat, the sampler still commits to a guess, and the rest of the text defends it. Bottom path: grounding with a source makes one answer clearly most likely.
 
 **Standard fixes:**
 

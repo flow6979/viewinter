@@ -114,6 +114,27 @@ flowchart LR
 
 **Picture it:** Pinecone is like Swiggy Instamart for vectors. You never see the dark store. You place orders (writes and queries), and pay per order and per shelf space.
 
+```mermaid
+flowchart LR
+    W["Upsert to tenant-swiggy"] --> LOG["Write log"]
+    LOG -->|seconds later| IB["Index builder"]
+    subgraph OS["Object storage, source of truth"]
+        NS1["tenant-swiggy index files"]
+        NS2["tenant-zomato index files"]
+        NS3["tenant-ola index files"]
+    end
+    IB --> NS1
+    Q["Query for tenant-swiggy"] --> QN["Query node with SSD and RAM cache"]
+    QN -->|cache miss only| NS1
+    QN --> R["Top 5, read units grow with namespace size"]
+    class Q,QN,NS1 hot
+    class NS2,NS3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Writes and reads are separate paths over object storage; a query touches only its own namespace, and the 'seconds later' gap before indexing is the eventual consistency.
+
 **How it works, step by step:**
 1. **History (interviewers ask "what changed"):** Pinecone started with **pod-based** indexes, fixed-size machines (p1, s1, p2) you picked and paid for by the hour. In 2024 it launched **serverless** indexes, which separate storage (object storage) from compute. In 2026 the SDKs stopped creating new pod indexes, and there is a migration path from pods to serverless.
 2. **Data model:** index → namespaces → records. A record has an `_id`, a dense and/or sparse vector, and flat metadata. Python SDK v10 (API 2026-07) adds **schema-based document indexes**: you declare searchable fields (`dense_vector`, `sparse_vector`, or a `string` with full-text search) when you create the index. Fields you only filter on are not declared; they are indexed for filtering automatically.
@@ -181,6 +202,40 @@ for match in results.matches:
 **Why it exists:** real queries almost always have filters ("only this tenant, only English, only last 30 days"). A plain HNSW graph breaks when a filter removes most nodes. Qdrant was built around making filtered vector search accurate and fast, in a single efficient binary you can self-host.
 
 **Picture it:** Qdrant is an IRCTC search that first narrows by train class and date using a proper index, then finds the best seats among what is left, instead of searching all seats and throwing most away.
+
+```mermaid
+flowchart TD
+    C["Collection support"] --> S1["Shard 1"]
+    C --> S2["Shard 2, replica on another node"]
+    S1 --> SG1["Segment A, sealed"]
+    S1 --> SG2["Segment B, growing"]
+    SG1 --> V["int8 vectors in RAM, 4x smaller"]
+    SG1 --> O["float32 originals on disk for rescoring"]
+    SG1 --> PI["Payload index: tenant with is_tenant, lang"]
+    SG1 --> H["HNSW with extra filter links"]
+    class V,PI,H hot
+    class SG2 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each sealed segment carries its own quantized vectors, originals on disk, payload indexes and HNSW; the growing segment is searched by brute force until the optimizer indexes it.
+
+```mermaid
+flowchart LR
+    Q["Query: tenant swiggy, lang en, top 5"] --> PL["Planner reads payload index counts"]
+    PL --> D{"How many points match?"}
+    D -->|few, e.g. 2000| BF["Exact brute force over the matches"]
+    D -->|many| FH["Filterable HNSW, ef 128"]
+    FH -->|10 candidates with oversampling 2x| RS["Rescore with float32 originals"]
+    BF --> R["Top 5"]
+    RS --> R
+    class PL,D hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The planner uses payload-index counts to pick exact brute force for tiny filtered sets, and filter-aware HNSW plus rescoring for broad ones.
 
 **How it works, step by step:**
 1. **Data model:** collection → points. A point has an id (an unsigned integer or a UUID only), one or more **named vectors** (dense, sparse, or multi-vector), and a JSON **payload**.
@@ -255,6 +310,36 @@ for p in res.points:
 
 **Picture it:** Weaviate is a library with a librarian. You hand in books (objects); the librarian writes the catalogue cards (vectors) using a chosen embedding model, and can search by title words (BM25) and by topic (vectors) at once.
 
+```mermaid
+flowchart LR
+    OBJ["Insert: Refunds take 5-7 days"] --> VEC["Vectorizer module text2vec-openai"]
+    VEC --> VI["Vector index HNSW"]
+    OBJ --> INV["Inverted index for BM25 and filters"]
+    QT["Query: refund kitne din me"] --> VEC2["Same vectorizer module"]
+    VEC2 --> VI
+    QT --> INV
+    VI --> F["Fusion with alpha 0.5"]
+    INV --> F
+    F --> RR["Reranker module"]
+    RR --> GEN["Generative module writes the answer"]
+    class VEC,VEC2,F hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The same vectorizer module embeds objects on insert and query text at search time; BM25 and vector results are fused by alpha, then optional reranker and generative modules run in the same query.
+
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE: tenant created
+    ACTIVE --> INACTIVE: idle, free the RAM
+    INACTIVE --> ACTIVE: customer returns
+    INACTIVE --> OFFLOADED: long idle, move to S3
+    OFFLOADED --> ACTIVE: reload from S3
+```
+
+*Diagram:* Each tenant is its own shard that moves between RAM, local disk and S3, which is how one cluster holds a huge long tail of idle customers cheaply.
+
 **How it works, step by step:**
 1. **Data model:** collection (older name: class) → objects. Each object has typed **properties** (text, int, date, geo...), a UUID, and one or more **named vectors**. Cross-references link objects.
 2. **Modules:** a **vectorizer** module (for example `text2vec-openai`, `text2vec-cohere`, `text2vec-ollama`, `multi2vec-clip`) embeds objects on insert and query text at search time. You can also bring your own vectors (`self_provided`). Generative and reranker modules add RAG answers and reranking in the same query.
@@ -323,6 +408,25 @@ client.close()
 
 **Picture it:** Milvus is a big Flipkart warehouse operation. Receiving docks (streaming nodes) take in goods, a packing team (data nodes) builds boxes (indexes), pickers (query nodes) serve orders, and the actual stock sits in a huge cheap godown (object storage).
 
+```mermaid
+flowchart LR
+    CL["Client SDK"] --> PX["Proxy, access layer"]
+    PX --> CO["Coordinator"]
+    PX -->|inserts| SN["Streaming nodes, growing segments"]
+    SN --> WAL["WAL Woodpecker"]
+    SN -->|seal segment| OS[("Object storage S3 or MinIO")]
+    CO -->|schedule| DN["Data nodes: compaction, index build"]
+    DN --> OS
+    PX -->|searches| QN["Query nodes load sealed segments"]
+    OS --> QN
+    CO --> ET[("etcd metadata")]
+    class SN,DN,QN hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Ingest, index building and search are three separate node types sharing object storage, so you add query nodes for QPS without touching ingest.
+
 **How it works, step by step:**
 1. **Data model:** database → collection → partitions → segments. A collection has a **schema**: a primary key, one or more vector fields (float, float16, bfloat16, binary, int8, sparse), scalar fields, and optional dynamic JSON fields.
 2. **Architecture (2.6):** an access layer (proxies), a coordinator, worker nodes (streaming nodes for fresh writes, query nodes for search, data nodes for compaction and index building), and storage: etcd for metadata, object storage (S3/MinIO) for data, and a WAL (Woodpecker in 2.6, or Kafka/Pulsar earlier).
@@ -387,6 +491,18 @@ for h in hits[0]:
 
 **Picture it:** Chroma is the Maggi of vector DBs: two minutes from packet to plate. Great for a hostel night; for a 500-person canteen you move to a bigger kitchen (Chroma Cloud or another DB).
 
+```mermaid
+flowchart LR
+    E["EphemeralClient, in memory"] -->|need to keep data| P["PersistentClient, SQLite plus HNSW on disk"]
+    P -->|several processes| H["chroma run plus HttpClient"]
+    H -->|multi-tenant production| C["CloudClient, SPANN on object storage"]
+    class P hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Same small API at every step; you move right only when the next limit hits: notebook, one disk, a server, then the serverless cloud.
+
 **How it works, step by step:**
 1. **Modes:** in-memory (`EphemeralClient`), embedded on disk (`PersistentClient`, SQLite plus a local HNSW index), client-server (`chroma run` with `HttpClient`), and **Chroma Cloud** (`CloudClient`).
 2. **Data model:** tenant → database → collection → records with `ids`, `embeddings`, `documents` (the text), and `metadatas`.
@@ -443,6 +559,23 @@ print(res["ids"][0], res["distances"][0])
 
 **Picture it:** LanceDB is like keeping your data in a well-indexed Excel file on Google Drive. No server to run; anyone with access opens the file and searches it.
 
+```mermaid
+flowchart LR
+    subgraph APP["Your Python process"]
+        L["lancedb library, search runs here"]
+    end
+    L -->|reads columns and index files| S3[("S3 bucket with Lance files")]
+    S3 --> V1["version 1: create_table"]
+    S3 --> V2["version 2: merge_insert"]
+    S3 --> V3["version 3: optimize and compact"]
+    class L,V3 hot
+    class V1,V2 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* There is no database server: the library inside your process reads Lance files straight from S3, and every write adds a version you can time-travel to until cleanup.
+
 **How it works, step by step:**
 1. **Lance format:** a columnar format (Arrow-compatible, like Parquet) designed for fast random row access and vectors. Every write creates a new **version**, so you get time travel and easy rollback.
 2. **Embedded:** `lancedb.connect("./data")` or `lancedb.connect("s3://bucket/path")`. The search runs inside your process; storage can be remote.
@@ -498,6 +631,22 @@ print([(r["id"], r["_distance"]) for r in res])
 **Why it exists:** AI apps like code assistants keep a separate index per user or per repo: millions of namespaces, most idle at any moment. Keeping all of them in RAM is very expensive. turbopuffer keeps everything on object storage and caches only what is being queried.
 
 **Picture it:** a cloud kitchen that stores raw stock in a cheap far-away godown and keeps only today's popular items in the kitchen fridge. The first order of a rare dish is slow; repeat orders are fast.
+
+```mermaid
+flowchart LR
+    W["Writes, batched"] -->|about 1 commit per second| WAL[("WAL on object storage, durable")]
+    Q["Query for namespace repo-42"] --> C{"Namespace in NVMe or RAM cache?"}
+    C -->|warm| F["Answer in 10-30 ms"]
+    C -->|cold| S3[("Object storage")]
+    S3 -->|load centroid index| L["Fill cache, hundreds of ms to 1 s"]
+    L --> F2["Answer, next query is warm"]
+    class F hot
+    class S3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Only the first (cold) query of a namespace pays the object-storage trip; after that it is cached and answers in tens of ms.
 
 **How it works, step by step:**
 1. **Storage:** object storage is the source of truth. Each namespace has its own path. Writes go to a WAL on object storage; a successful write is durable.
@@ -614,6 +763,22 @@ flowchart TD
 
 **Picture it:** packing for a trip. Clothes (raw vectors) take most of the bag, the bag itself (index) adds a little, vacuum bags (quantization) shrink clothes, and taking two bags (replicas) doubles everything.
 
+```mermaid
+flowchart LR
+    R["10M x 1024 x 4 bytes = 41 GB raw"] --> H["+ HNSW graph 1.5 GB"]
+    H --> M["+ metadata 1 GB"]
+    M --> HR["+ 20% headroom = 53 GB"]
+    HR -->|x 2 replicas| T["106 GB RAM"]
+    R -->|int8 quantize| Q["10.2 GB in RAM, originals on SSD"]
+    Q -->|same extras, x 2 replicas| T2["about 30 GB RAM"]
+    class Q,T2 hot
+    class T dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Raw vectors dominate the bill; int8 quantization with originals on disk cuts the 2-replica RAM from about 106 GB to about 30 GB.
+
 **How it works, step by step.** Scenario: a support RAG product with 10M chunks, a 1024-dim embedding model, 2 replicas for availability.
 
 | Item | Math | Size |
@@ -654,6 +819,22 @@ Other numbers to say out loud:
 **Why it exists:** teams outgrow their first choice (Chroma to Qdrant, Pinecone to self-hosted, pgvector to a dedicated DB). A planned migration is boring; an unplanned one is a weekend outage.
 
 **Picture it:** shifting house. Your furniture (data) moves fine if it is packed and labelled. The fitted wardrobes (vendor-specific features) stay behind.
+
+```mermaid
+flowchart LR
+    CS[("Canonical chunk store: id, text, metadata, vector, model")] -->|backfill| NEW["New DB, e.g. Qdrant"]
+    APP["App writes"] --> OLD["Old DB, e.g. Pinecone"]
+    APP -->|dual write| NEW
+    NEW --> CMP{"Golden queries: overlap, recall, p99, cost OK?"}
+    CMP -->|yes| CUT["Flag flips reads to new DB"]
+    CMP -->|no| FIX["Fix filter and tenancy mapping"]
+    CUT --> RB["Keep old DB for rollback, then stop dual writes"]
+    class CS,CUT hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The canonical chunk store is the escape hatch: it backfills the new DB while dual writes keep both fresh, and reads flip only after the golden-query comparison passes.
 
 **How it works, step by step:**
 1. **Keep a canonical copy** of every chunk outside the vector DB: `id, doc_id, tenant, text, metadata, embedding_model, vector` as Parquet on S3 or rows in Postgres. This is your escape hatch and your backup.
@@ -704,10 +885,39 @@ flowchart LR
 - Pinecone serverless and Milvus "Bounded" are eventually consistent (seconds). Qdrant `wait=True`, Milvus `Strong`/`Session`, and turbopuffer's default give read-your-writes.
 - For "user uploads a PDF and asks about it right away", either use a strong read for that request, or show "indexing..." until the write is confirmed.
 
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App
+    participant DB as Vector DB
+    U->>App: upload refund policy PDF
+    App->>DB: upsert chunks
+    DB-->>App: ack, write is in the log
+    U->>App: ask about refunds
+    App->>DB: search right away
+    DB-->>App: chunk not indexed yet, missing
+    Note over DB: index catches up in seconds
+    App->>DB: strong read or wait=True
+    DB-->>App: chunk found
+```
+
+*Diagram:* An ack means durable, not searchable; with eventual consistency the first search can miss the chunk, so use a strong read for that request or show an indexing state.
+
 **3. Deletes.**
 - Most indexes delete with tombstones, and space comes back after compaction. Heavy delete churn hurts recall and latency until the optimizer runs.
 - Use deterministic ids (`doc7#c3`) or a `doc_id` field so "delete this document" is one call (delete by id prefix, or delete by filter).
 - GDPR erasure: also handle snapshots, backups and LanceDB old versions, which still contain the data.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Live: upsert
+    Live --> Tombstoned: delete, skipped at query time
+    Tombstoned --> Compacted: background merge frees space
+    Compacted --> Erased: snapshots, backups, old versions cleaned
+    Erased --> [*]
+```
+
+*Diagram:* A delete is only a tombstone at first; space comes back after compaction, and GDPR erasure is complete only when backups and old versions are cleaned too.
 
 **4. Tenant isolation.**
 

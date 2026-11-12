@@ -68,6 +68,24 @@ flowchart LR
 
 - Yahan focus: agent **kab, kya aur kaise** retrieve kare, aur data side ki production problems.
 
+```mermaid
+flowchart LR
+    subgraph OFF["Offline: indexing"]
+        D["Docs"] --> CH["Chunk"]
+        CH --> EM["Embed"]
+        EM --> IX[("Vector + BM25 index")]
+    end
+    subgraph ON["Online: once per question"]
+        Q["Question"] --> HS["Hybrid search: BM25 + dense, RRF"]
+        HS --> RR["Rerank top-k"]
+        RR --> P["Prompt + chunks"]
+        P --> L["LLM answer"]
+    end
+    IX --> HS
+```
+
+*Diagram:* RAG pages wali fixed two-step pipeline; ye page online wale hisse ko agentic banata hai, yaani kab, kahan se aur kitni baar retrieve karna hai.
+
 ## ⭐ Agentic RAG: retrieval as a tool
 
 **Ye kyun chahiye?** Classic RAG har sawal pe ek baar, ek index se, user ke raw text se search karta hai. "Hi" pe bhi 4 docs laata hai. Do sources wale sawal pe ek source miss ho jaata hai.
@@ -595,6 +613,23 @@ sequenceDiagram
     R-->>A: top-k allowed chunks
     A-->>U: Answer from allowed data
 ```
+
+```mermaid
+flowchart LR
+    subgraph PRE["Pre-filter: correct"]
+        Q1["Aman asks: appraisal budget?"] --> F1["Search with acl_groups in eng, all"]
+        F1 --> R1["Top-4 from eng and all chunks only"]:::hot
+    end
+    subgraph POST["Post-filter: wrong"]
+        Q2["Aman asks: appraisal budget?"] --> F2["Search all chunks, top-4"]
+        F2 --> R2["4 HR chunks"]:::dim
+        R2 -->|filter after| Z["0 chunks left, one bug means a leak"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Pre-filter me HR chunks search me aate hi nahi; post-filter me charon slots HR chunks le lete hain, recall zero ho jaata hai aur ek chhooti check se leak ho jaata hai.
 
 **Ab terms:**
 - **ACL (access control list):** har chunk pe `acl_groups` / `tenant_id` metadata, ingestion ke time se.

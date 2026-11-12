@@ -14,6 +14,22 @@ PageIndex is a retrieval idea: instead of cutting a document into random chunks,
 
 > **Example:** a bot over Infosys's 200-page annual report. "What are the main risk factors and how are they mitigated?" The risk table spans pages 41–42; chunking splits it into two pieces. The LLM gets half the table and confidently gives half an answer.
 
+```mermaid
+flowchart LR
+    subgraph CK["512-token chunks"]
+        P41["Page 41: risk table rows 1-6"] --> CA["Chunk A, retrieved"]:::hot
+        P42["Page 42: rows 7-12, mitigations"] --> CB["Chunk B, not retrieved"]:::dim
+    end
+    subgraph PI["Page-level index"]
+        Q41["Page 41, top match"] --> CTX["Pages 41 and 42 in order, full table"]:::hot
+        Q42["Page 42, neighbour"] --> CTX
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Chunking splits the table at the page break and only half comes back; the page index returns both pages in order, so the LLM sees the whole table.
+
 - **Context bleed:** a chunk ends mid-table or mid-argument → the LLM gets an incomplete thought, and the embedding is weak too.
 - **Cross-page references break:** "see the table on the previous page", "as per Section 3" lose their meaning. Chunk retrieval knows nothing about page proximity.
 - **Tables/figures get mangled:** a table across two pages = two disconnected chunks.
@@ -34,6 +50,19 @@ PageIndex is a retrieval idea: instead of cutting a document into random chunks,
 - Very long pages (~1,500+ words): store smaller pieces inside the page but retrieve at page level; or slice only the relevant paragraph at serving time.
 - In the author's financial-report test, precision@3 was roughly 18–25% better (vs 512-token chunking), with less hallucination, because a full page carries its own caveats.
 
+```mermaid
+flowchart LR
+    Q["Query"] --> H["Hybrid search over pages, top 20"]
+    H --> R["Rerank: section match, neighbour pages"]
+    R --> K["Top 3 by score: p42, p17, p41"]
+    K --> O["Reorder by page: p17, p41, p42"]:::hot
+    O --> L["LLM with page citations"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Pages are picked by score but handed to the LLM in page order, so the report's narrative and cross-page tables stay intact.
+
 **2. Vectorless, reasoning-based tree index (PageIndex-style)**
 - Indexing: build a **hierarchical tree** from the document, like a smart table of contents: document → sections → sub-sections → pages. Each node has a title, a short LLM-generated summary and a page range.
 - Retrieval: give the LLM the query + the top level of the tree. It **reasons** "which section should hold the answer?", descends into that node, and backtracks if needed. Just like a human analyst reading a report via its ToC.
@@ -41,13 +70,20 @@ PageIndex is a retrieval idea: instead of cutting a document into random chunks,
 - Similarity ≠ relevance: vector search returns "what looks similar"; tree reasoning goes "where the answer should be".
 
 ```mermaid
-flowchart LR
-    Q["Query: FY24 forex risk"] --> R["LLM reads root ToC"]
-    R --> S["Pick Risk Factors"]
-    S --> M["Pick Market Risk"]
-    M --> P["Read pages 41-42"]
-    P --> A["Answer with page cite"]
+flowchart TD
+    Q["Query: FY24 forex risk"] --> ROOT["Annual report ToC"]
+    ROOT --> BO["Business overview"]:::dim
+    ROOT --> RF["Risk factors, pages 38-45"]:::hot
+    ROOT --> FS["Financial statements"]:::dim
+    RF --> OR["Operational risk"]:::dim
+    RF --> MR["Market risk: forex, rates"]:::hot
+    MR --> PG["Read pages 41-42"]:::hot
+    PG --> A["Answer with page 42 citation"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* The LLM reads only node titles and summaries, picks Risk factors then Market risk, and opens just pages 41-42; the dimmed branches are never read.
 
 | | Chunk + vector | Page-level index | Vectorless tree |
 |---|---|---|---|
@@ -72,6 +108,21 @@ flowchart LR
   - Doesn't scale to searching across many documents; you first pick the doc (via metadata or vector search), then navigate its tree.
   - Everything depends on tree quality (ToC, summaries); docs without headings are hard to build a tree for.
 - **Hybrid combo:** page-level BM25 gets more context (better IDF), dense gets the page theme. You catch "is about connection handling AND contains the exact error code". See [Hybrid Search](04-hybrid-search.md).
+
+```mermaid
+flowchart TD
+    D{"How was the document made to be read?"} -->|scanned and searched, FAQ, tickets| C["Chunk plus vector"]
+    D -->|page by page, reports, contracts| M{"Many documents?"}
+    M -->|yes| S["Pick the doc with vector search first"]
+    M -->|no, one doc| E{"Accuracy and explainability over latency?"}
+    S --> E
+    E -->|yes| T["Vectorless tree navigation"]:::hot
+    E -->|no| P["Page-level index plus hybrid"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Short searchable docs stay with chunking; long page-designed docs go to a page index or a tree, after first narrowing down to the right document.
 
 **Interview tip:** "First I'd find the right document at collection level with vector/hybrid search, then do tree navigation or page-level retrieval inside it. Best of both."
 

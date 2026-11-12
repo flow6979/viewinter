@@ -487,6 +487,26 @@ Confusion yahi hota hai: "function tool to pehle bhi tha, REST API bhi hai, MCP 
 
 **Kya badla:** tool **kahan rehta hai aur kaise milta hai**. Function tool tumhare process ke andar hardcoded hai. MCP tool ek alag server me rehta hai, runtime pe `tools/list` se discover hota hai, aur koi bhi MCP host use reuse kar sakta hai.
 
+```mermaid
+flowchart LR
+    subgraph FT["Function tool: ek app me hardcoded"]
+        A1["Tumhara agent code"] -->|haath se likha schema| F1["list_issues function"]
+        F1 -->|apna wrapper| G1["GitHub REST API"]
+    end
+    subgraph MT["MCP tool: alag server, runtime pe milta hai"]
+        H1["Tumhara agent"] -->|tools/list phir tools/call| S["GitHub MCP server"]
+        H2["Cursor"] -->|same protocol| S
+        H3["Claude Desktop"] -->|same protocol| S
+        S -->|andar call karta hai| G2["GitHub REST API"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class S hot
+    class A1,F1 dim
+```
+
+*Diagram:* Left me tool ek hi app ke code me band hai; right me ek MCP server (highlighted) runtime pe discover hota hai aur teen alag hosts use reuse karte hain, peeche GitHub API wahi hai.
+
 | | Normal function tool | REST API | MCP tool |
 |---|---|---|---|
 | Kahan rehta | agent ke code me | service pe | alag MCP server (local ya remote) |
@@ -599,6 +619,28 @@ asyncio.run(main())
 5. `tools_condition` dekhta hai: tool call hai to `tools` node, warna END.
 6. `ToolNode` LangChain tool chalata hai, jo andar MCP `tools/call` bhejta hai (Step 5, 6) aur result `ToolMessage` bana deta hai.
 7. `tools → agent` edge result LLM ko wapas deta hai (Step 7). LLM final jawab deta hai, loop khatam.
+
+```mermaid
+flowchart LR
+    subgraph LG["LangGraph agent process"]
+        AG["agent node: LLM with bind_tools"]
+        TN["ToolNode"]
+    end
+    MC["MultiServerMCPClient"]
+    MC -.->|startup pe ek baar get_tools| AG
+    AG -->|tool_use list_issues| TN
+    TN -->|tools/call| MC
+    MC -->|stdio subprocess| GS["server.py github-lite"]
+    MC -->|Streamable HTTP plus bearer| JS["Jira MCP server"]
+    GS -->|token server env me hi| GH["GitHub API"]
+    TN -->|ToolMessage| AG
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MC hot
+    class JS dim
+```
+
+*Diagram:* MCP sirf adapter (highlighted) bolta hai: startup pe har server ke tools ek baar laata hai, phir har ToolNode call usi se local stdio server (ya remote Jira, jo yahan use nahi hua) tak jaati hai; GitHub token server.py se bahar nahi jaata.
 
 Agent ke code me kahin `tools/call` ya JSON-RPC nahi likha; adapter wo sab chhupa deta hai. Agent ke liye MCP tool bhi ek normal tool hai.
 

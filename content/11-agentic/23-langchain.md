@@ -97,6 +97,24 @@ flowchart TD
 
 **Aise socho:** IRCTC app jo pehle har train ka timetable APK ke andar bhejta tha. Ab app chhota hai aur sirf tumhare routes download karta hai.
 
+```mermaid
+flowchart TD
+    APP["Your code"] --> LC["langchain: create_agent, init_chat_model, middleware"]
+    APP -->|install only what you use| PP["Partner packages: langchain-openai, langchain-anthropic, langchain-chroma"]
+    LC --> LG["langgraph: the runtime under create_agent"]
+    LC --> CORE["langchain-core: messages, BaseChatModel, BaseTool, Runnables"]
+    PP --> CORE
+    TS["langchain-text-splitters"] --> CORE
+    COM["langchain-community: long tail, lower bar"] --> CORE
+    CL["langchain-classic: LLMChain, RetrievalQA, hub"] -.->|only for old code| CORE
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class LC,CORE,PP hot
+    class CL,COM dim
+```
+
+*Diagram:* Sab kuch chhote `langchain-core` interfaces me plug hota hai; tum `langchain` aur sirf zaroori partner packages install karte ho, purani chains alag `langchain-classic` me padi hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `langchain-core`: base classes aur interfaces. Messages, `BaseChatModel`, `BaseTool`, retrievers, vector store interface, Runnables. Bahut kam dependencies.
@@ -131,6 +149,24 @@ flowchart TD
 **Ye kyun chahiye:** OpenAI, Anthropic aur Google cheezon ke naam alag rakhte hain (`max_tokens`, `stop_reason`, `tool_use` blocks vs `tool_calls`). Common interface se ek string badal ke model switch kar sakte ho, aur bina naye code ke A/B tests ya fallbacks chala sakte ho.
 
 **Aise socho:** UPI app. Paytm, PhonePe aur GPay alag banks se baat karte hain, par tumhe hamesha "amount daalo, PIN daalo" dikhta hai. Chat model interface wahi screen hai.
+
+```mermaid
+flowchart LR
+    S["init_chat_model: openai:gpt-5.5"] --> P{"Read the prefix"}
+    P -->|openai| O["ChatOpenAI from langchain-openai"]
+    P -->|anthropic| A["ChatAnthropic from langchain-anthropic"]
+    P -->|google_genai| G["ChatGoogleGenerativeAI"]
+    O --> I["Same 5 methods: invoke, stream, batch, bind_tools, with_structured_output"]
+    A --> I
+    G --> I
+    I --> R["AIMessage: .text plus usage_metadata 812 in, 64 out"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class S,O,I hot
+    class A,G dim
+```
+
+*Diagram:* Prefix ek partner class chunta hai (yahan OpenAI); jo bhi chune, tumhara code hamesha wahi paanch methods call karta hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -180,6 +216,20 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 
 **Aise socho:** Courier waybill. Har courier company ka apna form hai, par Shiprocket ek standard label deta hai: sender, receiver, weight. `content_blocks` wahi label hai.
 
+```mermaid
+flowchart LR
+    SY["SystemMessage"] --> HU["HumanMessage: where is SW1234"]
+    HU --> AI1["AIMessage: tool_calls get_order_status, id call_1"]
+    AI1 -->|same id call_1| TM["ToolMessage: tool_call_id call_1"]
+    TM --> AI2["AIMessage: Out for delivery"]
+    AI2 --> CB["content_blocks: text, reasoning, image, citation"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AI1,TM hot
+```
+
+*Diagram:* Tool call aur uska `ToolMessage` same id `call_1` share karte hain, isliye dono saath rakho ya saath kaato; `content_blocks` har provider ke liye same block types deta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Conversation ek list hai: system, human, AI, tool, AI, aur aage.
@@ -202,6 +252,28 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 **Ye kyun chahiye:** Har function ke liye JSON schema haath se likhna slow hai aur galti hoti hai. Tools ko aisi cheezein bhi chahiye jo model control na kare, jaise logged-in `user_id`. Unhe model ko dikhne wale arguments me milana security hole hai.
 
 **Aise socho:** Swiggy delivery partner ka app. Partner (model) buttons dekhta hai: "picked up mark karo", "customer ko call karo". Order ID aur partner ID app khud bharta hai. Partner kabhi type nahi karta.
+
+```mermaid
+flowchart LR
+    subgraph SEEN["Model sees"]
+        N["name and docstring description"]
+        AR["args: order_id"]
+    end
+    subgraph HIDDEN["Hidden: ToolRuntime"]
+        CTX["context.user_id from login session"]
+        ST["runtime.state and runtime.store"]
+    end
+    SEEN -->|schema| M["Model"]
+    M -->|tool call order_id SW1234| F["get_order_status"]
+    CTX --> F
+    ST --> F
+    F -->|ownership check passes| RES["ToolMessage: Out for delivery, total Rs 349"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CTX,F hot
+```
+
+*Diagram:* Model ko sirf name, description aur `order_id` dikhta hai; `user_id` `ToolRuntime` se server se aata hai, isliye model kisi aur user ka order nahi maang sakta.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -226,6 +298,21 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 
 **Aise socho:** Zomato cloud-kitchen franchise kit. Har outlet ko same layout aur process milta hai. Menu (tools) aur head chef (model) tum chunte ho, aur deewar pe rules lagate ho (middleware).
 
+```mermaid
+flowchart LR
+    ST(["START: messages"]) --> MO["model node: system prompt, history, tool schemas"]
+    MO --> Q{"tool_calls in reply?"}
+    Q -->|yes| TO["tools node: run calls in parallel, append ToolMessages"]
+    TO -->|loop back| MO
+    Q -->|no| EN(["END: final state"])
+    TO -.->|after every step| CP[("Checkpointer by thread_id")]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MO,TO hot
+```
+
+*Diagram:* `create_agent` bilkul yahi do-node LangGraph loop banata hai: model, tools, model, jab tak reply me tool call na bache.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Graph me ek `model` node aur ek `tools` node hai. Middleware unke pehle aur baad nodes jod sakta hai.
@@ -249,6 +336,23 @@ claude = init_chat_model("anthropic:claude-sonnet-5", max_tokens=1024)
 **Ye kyun chahiye:** Purani shikayat thi: "prebuilt agent tab tak chalta hai jab tak ek chhota change na chahiye, phir sab dobara likhna padta hai". Middleware iska jawab hai. Summarisation, approvals, retries, PII masking aur dynamic prompts same loop pe plug-ins ban jaate hain, uske forks nahi.
 
 **Aise socho:** Airport ke security checks. Har passenger ka safar same, par boarding se pehle check (before_model), pahunchne pe check (after_model), aur scanner jisme se bag guzarta hai (wrap_tool_call). Airport dobara banaye bina checks jodo ya hatao.
+
+```mermaid
+flowchart TD
+    BA["before_agent: once per run"] --> BM["before_model: summarise, limits"]
+    BM --> WM["wrap_model_call: retry, fallback around the model"]
+    WM --> AM["after_model: human approval may interrupt"]
+    AM --> Q{"tool calls?"}
+    Q -->|yes| WT["wrap_tool_call: log, auth, retry around each tool"]
+    WT -->|next step| BM
+    Q -->|no| AA["after_agent: once per run"]
+    AM -.->|jump_to end| AA
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class BM,WM,AM,WT hot
+```
+
+*Diagram:* Node hooks model node ke pehle aur baad baithte hain, wrap hooks har model aur tool call ko gher lete hain; `middleware=[a, b, c]` me before-hooks a, b, c aur after-hooks c, b, a chalte hain.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -308,6 +412,22 @@ def log_tools(request, handler):
 
 **Aise socho:** Bank ka form jisme har field ka box hai, khaali page nahi. Clerk bina essay padhe process kar leta hai.
 
+```mermaid
+flowchart TD
+    S["response_format=TicketSummary"] --> Q{"Provider has native structured output?"}
+    Q -->|yes| PS["ProviderStrategy: constrained decoding"]
+    Q -->|no| TS["ToolStrategy: hidden respond-with-schema tool"]
+    PS --> V["Pydantic validation: refund_inr ge 0"]
+    TS --> V
+    V -->|valid| OUT["state: structured_response"]
+    V -->|error sent back, retry| TS
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class PS,V,OUT hot
+```
+
+*Diagram:* Provider support kare to LangChain native raasta leta hai; sirf tool wala raasta validation me fail hokar retry ke liye wapas ghoom sakta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Pydantic model, dataclass, TypedDict ya JSON schema define karo.
@@ -354,6 +474,25 @@ print(out["structured_response"])   # TicketSummary(category='missing_item', ord
 
 **Aise socho:** Library catalogue system jo same chalta hai, chahe kitabein chhoti school library me hon ya National Library me.
 
+```mermaid
+flowchart LR
+    subgraph TWO["2-step RAG: 1 LLM call"]
+        Q1["Question"] --> R1["Retriever k=4"]
+        R1 --> M1["Model answers once"]
+    end
+    subgraph AGT["Agentic RAG: 2-4 LLM calls"]
+        Q2["Question"] --> A2["Agent model"]
+        A2 -->|search_policy tool call| R2["Retriever"]
+        R2 -->|chunks as ToolMessage| A2
+        A2 -->|enough context| M2["Final answer"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class R1,A2 hot
+```
+
+*Diagram:* Left: retrieval hamesha ek baar, phir ek model call. Right: agent khud decide karta hai kab aur kitni baar search kare; calls zyada, par comparison wale sawal sambhal leta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Document loader se files ko `Document(page_content, metadata)` objects me load karo.
@@ -385,6 +524,24 @@ print(out["structured_response"])   # TicketSummary(category='missing_item', ord
 **Ye kyun chahiye:** 2023 me LangChain ne LCEL laaya taaki koi bhi chain Runnables ko `|` se jod ke free me streaming, batching, async aur tracing paaye. Teams ne phir LCEL me complex branching logic banaya, jo padhna aur debug karna mushkil tha. Control flow LangGraph ne le liya; LCEL chhoti, seedhi pipelines ke liye reh gaya.
 
 **Aise socho:** Pipe fitting system. Tap, filter aur bottle ko ek line me jodne ke liye badhiya. Loops aur valves wale poore ghar ki plumbing ke liye bekaar; uske liye proper naksha chahiye (LangGraph).
+
+```mermaid
+flowchart LR
+    IN["dict: text = Biryani arrived cold"] --> P["ChatPromptTemplate"]
+    P -->|list of messages| M["chat model gpt-5.4-mini"]
+    M -->|AIMessage| SP["StrOutputParser"]
+    SP -->|plain str| OUT["late"]
+    subgraph SEQ["RunnableSequence built with the pipe operator"]
+        P
+        M
+        SP
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class P,M,SP hot
+```
+
+*Diagram:* Har pipe ek Runnable ka output agle ko deta hai (dict, messages, AIMessage, str); poora box khud ek Runnable hai jisme `invoke`, `batch` aur `stream` hain.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -429,6 +586,23 @@ print(classify.batch([{"text": "No spoon"}, {"text": "Too salty"}]))       # par
 **Ye kyun chahiye:** Ye ek example upar ke saare blocks use karta hai: chat model, runtime context wale tools, retriever tool, `create_agent`, built-in middleware, checkpointer aur human-in-the-loop.
 
 **Aise socho:** Swiggy support desk jisme policy binder hai, order lookup screen hai, aur ek supervisor hai jise har refund pe sign karna hai.
+
+```mermaid
+flowchart LR
+    U["Customer: raita missing in SW1234"] --> AG["create_agent gpt-5.5"]
+    AG --> T1["get_order_status: user from ToolRuntime"]
+    AG --> T2["search_policy: vector store retriever"]
+    AG --> T3["issue_refund"]
+    T3 -.->|HumanInTheLoopMiddleware interrupt| H["Supervisor: approve or reject"]
+    H -->|Command resume| AG
+    MW["Summarization at 6,000 tokens, ModelCallLimit 8"] -.-> AG
+    AG --- CP[("Checkpointer per thread_id")]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class T3,H hot
+```
+
+*Diagram:* Do tools seedhe chalte hain; `issue_refund` run ko rok deta hai jab tak supervisor jawab na de, aur checkpointer ki wajah se run resume ho pata hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -609,6 +783,21 @@ sequenceDiagram
 
 **Aise socho:** Ghar ki tiffin service se licensed restaurant tak jaana: fridge logs, CCTV, cash register aur fire safety, sirf achha khaana nahi.
 
+```mermaid
+flowchart LR
+    UI["Web UI"] -->|SSE stream_mode messages| API["FastAPI service"]
+    API --> AG["create_agent with call limits, retry, fallback"]
+    AG --> PG[("PostgresSaver: threads, pending approvals")]
+    AG --> STR[("Store: long-term memory")]
+    AG -.->|spans| LS["LangSmith tracing"]
+    EV["Eval set 50-200 conversations"] -.->|gate every change in CI| AG
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class PG,LS hot
+```
+
+*Diagram:* Laptop demo production tab banta hai jab state Postgres me jaaye, har step trace ho, aur eval set har change ko gate kare.
+
 **Kaise kaam karta hai, step by step:**
 
 1. **Persistence:** threads ke liye `PostgresSaver` (ya koi aur LangGraph checkpointer); threads ke paar long-term memory ke liye LangGraph `Store`. Dekho [Memory & Context](05-memory-context.md).
@@ -632,6 +821,22 @@ sequenceDiagram
 **Ye kyun chahiye:** "LangChain kyun?" interview ka favourite sawal hai, aksar uske baad "isme bahut abstraction nahi hai?". Tumhe fair jawab chahiye, fan wala nahi.
 
 **Aise socho:** Ola, rented car aur apni scooter me se chunna. Har ek kisi trip ke liye sahi hai.
+
+```mermaid
+flowchart TD
+    Q{"What is hard in your problem?"}
+    Q -->|one loop with tools, many providers| LC["LangChain create_agent"]
+    Q -->|branching, multi-agent, durable approvals| LG["LangGraph directly"]
+    Q -->|messy documents and retrieval| LI["LlamaIndex, maybe as a tool"]
+    Q -->|typed outputs in a small service| PA["Pydantic AI"]
+    Q -->|all-in on one provider| SDK["Provider SDK"]
+    LC -.->|outgrow the loop| LG
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class LC hot
+```
+
+*Diagram:* Problem ke mushkil hisse se chuno; `create_agent` wala app bina rewrite ke ek level neeche LangGraph pe ja sakta hai.
 
 **Kaise kaam karta hai, step by step:**
 

@@ -159,6 +159,25 @@ flowchart LR
 2. A worker runs it and sends progress events: "1/5 trades loaded", "2/5 capital gains".
 3. The user closes the app and comes back 5 minutes later. The app polls `GET /runs/r9` (or re-joins the stream), gets the status, and at the end the report link (or a webhook).
 
+```mermaid
+sequenceDiagram
+    participant U as User app
+    participant A as API
+    participant Q as Queue
+    participant W as Worker
+    U->>A: POST Build my Q2 tax report
+    A->>Q: enqueue run r9
+    A-->>U: 202 Accepted, run_id r9, queued
+    Q->>W: deliver r9
+    W-->>U: progress 1/5 trades loaded
+    W-->>U: progress 2/5 capital gains
+    Note over U: user closes the app, work goes on
+    U->>A: GET /runs/r9 after 5 min
+    A-->>U: status done plus report link
+```
+
+*Diagram:* The API answers in milliseconds with a run_id and hands the work to a queue; the worker keeps going after the app closes, and the app later collects the result with that run_id.
+
 | | Sync (streaming) run | Background run |
 |---|---|---|
 | Duration | seconds | minutes–hours |
@@ -253,6 +272,22 @@ print(snap.next)        # ('write_report',)
 2. 3 seconds later, while `run_1` is still going, Riya types "Cancel kar do" (cancel it).
 3. Two runs on one thread at the same time would corrupt the state, so Platform checks `multitask_strategy`. Here it is `interrupt`: `run_1` stops (its progress stays in the thread) and `run_2` runs.
 4. The agent sees the whole story (late + cancel) and runs the cancel flow.
+
+```mermaid
+sequenceDiagram
+    participant R as Riya
+    participant P as Platform
+    participant T as Thread t_88
+    R->>P: Order late hai
+    P->>T: start run_1, streaming
+    R->>P: Cancel kar do, 3 s later
+    P->>P: run_1 still busy, check multitask_strategy
+    P->>T: interrupt run_1, progress kept in thread
+    P->>T: start run_2 with late plus cancel
+    T-->>R: cancel flow runs
+```
+
+*Diagram:* Two messages hit one thread; instead of running both at once, Platform applies the interrupt strategy, so run_1 stops with its progress saved and run_2 sees the whole story.
 
 **Now the terms (Platform concepts):**
 - **Assistant:** a versioned instance of a graph + config (model, prompt, tools). One graph can have many assistants, like "support-hindi" and "support-english".

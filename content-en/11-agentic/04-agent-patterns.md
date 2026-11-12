@@ -303,6 +303,33 @@ app = g.compile()
 
 **LLMCompiler:** the planner streams tasks with dependencies as a **DAG**. The task fetching unit runs tasks in parallel as soon as their dependencies are ready. A joiner decides: answer or replan. The paper reported a large latency speedup over ReAct.
 
+```mermaid
+flowchart LR
+    subgraph RW["ReWOO: 2 LLM calls"]
+        P["Planner LLM: E1 search Nifty PE, E2 calc E1 x 1.1"]:::hot
+        W["Worker, no LLM: E1 is 22.4, E2 is 24.64"]
+        S["Solver LLM: final answer"]:::hot
+    end
+    subgraph LC["LLMCompiler: DAG in parallel"]
+        PL["Planner streams the DAG"]
+        T1["Task 1: price of fund A"]
+        T2["Task 2: price of fund B"]
+        T3["Task 3: compare, needs 1 and 2"]
+        J["Joiner: answer or replan"]
+    end
+    P --> W
+    W --> S
+    PL --> T1
+    PL --> T2
+    T1 --> T3
+    T2 --> T3
+    T3 --> J
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* ReWOO calls the LLM only twice (highlighted) because the worker fills E1 into E2 without asking the model; LLMCompiler runs tasks 1 and 2 together and task 3 waits for both.
+
 | | ReAct | Plan-and-execute | ReWOO | LLMCompiler |
 |---|---|---|---|---|
 | LLM calls | every step | plan + replan every step | ~2 (plan, solve) | plan + join |
@@ -383,6 +410,38 @@ When the grounded signal (tests) fails, the reflection goes into the Store and c
 | Hierarchical | supervisor of supervisors (subgraphs) | many agents, grouped by team |
 | Swarm / handoffs | the active agent hands off itself | conversational, user talks to one specialist |
 | Network (peer-to-peer) | any agent to any agent | rare; hard to debug |
+
+```mermaid
+flowchart LR
+    subgraph SUP["Supervisor"]
+        S0["Supervisor"]:::hot
+        S1["Pricing"]
+        S2["Ads"]
+    end
+    subgraph SW["Swarm"]
+        W1["Booking"]
+        W2["Payments"]
+    end
+    subgraph NW["Network"]
+        N1["Agent A"]
+        N2["Agent B"]
+        N3["Agent C"]
+    end
+    S0 --> S1
+    S1 --> S0
+    S0 --> S2
+    S2 --> S0
+    W1 -->|handoff| W2
+    W2 -->|handoff| W1
+    N1 --> N2
+    N2 --> N3
+    N3 --> N1
+    N2 --> N1
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Supervisor: control always returns to the centre (highlighted). Swarm: the active agent passes the baton. Network: anyone calls anyone, which is why it is hard to debug. The hierarchical version is below.
 
 ```mermaid
 flowchart TD
@@ -574,6 +633,25 @@ So about 3.4x the cost. It is worth it when deep research makes the seller's big
 | Long chat where the specialist changes (booking → payment) | Swarm handoffs |
 | Low-value, high-volume query (FAQ) | Single agent or workflow; 15x cost not justified |
 
+```mermaid
+flowchart TD
+    Q["New task"] --> F{"Low value, high volume, like FAQ?"}
+    F -->|yes| SA["Single agent or workflow"]:::hot
+    F -->|no| A{"Under 15 tools, one domain?"}
+    A -->|yes| SA
+    A -->|no| B{"Tightly coupled edits on one codebase?"}
+    B -->|yes| SA
+    B -->|no| C{"Breadth research, independent sub-questions?"}
+    C -->|yes| OR["Orchestrator + parallel subagents"]
+    C -->|no| D{"Specialist changes during a long chat?"}
+    D -->|yes| SW["Swarm handoffs"]
+    D -->|no, 30+ tools across domains| SP["Supervisor + specialists"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Most paths end at a single agent (highlighted); you pay the ~3.4x multi-agent bill only on the breadth, many-domain or changing-specialist branches.
+
 **Interview tip:** "I start the multi-agent case from the token budget: if a single agent's context overflows from tools and history, or I need parallel breadth, I split. Otherwise I don't."
 
 **Common mistake:** turning the org chart into an agent chart ("PM agent, dev agent, QA agent") without showing that a single agent was failing.
@@ -591,6 +669,23 @@ So about 3.4x the cost. It is worth it when deep research makes the seller's big
 2. The subagent does 12 searches in its private state: ~30k tokens, not visible to the parent.
 3. The subagent returns a ~300-token structured result.
 4. Only these 300 tokens are added to the parent's `messages`. The next supervisor call reads 300 extra tokens instead of 30k.
+
+```mermaid
+flowchart LR
+    subgraph SH["Shared history"]
+        SS["Supervisor"] --> SR["Research subagent: 12 searches"]
+        SR -->|all 30k tokens of tool calls| SM["Parent messages grow by 30k"]
+    end
+    subgraph PR["Private scratchpad"]
+        PS["Supervisor"] -->|task brief JSON| PA["Research subagent: 12 searches"]
+        PA --> PP["Private state: 30k tokens"]
+        PA -->|300-token result| PM["Parent messages grow by 300"]:::hot
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The same 12 searches either way; with a private scratchpad only the highlighted 300-token result reaches the parent, so every later supervisor call stays small.
 
 A handoff brief looks like this:
 
@@ -624,6 +719,19 @@ A handoff brief looks like this:
 **Why do we need this?** In multi-agent systems most bugs are not model mistakes, they are coordination mistakes. An example: the seller says "handle price and ads". Supervisor → pricing → supervisor → pricing → supervisor... each time pricing says "ads are not my job" and the supervisor sends it to pricing again. After 25 steps, `GraphRecursionError` (the error LangGraph raises when `recursion_limit` is hit), and the seller gets nothing.
 
 **Trace of the fix:** keep a `handoff_count` in state. +1 on every handoff. If the same agent is sent twice in a row, or the count goes above 4, force the supervisor to give a summary or send it to a human.
+
+```mermaid
+flowchart LR
+    S["Supervisor"] -->|handoff 1| P["Pricing agent"]
+    P -->|ads are not my job| S
+    S -->|handoff 2, same agent again| G{"Same agent twice or handoff_count over 4?"}
+    G -->|no| P
+    G -->|yes| F["Forced summary or human"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Without the guard this cycle runs until `GraphRecursionError` at step 25; the counter in state breaks it at the first repeat.
 
 | Failure | Symptom | Fix |
 |---|---|---|

@@ -222,6 +222,25 @@ The fixed part stays the same; only history and tool results grow. With a budget
 
 Notice the problem: the order ID "8812" (message 4) fell out of the window. If the user asks "what was my order number?", the bot cannot say. That is what the next section, summarization, is for.
 
+```mermaid
+flowchart LR
+    subgraph ST["State: all 12 messages kept"]
+        M1["1 System"]
+        M27["2 to 7: order late, 8812, get_order, picked up"]:::dim
+        M812["8 to 12: refund question, policy, coupon"]
+    end
+    TR["trim_messages: last, 3000 tokens, start_on human"]
+    W["LLM window: 1 + 8 to 12"]:::hot
+    M1 -->|include_system| TR
+    M812 -->|fits the budget| TR
+    M27 -.->|dropped, 8812 lost| TR
+    TR --> W
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The state keeps all 12 messages; only the highlighted window goes to the LLM, and the dimmed block holding order ID 8812 is what trimming throws away.
+
 **Now the terms:**
 - **Context window:** how many tokens the model can read in one call. **Token budget:** how much of it we choose to use.
 - **Trimming:** removing old messages from the LLM's view. The information is simply lost.
@@ -349,6 +368,19 @@ builder.add_edge("summarize", END)
 | Procedural | the agent's rules/instructions | "Always reply to this user in Hindi" | part of the system prompt, the agent can update it |
 
 **Walk-through:** the user says "I don't trade F&O. I want last time's tax-report method. Speak in Hindi." One message, three writes: a semantic fact is saved, the 3 steps of the last successful run enter the prompt as an example, and "Always reply in Hindi" is added to the system prompt.
+
+```mermaid
+flowchart LR
+    U["User: no F and O, use last time's tax-report method, speak Hindi"] --> X["Memory writer"]
+    X -->|fact| SE[("Semantic: no F and O, long-term equity")]
+    X -->|experience| EP[("Episodic: 3 steps of last tax P and L run")]
+    X -->|rule| PR[("Procedural: always reply in Hindi")]
+    SE -->|searched into prompt| P["Next prompt"]
+    EP -->|few-shot example| P
+    PR -->|system prompt line| P
+```
+
+*Diagram:* One message produces three different writes, and each memory type comes back into the prompt in a different place.
 
 **Now the terms:**
 - **Semantic** comes in two shapes:
@@ -510,12 +542,16 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    W["Write: scratchpad, files, memory"] --> CTX["Context window for this step"]
-    S["Select: retrieve only relevant"] --> CTX
-    C["Compress: trim, summarize"] --> CTX
-    I["Isolate: sub-agents, sandboxes"] --> CTX
+    W["Write: 40,000 CSV rows to a file, 120k to 300 tokens"] --> CTX["Window at step 12: about 7.3k, not 154k"]:::hot
+    S["Select: 6 of 80 tools, 12k to 1k"] --> CTX
+    C["Compress: old tool outputs, 18k to 2k"] --> CTX
+    I["Isolate: sub-agent reads 50k, returns 1.5k"] --> CTX
     CTX --> LLM["LLM call"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Each strategy shrinks one slice of the window; together they take step 12 from about 154k to about 7.3k tokens (highlighted).
 
 **Now the terms:** **scratchpad** = plan, todo, findings in a state field or file (write). **Tool-result pruning** = replacing old results with a placeholder (compress). Isolate also covers heavy fields in the state schema that never go to the LLM.
 

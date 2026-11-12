@@ -100,6 +100,23 @@ Package layout:
 
 **Aise socho:** Ek textbook (Document) aur uske numbered paragraphs (Nodes). Har paragraph ko pata hai uski kitaab, chapter, aur uske pehle aur baad ke paragraphs kaun se hain.
 
+```mermaid
+flowchart TD
+    D["Document: leave_policy.pdf, dept HR, doc_id stable"] -->|node parser| N1["Node 1"]
+    D --> N2["Node 2"]
+    D --> N3["Node 3"]
+    N1 -->|NEXT| N2
+    N2 -->|NEXT| N3
+    N2 -.->|SOURCE| D
+    N2 --> E["Embedding: text plus metadata"]
+    N2 --> F["Filter at query: dept is HR"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class N2 hot
+```
+
+*Diagram:* Har Node apne Document ki taraf (SOURCE) aur padosiyon ki taraf (NEXT/PREVIOUS) link rakhta hai, aur Document ka metadata embedding aur filters tak le jaata hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `Document` me `text`, `metadata` (jaise `{"file_name": "leave_policy.pdf", "dept": "HR"}`) aur ek stable `doc_id` hota hai.
@@ -142,6 +159,27 @@ Package layout:
 
 **Aise socho:** Bigdi hui photocopy ek dhyaan se kaam karne wale typist ko dena jo use saaf-saaf dobara type kare, tables ko tables rakhte hue.
 
+```mermaid
+flowchart LR
+    PDF["PDF page: 2 columns plus a leave table"]
+    subgraph BEF["Plain PDF reader"]
+        B1["Text read across columns"] --> B2["Table flattened to loose numbers"]
+        B2 --> B3["Broken chunks, wrong answers"]
+    end
+    subgraph AFT["LlamaParse"]
+        A1["Vision plus language model reads layout"] --> A2["Markdown, table kept as table"]
+        A2 --> A3["MarkdownNodeParser: table in one chunk"]
+    end
+    PDF --> B1
+    PDF --> A1
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class A2,A3 hot
+    class B3 dim
+```
+
+*Diagram:* Ek hi page do tarah parse hua: plain reader columns aur table bigaad deta hai, LlamaParse table poori rakhta hai taaki ek chunk me aa jaaye.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `llama-cloud` SDK se file upload karo (`LlamaCloud` client, API key `LLAMA_CLOUD_API_KEY` me).
@@ -180,6 +218,25 @@ Purane tutorials `from llama_parse import LlamaParse` (ya `llama-cloud-services`
 
 **Aise socho:** Mehmaanon ke liye cake kaatna. Bahut bada to log waste karte hain; bahut chhota to kisi ko cream ke saath cherry nahi milti. Layers ke saath kaato.
 
+```mermaid
+flowchart TD
+    P["Parent chunk 2048 tokens"] --> C1["Child A 512"]
+    P --> C2["Child B 512"]
+    C1 --> L1["Leaf 128: matched"]
+    C1 --> L2["Leaf 128: matched"]
+    C1 --> L3["Leaf 128: matched"]
+    C1 --> L4["Leaf 128"]
+    L1 -->|3 of 4 siblings matched| M["AutoMergingRetriever returns Child A whole"]
+    L2 --> M
+    L3 --> M
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class L1,L2,L3,M hot
+    class C2,L4 dim
+```
+
+*Diagram:* `HierarchicalNodeParser` plus auto-merge: search chhote 128-token leaves pe hit karta hai, aur jab zyada siblings match karein to retriever unki jagah 512-token parent de deta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `SentenceSplitter(chunk_size=512, chunk_overlap=50)`: default; sentence boundaries ka khayal rakhta hai. 1,000-token page se lagbhag 2–3 Nodes.
@@ -211,6 +268,22 @@ Purane tutorials `from llama_parse import LlamaParse` (ya `llama-cloud-services`
 
 **Aise socho:** Teen catalogues wali library: topic se (vector), poori shelf list (summary), aur kaun kisko report karta hai uska family tree (graph).
 
+```mermaid
+flowchart TD
+    Q["Question"] --> R{"Router picks an index"}
+    R -->|find the notice period clause| V["VectorStoreIndex: top-k similarity"]
+    R -->|summarise the whole handbook| S["SummaryIndex: visit every Node"]
+    R -->|who approves leave for whom| G["PropertyGraphIndex: entities and relations"]
+    V --> SC[("StorageContext: vector store, docstore, index store")]
+    S --> SC
+    G --> SC
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class V hot
+```
+
+*Diagram:* Alag tarah ke sawal ko same Nodes pe alag index chahiye; sab ek hi `StorageContext` ke through save hote hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `VectorStoreIndex(nodes)` Nodes embed karta hai (agar pehle se nahi hain) aur store karta hai. Default store memory me hai.
@@ -240,6 +313,22 @@ Purane tutorials `from llama_parse import LlamaParse` (ya `llama-cloud-services`
 
 **Aise socho:** Job ke liye shortlisting. HR ka keyword filter 200 CVs deta hai (retriever), ek jaldi read 20 tak laata hai (cutoff), aur hiring manager final 4 rank karta hai (reranker).
 
+```mermaid
+flowchart LR
+    Q["Question"] -->|metadata filter dept HR| VR["Vector retriever top 20"]
+    Q --> BM["BM25 retriever top 20"]
+    VR --> FU["QueryFusionRetriever: reciprocal rank fusion"]
+    BM --> FU
+    FU --> CO["SimilarityPostprocessor cutoff 0.5"]
+    CO -->|about 12 left| RR["Reranker cross-encoder"]
+    RR -->|best 4| SY["Response synthesizer"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class FU,RR hot
+```
+
+*Diagram:* Ek funnel: do retrievers 20-20 ka bada jaal daalte hain, fusion unhe jodta hai, cutoff kamzor matches hataata hai, aur reranker LLM ke liye sirf best 4 rakhta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `index.as_retriever(similarity_top_k=20)` scores ke saath 20 sabse paas ke Nodes lautata hai.
@@ -261,6 +350,28 @@ Purane tutorials `from llama_parse import LlamaParse` (ya `llama-cloud-services`
 **Ye kyun chahiye:** Same retrieved chunks se jawab alag tareeke se ban sakta hai. Ek prompt me fit hon to ek call kaafi. 50 chunks hon to kai calls me refine karna ya tree me summarise karna padta hai. Aur chat ko "interns ke liye kya?" ko search se pehle poore sawal me badalna padta hai.
 
 **Aise socho:** Student notes se exam ka sawal likh raha hai. `compact`: saare notes ek sheet pe thoonso aur ek baar likho. `refine`: note 1 se draft likho, phir note 2, note 3 se sudhaaro. `tree_summarize`: notes ko jodiyon me summarise karo, phir summaries ka summary.
+
+```mermaid
+flowchart TD
+    subgraph CMP["compact: about 3 calls"]
+        K1["Answer from chunks 1-4"] --> K2["Refine with 5-8"]
+        K2 --> K3["Refine with 9-12"]
+    end
+    subgraph REF["refine: 12 calls"]
+        R1["Draft from chunk 1"] --> R2["Improve with chunk 2"]
+        R2 --> R3["... up to chunk 12"]
+    end
+    subgraph TRE["tree_summarize: about 4 calls"]
+        T1["Summary of group 1"] --> T4["Summary of summaries"]
+        T2["Summary of group 2"] --> T4
+        T3["Summary of group 3"] --> T4
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class K1,K2,K3 hot
+```
+
+*Diagram:* Same 12 chunks, teen synthesizer tareeke: `compact` har prompt bhar ke bhejta hai, `refine` har chunk pe ek serial call karta hai, `tree_summarize` summaries ko upar merge karta hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -322,6 +433,21 @@ Purane tutorials `from llama_parse import LlamaParse` (ya `llama-cloud-services`
 **Ye kyun chahiye:** RAG apps me loops aur branches aa jaate hain: "retrieved chunks kharab hon to query rewrite karke dobara try karo", "teen retrievers parallel chalao, phir merge". Hard-coded chains ye achhe se nahi keh paati. Workflows har step ko chhota aur testable banate hain, aur flow is se tay hota hai ki har step kaunse events leta aur lautata hai.
 
 **Aise socho:** Order tickets wala restaurant kitchen. Waiter ticket daalta hai (event). Jo station us type ka ticket sambhalta hai woh uthata hai, banata hai, aur naya ticket daalta hai ("plating ke liye ready"). Koi fixed raasta nahi banata; tickets tay karte hain agla kaun kaam karega.
+
+```mermaid
+flowchart LR
+    SE(["StartEvent"]) --> S1["start step"]
+    S1 -->|Query event| S2["retrieve step"]
+    S2 -->|Retrieved event| S3["answer step"]
+    S3 -->|best score below 0.5, rewrite once| S2
+    S3 -->|good Nodes| STP(["StopEvent: answer"])
+    CTX[("ctx.store: tries")] -.-> S3
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class S2,S3 hot
+```
+
+*Diagram:* Steps ek doosre ko call nahi karte: har step ek typed event return karta hai aur engine use us step tak pahunchata hai jo wo type leta hai; isi se `retrieve` tak retry loop banta hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -391,6 +517,22 @@ class PolicyRAG(Workflow):
 
 **Aise socho:** Do screens wala HR helpdesk executive: policy handbook search aur HR system. Tumhare sawal ke har hisse ke liye woh tay karte hain kaunsi screen dekhni hai.
 
+```mermaid
+flowchart LR
+    U["User: leave left, and can I carry it over?"] --> TR["triage FunctionAgent: root_agent"]
+    TR -->|handoff| LA["leave agent"]
+    TR -->|handoff| PA["policy agent"]
+    LA --> FT["FunctionTool: get_leave_balance"]
+    PA --> QT["QueryEngineTool: search_hr_policy"]
+    QT --> QE["Query engine: retrieve, rerank, synthesize"]
+    LA -.->|can_handoff_to| PA
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class TR,QT hot
+```
+
+*Diagram:* `AgentWorkflow` me root agent control un specialists ko deta hai jo `can_handoff_to` me hain; poora RAG query engine agent ke liye bas ek tool hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Retrieval ko tool banao: `QueryEngineTool.from_defaults(query_engine=qe, name="search_hr_policy", description="...")`.
@@ -415,6 +557,24 @@ class PolicyRAG(Workflow):
 
 **Aise socho:** Laundry service jo har shirt pe tag lagati hai. Jo shirts dhul chuki aur tab se pehni nahi gayi, skip. Sirf nayi ya gandi machine me jaati hain.
 
+```mermaid
+flowchart LR
+    D["2,000 PDFs, nightly run"] --> H{"docstore: hash changed?"}
+    H -->|1,985 unchanged| SK["skip"]
+    H -->|15 new or changed| SP["SentenceSplitter"]
+    SP --> TE["TitleExtractor"]
+    TE --> EM["Embed about 45 Nodes"]
+    EM --> VS[("Vector store: upsert by doc_id")]
+    C[("IngestionCache: same input plus transform")] -.->|reuse output| SP
+    C -.-> EM
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class SP,TE,EM hot
+    class SK dim
+```
+
+*Diagram:* Docstore ka hash check sirf 15 badli files ko transformations se guzaarta hai, isliye 6,000 ki jagah lagbhag 45 Nodes embed hote hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `transformations=[SentenceSplitter(...), TitleExtractor(), OpenAIEmbedding()]`. Har ek order me chalta hai.
@@ -438,6 +598,21 @@ class PolicyRAG(Workflow):
 
 **Aise socho:** Answer key wala mock exam. Uske bina bas itna pata hai ki student "confident lag raha tha".
 
+```mermaid
+flowchart LR
+    DS["Questions: synthetic plus 50 real"] --> RET["Retriever"]
+    RET -->|retrieved Nodes| RE["RetrieverEvaluator: hit rate, MRR"]
+    RET --> SYN["Synthesizer"]
+    SYN -->|answer vs context| FA["Faithfulness"]
+    SYN -->|answer vs question| RL["Relevancy"]
+    SYN -->|answer vs reference| CR["Correctness"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RE,CR hot
+```
+
+*Diagram:* Retrieval aur answer alag-alag score hote hain: faithfulness high aur hit rate low ka matlab answer galat chunk ke prati wafadar hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Dataset banao: `generate_question_context_pairs(nodes, llm=llm, num_questions_per_chunk=2)` synthetic sawal banata hai; 50+ asli user sawal bhi milao.
@@ -459,6 +634,23 @@ class PolicyRAG(Workflow):
 **Ye kyun chahiye:** Ye ek example key blocks use karta hai: Settings, reader, node parser, cache wali ingestion pipeline, vector index, query engine, tools, agent, streaming aur memory.
 
 **Aise socho:** Company intranet pe HR helpdesk. Policy sawalon ke liye handbook padhta hai aur tumhare personal numbers ke liye HR system check karta hai.
+
+```mermaid
+flowchart LR
+    PDF["Policy PDFs"] --> PIPE["IngestionPipeline: split 512, embed, cache"]
+    PIPE --> QD[("Qdrant collection hr")]
+    QD --> QE["Query engine top 4"]
+    QE --> QT["search_hr_policy tool"]
+    SES["Logged-in employee_id"] --> LT["get_leave_balance tool, id closed over"]
+    QT --> AG["FunctionAgent with Context memory"]
+    LT --> AG
+    AG -->|stream_events| UI["Chat UI"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AG,LT hot
+```
+
+*Diagram:* Ingestion ek baar Qdrant me hoti hai; chat ke time agent RAG tool aur leave tool me chunta hai, aur employee ID session se aati hai, model se kabhi nahi.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -662,6 +854,22 @@ sequenceDiagram
 **Ye kyun chahiye:** "LangChain kyun nahi, LlamaIndex kyun?" standard sawal hai. Achha jawab batata hai tumhari problem me mushkil kya hai.
 
 **Aise socho:** Specialist eye hospital vs general hospital. Complex eye case ke liye specialist. Baaki sab ke liye general. Dono ek doosre ko patients refer karte hain.
+
+```mermaid
+flowchart TD
+    Q{"Which part is hard?"}
+    Q -->|messy PDFs, tables, retrieval tuning| LI["LlamaIndex"]
+    Q -->|one agent, many tools and providers| LC["LangChain create_agent"]
+    Q -->|durable branching flows, approvals| LG["LangGraph"]
+    Q -->|typed extraction, thin layer| PA["Pydantic AI or provider SDK"]
+    LI -.->|query engine as a tool| LG
+    LI -.->|query engine as a tool| LC
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class LI hot
+```
+
+*Diagram:* Mushkil hisse se chuno aur mix karo: LlamaIndex query engine aksar LangGraph ya LangChain agent ke andar ek tool banke rehta hai.
 
 **Kaise kaam karta hai, step by step:**
 

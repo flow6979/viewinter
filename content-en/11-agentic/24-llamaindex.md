@@ -100,6 +100,23 @@ Package layout:
 
 **Picture it:** A textbook (Document) and its numbered paragraphs (Nodes). Each paragraph knows its book, chapter and the paragraphs before and after it.
 
+```mermaid
+flowchart TD
+    D["Document: leave_policy.pdf, dept HR, doc_id stable"] -->|node parser| N1["Node 1"]
+    D --> N2["Node 2"]
+    D --> N3["Node 3"]
+    N1 -->|NEXT| N2
+    N2 -->|NEXT| N3
+    N2 -.->|SOURCE| D
+    N2 --> E["Embedding: text plus metadata"]
+    N2 --> F["Filter at query: dept is HR"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class N2 hot
+```
+
+*Diagram:* Every Node points back to its Document (SOURCE) and to its neighbours (NEXT/PREVIOUS), and carries the Document's metadata into embeddings and filters.
+
 **How it works, step by step:**
 
 1. A `Document` has `text`, `metadata` (for example `{"file_name": "leave_policy.pdf", "dept": "HR"}`) and a stable `doc_id`.
@@ -142,6 +159,27 @@ Package layout:
 
 **Picture it:** Giving a messy photocopy to a careful typist who retypes it neatly, keeping tables as tables.
 
+```mermaid
+flowchart LR
+    PDF["PDF page: 2 columns plus a leave table"]
+    subgraph BEF["Plain PDF reader"]
+        B1["Text read across columns"] --> B2["Table flattened to loose numbers"]
+        B2 --> B3["Broken chunks, wrong answers"]
+    end
+    subgraph AFT["LlamaParse"]
+        A1["Vision plus language model reads layout"] --> A2["Markdown, table kept as table"]
+        A2 --> A3["MarkdownNodeParser: table in one chunk"]
+    end
+    PDF --> B1
+    PDF --> A1
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class A2,A3 hot
+    class B3 dim
+```
+
+*Diagram:* The same page parsed two ways: the plain reader scrambles columns and tables, LlamaParse keeps the table whole so one chunk holds it.
+
 **How it works, step by step:**
 
 1. Upload a file through the `llama-cloud` SDK (`LlamaCloud` client, API key in `LLAMA_CLOUD_API_KEY`).
@@ -180,6 +218,25 @@ Older tutorials use `from llama_parse import LlamaParse` (or `llama-cloud-servic
 
 **Picture it:** Cutting a cake for guests. Too big and people waste it; too small and nobody gets the cherry with the cream. Cut along the layers.
 
+```mermaid
+flowchart TD
+    P["Parent chunk 2048 tokens"] --> C1["Child A 512"]
+    P --> C2["Child B 512"]
+    C1 --> L1["Leaf 128: matched"]
+    C1 --> L2["Leaf 128: matched"]
+    C1 --> L3["Leaf 128: matched"]
+    C1 --> L4["Leaf 128"]
+    L1 -->|3 of 4 siblings matched| M["AutoMergingRetriever returns Child A whole"]
+    L2 --> M
+    L3 --> M
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class L1,L2,L3,M hot
+    class C2,L4 dim
+```
+
+*Diagram:* `HierarchicalNodeParser` plus auto-merge: search hits small 128-token leaves, and when most siblings match the retriever swaps them for their 512-token parent.
+
 **How it works, step by step:**
 
 1. `SentenceSplitter(chunk_size=512, chunk_overlap=50)`: the default; respects sentence boundaries. A 1,000-token page gives about 2–3 Nodes.
@@ -211,6 +268,22 @@ Older tutorials use `from llama_parse import LlamaParse` (or `llama-cloud-servic
 
 **Picture it:** A library with three catalogues: by topic (vector), a full shelf list (summary), and a family tree of who reports to whom (graph).
 
+```mermaid
+flowchart TD
+    Q["Question"] --> R{"Router picks an index"}
+    R -->|find the notice period clause| V["VectorStoreIndex: top-k similarity"]
+    R -->|summarise the whole handbook| S["SummaryIndex: visit every Node"]
+    R -->|who approves leave for whom| G["PropertyGraphIndex: entities and relations"]
+    V --> SC[("StorageContext: vector store, docstore, index store")]
+    S --> SC
+    G --> SC
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class V hot
+```
+
+*Diagram:* Different question shapes need different index types over the same Nodes; all of them persist through one `StorageContext`.
+
 **How it works, step by step:**
 
 1. `VectorStoreIndex(nodes)` embeds Nodes (if not already embedded) and stores them. Default store is in memory.
@@ -240,6 +313,22 @@ Older tutorials use `from llama_parse import LlamaParse` (or `llama-cloud-servic
 
 **Picture it:** Shortlisting for a job. HR's keyword filter gives 200 CVs (retriever), a quick read cuts to 20 (cutoff), and the hiring manager ranks the final 4 (reranker).
 
+```mermaid
+flowchart LR
+    Q["Question"] -->|metadata filter dept HR| VR["Vector retriever top 20"]
+    Q --> BM["BM25 retriever top 20"]
+    VR --> FU["QueryFusionRetriever: reciprocal rank fusion"]
+    BM --> FU
+    FU --> CO["SimilarityPostprocessor cutoff 0.5"]
+    CO -->|about 12 left| RR["Reranker cross-encoder"]
+    RR -->|best 4| SY["Response synthesizer"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class FU,RR hot
+```
+
+*Diagram:* A funnel: two retrievers cast a wide net of 20, fusion merges them, the cutoff drops weak matches, and the reranker keeps only the best 4 for the LLM.
+
 **How it works, step by step:**
 
 1. `index.as_retriever(similarity_top_k=20)` returns the 20 nearest Nodes with scores.
@@ -261,6 +350,28 @@ Older tutorials use `from llama_parse import LlamaParse` (or `llama-cloud-servic
 **Why it exists:** The same retrieved chunks can be turned into an answer in different ways. If they fit in one prompt, one call is enough. If there are 50 chunks, you need to refine across several calls or summarise in a tree. And chat needs to rewrite "what about for interns?" into a full question before searching.
 
 **Picture it:** A student answering an exam question from notes. `compact`: stuff all notes on one sheet and write once. `refine`: write a draft from note 1, then improve it with note 2, note 3. `tree_summarize`: summarise notes in pairs, then summarise the summaries.
+
+```mermaid
+flowchart TD
+    subgraph CMP["compact: about 3 calls"]
+        K1["Answer from chunks 1-4"] --> K2["Refine with 5-8"]
+        K2 --> K3["Refine with 9-12"]
+    end
+    subgraph REF["refine: 12 calls"]
+        R1["Draft from chunk 1"] --> R2["Improve with chunk 2"]
+        R2 --> R3["... up to chunk 12"]
+    end
+    subgraph TRE["tree_summarize: about 4 calls"]
+        T1["Summary of group 1"] --> T4["Summary of summaries"]
+        T2["Summary of group 2"] --> T4
+        T3["Summary of group 3"] --> T4
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class K1,K2,K3 hot
+```
+
+*Diagram:* Same 12 chunks, three synthesizer strategies: `compact` packs prompts full, `refine` makes one serial call per chunk, `tree_summarize` merges summaries upward.
 
 **How it works, step by step:**
 
@@ -322,6 +433,21 @@ Older tutorials use `from llama_parse import LlamaParse` (or `llama-cloud-servic
 **Why it exists:** RAG apps grow loops and branches: "if the retrieved chunks are bad, rewrite the query and try again", "run three retrievers in parallel, then merge". Hard-coded chains cannot express that well. Workflows make each step small and testable, and the flow is defined by which events each step accepts and returns.
 
 **Picture it:** A restaurant kitchen with order tickets. The waiter drops a ticket (event). The station that handles that ticket type picks it up, cooks, and drops a new ticket ("ready for plating"). Nobody draws a fixed path; tickets decide who works next.
+
+```mermaid
+flowchart LR
+    SE(["StartEvent"]) --> S1["start step"]
+    S1 -->|Query event| S2["retrieve step"]
+    S2 -->|Retrieved event| S3["answer step"]
+    S3 -->|best score below 0.5, rewrite once| S2
+    S3 -->|good Nodes| STP(["StopEvent: answer"])
+    CTX[("ctx.store: tries")] -.-> S3
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class S2,S3 hot
+```
+
+*Diagram:* Steps never call each other: each returns a typed event and the engine routes it to the step that accepts that type, which is how the retry loop back to `retrieve` forms.
 
 **How it works, step by step:**
 
@@ -391,6 +517,22 @@ class PolicyRAG(Workflow):
 
 **Picture it:** An HR helpdesk executive with two screens: the policy handbook search and the HR system. They decide which screen to look at for each part of your question.
 
+```mermaid
+flowchart LR
+    U["User: leave left, and can I carry it over?"] --> TR["triage FunctionAgent: root_agent"]
+    TR -->|handoff| LA["leave agent"]
+    TR -->|handoff| PA["policy agent"]
+    LA --> FT["FunctionTool: get_leave_balance"]
+    PA --> QT["QueryEngineTool: search_hr_policy"]
+    QT --> QE["Query engine: retrieve, rerank, synthesize"]
+    LA -.->|can_handoff_to| PA
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class TR,QT hot
+```
+
+*Diagram:* In an `AgentWorkflow` the root agent hands control to specialists listed in `can_handoff_to`; a whole RAG query engine is just one tool to an agent.
+
 **How it works, step by step:**
 
 1. Wrap retrieval as a tool: `QueryEngineTool.from_defaults(query_engine=qe, name="search_hr_policy", description="...")`.
@@ -415,6 +557,24 @@ class PolicyRAG(Workflow):
 
 **Picture it:** A laundry service that tags every shirt. Shirts that were already washed and not worn since are skipped. Only new or dirty ones go in the machine.
 
+```mermaid
+flowchart LR
+    D["2,000 PDFs, nightly run"] --> H{"docstore: hash changed?"}
+    H -->|1,985 unchanged| SK["skip"]
+    H -->|15 new or changed| SP["SentenceSplitter"]
+    SP --> TE["TitleExtractor"]
+    TE --> EM["Embed about 45 Nodes"]
+    EM --> VS[("Vector store: upsert by doc_id")]
+    C[("IngestionCache: same input plus transform")] -.->|reuse output| SP
+    C -.-> EM
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class SP,TE,EM hot
+    class SK dim
+```
+
+*Diagram:* The docstore hash check sends only the 15 changed files through the transformations, so about 45 Nodes are embedded instead of 6,000.
+
 **How it works, step by step:**
 
 1. `transformations=[SentenceSplitter(...), TitleExtractor(), OpenAIEmbedding()]`. Each is run in order.
@@ -438,6 +598,21 @@ class PolicyRAG(Workflow):
 
 **Picture it:** A mock exam with an answer key. Without it, you only know the student "sounded confident".
 
+```mermaid
+flowchart LR
+    DS["Questions: synthetic plus 50 real"] --> RET["Retriever"]
+    RET -->|retrieved Nodes| RE["RetrieverEvaluator: hit rate, MRR"]
+    RET --> SYN["Synthesizer"]
+    SYN -->|answer vs context| FA["Faithfulness"]
+    SYN -->|answer vs question| RL["Relevancy"]
+    SYN -->|answer vs reference| CR["Correctness"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RE,CR hot
+```
+
+*Diagram:* Retrieval and answers are scored separately: high faithfulness with a low hit rate means the answer is faithful to the wrong chunk.
+
 **How it works, step by step:**
 
 1. Build a dataset: `generate_question_context_pairs(nodes, llm=llm, num_questions_per_chunk=2)` makes synthetic questions; mix in 50+ real user questions.
@@ -459,6 +634,23 @@ class PolicyRAG(Workflow):
 **Why it exists:** This one example uses the key blocks: Settings, reader, node parser, ingestion pipeline with cache, vector index, query engine, tools, agent, streaming and memory.
 
 **Picture it:** An HR helpdesk on the company intranet. It reads the handbook for policy questions and checks the HR system for your personal numbers.
+
+```mermaid
+flowchart LR
+    PDF["Policy PDFs"] --> PIPE["IngestionPipeline: split 512, embed, cache"]
+    PIPE --> QD[("Qdrant collection hr")]
+    QD --> QE["Query engine top 4"]
+    QE --> QT["search_hr_policy tool"]
+    SES["Logged-in employee_id"] --> LT["get_leave_balance tool, id closed over"]
+    QT --> AG["FunctionAgent with Context memory"]
+    LT --> AG
+    AG -->|stream_events| UI["Chat UI"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AG,LT hot
+```
+
+*Diagram:* Ingestion runs once into Qdrant; at chat time the agent picks between the RAG tool and the leave tool, and the employee ID comes from the session, never the model.
 
 **How it works, step by step:**
 
@@ -662,6 +854,22 @@ sequenceDiagram
 **Why it exists:** "Why LlamaIndex and not LangChain?" is a standard question. A good answer names what is hard in your problem.
 
 **Picture it:** A specialist eye hospital vs a general hospital. For a complex eye case, the specialist. For everything else, the general one. They refer patients to each other.
+
+```mermaid
+flowchart TD
+    Q{"Which part is hard?"}
+    Q -->|messy PDFs, tables, retrieval tuning| LI["LlamaIndex"]
+    Q -->|one agent, many tools and providers| LC["LangChain create_agent"]
+    Q -->|durable branching flows, approvals| LG["LangGraph"]
+    Q -->|typed extraction, thin layer| PA["Pydantic AI or provider SDK"]
+    LI -.->|query engine as a tool| LG
+    LI -.->|query engine as a tool| LC
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class LI hot
+```
+
+*Diagram:* Choose by the hard part, and mix freely: a LlamaIndex query engine often lives as a tool inside a LangGraph or LangChain agent.
 
 **How it works, step by step:**
 

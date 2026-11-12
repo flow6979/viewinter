@@ -73,6 +73,26 @@ flowchart LR
 5. **Why batching is nearly free.** If 64 users decode together, the GPU still reads the 16 GB once per step, but now does 64× the math. The step takes only a little longer, yet produces 64 tokens. This is why serving engines fight to batch many requests.
 6. **The ratio to remember.** Decode at batch 1 does about 1 FLOP per byte read. An H100 can do about 300 FLOPs per byte it reads. Until your batch is in the hundreds, you are wasting compute.
 
+```mermaid
+flowchart LR
+    subgraph PF["Prefill: compute-bound"]
+        direction TB
+        PT["2,000 prompt tokens at once"] --> MM["One big matrix multiply, 32 TFLOPs"]
+        MM --> BUSY["Math units busy, about 50 to 150 ms"]:::hot
+    end
+    subgraph DC["Decode: memory-bound"]
+        direction TB
+        W["Read all 16 GB of weights, about 5 ms"]:::hot --> M1["Math for 1 token, about 16 microseconds"]
+        M1 --> IDLE["Math units idle about 99 percent"]:::dim
+        W -->|same read| B64["Batch of 64: 64 tokens per read"]
+    end
+    BUSY -->|first token, then the loop| W
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Same 8B model, two phases: prefill keeps the math units busy, while each decode step is mostly waiting on a 16 GB memory read, which is why batching decode is nearly free.
+
 **Metrics you must know:**
 
 | Metric | Meaning | Mostly set by | Typical chat target |
@@ -86,7 +106,31 @@ flowchart LR
 
 Example: TTFT 300 ms, TPOT 25 ms, 400 output tokens → `0.3 + 0.025 × 399 ≈ 10.3 s` total.
 
+```mermaid
+flowchart LR
+    S["Request sent"] -->|TTFT, queue and prefill| T1["Token 1 at 300 ms"]:::hot
+    T1 -->|TPOT 25 ms| T2["Token 2 at 325 ms"]
+    T2 -->|TPOT 25 ms| T3["Token 3 at 350 ms"]
+    T3 -->|397 more decode steps| TN["Token 400 at about 10.3 s"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* TTFT is the one long wait before the first token; after that, every token arrives one TPOT later, so end-to-end time is mostly TPOT times output length.
+
 **Throughput vs latency trade-off.** A bigger batch gives more total tokens/s (cheaper per token) but each step gets slower (higher TPOT for every user). You pick the batch size that maximizes throughput while TPOT stays under your target.
+
+```mermaid
+flowchart LR
+    U["New request"] --> R["Scheduler"]
+    R --> PP["Prefill GPU pool: compute-heavy, tuned for TTFT"]:::hot
+    PP -->|ship KV cache over NVLink or RDMA| DP["Decode GPU pool: big batches, tuned for TPOT"]:::hot
+    DP --> S["Tokens streamed to the user"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Disaggregated prefill and decode (DistServe, Mooncake, newer vLLM and SGLang setups): each phase gets its own GPUs, so a long prompt never stalls users who are streaming, at the cost of moving the KV cache between pools.
 
 **Interview tip:** "Why is decode memory-bound?" Say: "Each decode step makes one token per sequence but must read all the weights and the KV cache from GPU memory. For an 8B BF16 model that is 16 GB per step versus only 16 GFLOPs of math. At 3.35 TB/s that is about 5 ms of reading and microseconds of math, so bandwidth sets the speed. Batching fixes it by sharing one weight read across many sequences."
 
@@ -115,6 +159,23 @@ Example: TTFT 300 ms, TPOT 25 ms, 400 output tokens → `0.3 + 0.025 × 399 ≈ 
 7. **GQA effect.** Grouped-Query Attention (GQA) lets several query heads share one K/V head. Llama-3-8B has 32 query heads but only 8 KV heads. Older Llama-2-7B used 32 KV heads: `2 × 32 × 32 × 128 × 2 = 512 KB per token`, 4× bigger. GQA cuts cache memory by 4× with a small quality cost. Multi-Query Attention (MQA) goes to one shared KV head.
 8. **Bigger model, same idea.** A Llama-3-70B-like model (80 layers, 8 KV heads, head_dim 128): `2 × 80 × 8 × 128 × 2 = 320 KB per token`, so 8k context ≈ 2.5 GB per request.
 
+```mermaid
+flowchart LR
+    subgraph H["One H100, 80 GB"]
+        WT["Weights: 16 GB, fixed"]
+        KVM["KV cache: 32 GB and growing"]:::hot
+        FREE["Left for more users"]:::dim
+    end
+    P["Prefill: 2,000 prompt tokens"] -->|writes K and V for every token, every layer| KV["KV cache"]
+    D["Each decode step"] -->|appends 1 more token| KV
+    KV -->|128 KB per token| R1["One 8K chat: 1 GB"]
+    R1 -->|x 32 users| KVM
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The cache grows with every token of every user; at 32 users with 8K context it is already twice the size of the weights, so the KV cache, not the model, decides how many users fit.
+
 | Model shape | KV per token (FP16) | 8k context per request |
 |---|---|---|
 | 7B, no GQA (32 KV heads) | 512 KB | 4 GB |
@@ -122,6 +183,19 @@ Example: TTFT 300 ms, TPOT 25 ms, 400 output tokens → `0.3 + 0.025 × 399 ≈ 
 | 70B with GQA (8 KV heads) | 320 KB | 2.5 GB |
 
 **Prefix caching.** Many requests start with the same tokens: a 2,000-token system prompt, the same tool list, the same document. Their KV cache is identical. The engine keeps those blocks and reuses them for the next request with the same prefix. That request skips most of its prefill, so TTFT drops and GPU work drops. vLLM does this with block hashes ("automatic prefix caching"); SGLang uses a radix tree. Provider "prompt caching" (Anthropic, OpenAI) is the same idea sold as a discount.
+
+```mermaid
+flowchart LR
+    R1["Request 1: system prompt 2,000 tokens + question A"] -->|full prefill| B["KV blocks of the system prompt, hashed"]
+    R2["Request 2: same system prompt + question B"] -->|hash match| B
+    B -->|reused, no recompute| H["Skip 2,000 tokens of prefill"]:::hot
+    R2 -->|prefill only the new part| QB["Question B tokens"]
+    H --> T["Lower TTFT and less GPU work"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The second request finds the shared prefix already cached and only prefills its own new tokens.
 
 ```python
 # KV cache calculator: use it to answer "estimate the KV cache" questions
@@ -172,6 +246,29 @@ print(kv_bytes_per_token(80, 8, 128) / 1024, "KB per token")  # 320.0
 4. The attention kernel reads K and V by following the block table, so blocks do not need to be next to each other.
 5. **Sharing.** Two requests with the same system prompt can point to the same physical blocks. A reference count tracks how many requests use each block. If one request must write into a shared block (for example, parallel samples that diverge), it gets a private copy first. This is **copy-on-write**, exactly like `fork()` in an OS.
 6. **Result.** Waste falls to a few percent. The same GPU holds 2–4× more concurrent requests, and throughput rises by a similar factor.
+
+```mermaid
+flowchart LR
+    subgraph OLD["Before: contiguous, reserve max length"]
+        direction TB
+        A1["Request A: 300 slots used"]:::hot
+        A2["3,796 slots reserved but empty"]:::dim
+        A1 --- A2
+    end
+    subgraph NEW["After: paged, 16-token blocks on demand"]
+        direction TB
+        N1["Request A: 19 blocks, anywhere in memory"]:::hot
+        N2["Waste: at most 15 slots"]
+        N3["Every other block is free for other requests"]
+        N1 --- N2
+        N2 --- N3
+    end
+    OLD -->|same GPU memory| NEW
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Before vs after for a 300-token request with a 4,096 max: contiguous allocation leaves most of the reservation empty, paging leaves at most one partly filled block.
 
 | Problem | Contiguous allocation | PagedAttention |
 |---|---|---|
@@ -232,6 +329,46 @@ flowchart LR
 6. **Chunked prefill.** Split that long prefill into chunks (say 512 or 2,048 tokens). Each step runs one chunk plus the decode tokens of all active users. Decode users keep streaming smoothly, and the GPU's spare compute in decode steps gets used by prefill math.
 7. **Preemption.** If KV memory runs out, the engine pauses a request, frees its blocks, and later recomputes or reloads them. Seeing many preemptions in logs means you need more memory or a lower concurrency limit.
 
+```mermaid
+stateDiagram-v2
+    state "Waiting in queue" as Waiting
+    state "Prefill" as Prefill
+    state "Decoding, one token per step" as Decoding
+    state "Preempted, blocks freed" as Preempted
+    state "Finished" as Finished
+    [*] --> Waiting
+    Waiting --> Prefill: free KV blocks available
+    Prefill --> Decoding: first token out
+    Decoding --> Decoding: next step
+    Decoding --> Finished: end token or max length
+    Decoding --> Preempted: KV memory full
+    Preempted --> Waiting: retry later
+    Finished --> [*]: KV blocks back to the pool
+```
+
+*Diagram:* The life of one request under continuous batching: the scheduler re-checks every step, so a request can join as soon as blocks are free and leaves the moment it finishes.
+
+```mermaid
+flowchart LR
+    subgraph S1["Step t"]
+        A1["A and C: 1 decode token each"]
+        D1["D prefill chunk 1: 2,048 tokens"]:::hot
+    end
+    subgraph S2["Step t+1"]
+        A2["A and C: 1 decode token each"]
+        D2["D prefill chunk 2: 2,048 tokens"]:::hot
+    end
+    subgraph S3["Step t+8"]
+        A3["A, C and D: all decoding"]
+    end
+    S1 --> S2
+    S2 --> S3
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Chunked prefill: D's 16,000-token prompt is cut into 2,048-token chunks that ride along with A and C's decode tokens, so A and C keep streaming instead of freezing.
+
 The idea comes from the Orca paper (2022), which called it iteration-level scheduling. Today vLLM, SGLang, TensorRT-LLM and TGI all do it.
 
 **Interview tip:** "How does continuous batching raise throughput?" Say: "Static batching holds the batch until the longest sequence finishes, so slots of short requests sit idle and new requests queue. Continuous batching schedules at every token step: finished sequences leave, waiting ones join immediately. Slots stay full, so tokens per second go up several times, and TTFT drops because new requests don't wait for the batch to drain. Chunked prefill keeps long prompts from stalling everyone's decode."
@@ -286,6 +423,22 @@ The idea comes from the Orca paper (2022), which called it iteration-level sched
 7. **Acceptance rate.** If each draft token is accepted with probability α = 0.8 and k = 4, the expected tokens per big step is `(1 − α^(k+1)) / (1 − α) = (1 − 0.8^5) / 0.2 ≈ 3.4`. Real speedups are usually around 2–3×, since drafting and verifying also cost time.
 8. **When it helps less.** At large batch sizes the GPU is already busy with compute, so extra verify work is not free; gains shrink. It shines at low to medium batch, where latency matters most.
 
+```mermaid
+sequenceDiagram
+    participant D as Draft model 1B
+    participant T as Target model 70B
+    participant O as Output
+    D->>D: Guess 4 tokens fast - the order is late
+    D->>T: Send the 4 draft tokens
+    T->>T: One forward pass scores all 4 positions
+    T-->>O: Accept the, order, is
+    T-->>O: Reject late and write delayed instead
+    Note over T,O: 4 tokens for one big-model pass instead of four
+    T->>D: Continue drafting after delayed
+```
+
+*Diagram:* The big model never trusts the draft blindly: it checks all guesses in one pass, keeps the matching prefix and replaces the first wrong token, so the output is the same as without the draft.
+
 | Variant | Where the draft comes from | Note |
 |---|---|---|
 | Draft model | A small model of the same family (same tokenizer) | Classic form; must share the tokenizer |
@@ -311,6 +464,21 @@ The idea comes from the Orca paper (2022), which called it iteration-level sched
 
 1. A weight like `0.0371` is stored in BF16 (16 bits). INT8 maps a group of weights to 256 levels using a **scale** number: `int_value = round(weight / scale)`. INT4 uses only 16 levels.
 2. Scales are kept per group (say every 128 weights), which keeps error small. This adds a little memory, so "4-bit" is really about 4.25–5 bits per weight.
+
+```mermaid
+flowchart LR
+    W["Group of 128 BF16 weights, 16 bits each"] --> SC["One shared scale for the group"]
+    SC -->|int value is round of w divided by scale| I["INT4 values: 16 levels, 4 bits each"]:::hot
+    I --> ST["Stored: about 4.25 bits per weight with the scale"]
+    ST -->|4x fewer bytes per decode step| FAST["Faster memory-bound decode"]:::hot
+    ST -->|at matmul time, W4A16| DQ["Dequantize back to 16-bit"]
+    DQ --> MM["16-bit math on tensor cores"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Weight-only 4-bit: weights travel from memory in 4 bits (the speed win) and are expanded back to 16 bits just before the math.
+
 3. **Bytes per parameter:**
 
 | Format | Bytes per param | 8B model | 70B model | Note |
@@ -374,10 +542,75 @@ print(out[0].outputs[0].text)
    - FP8: 70 GB of weights. It technically loads, but leaves only about 5 GB for KV cache after overhead; at 320 KB per token that is about 15k tokens total, so just a handful of users. Not practical.
    - INT4 (AWQ/GPTQ): about **35–40 GB**. Yes. About 30–35 GB is left for KV cache, which is roughly 100k tokens: around 25 users at 4k context each.
    - Common production answer: FP8 on 2× H100, or BF16 on 4× H100 with tensor parallelism, or INT4 on one GPU if the quality is acceptable.
+
+```mermaid
+flowchart TD
+    M["70B model on one 80 GB H100?"] --> BF["BF16: 140 GB of weights"]
+    BF -->|does not fit| X1["No"]:::dim
+    M --> F8["FP8: 70 GB of weights"]
+    F8 -->|about 5 GB left for KV, 15K tokens| X2["Loads, but only a handful of users"]:::dim
+    M --> I4["INT4: 35 to 40 GB of weights"]
+    I4 -->|30 to 35 GB left for KV| Y["Yes: about 25 users at 4K"]:::hot
+    M --> TP["Or split across GPUs: FP8 on 2, BF16 on 4"]
+    TP --> Y2["Common production answer"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Always subtract the weights from 80 GB and ask how many KV tokens are left; that leftover, not just whether the weights load, decides if the setup is usable.
+
 3. **Tensor parallelism (TP):** split every layer's weight matrices across GPUs. Each GPU does part of every layer, and the GPUs combine results (an all-reduce) after every layer. It needs very fast links like NVLink, so it is used **inside one server** (2, 4 or 8 GPUs). It cuts per-token latency because each GPU reads only its share of the weights.
 4. **Pipeline parallelism (PP):** put layers 1–40 on GPU group 1 and layers 41–80 on group 2. Only activations pass between stages, so it works **across servers** with slower networks. Downside: stages wait for each other ("bubbles"), which hurts latency unless many requests are in flight.
 5. **Data parallelism (replicas):** full copies of the model on separate GPUs behind a load balancer. This is how you scale throughput once one copy fits.
 6. **Rough throughput reasoning.** One decode step of an 8B BF16 model on H100 reads about 16 GB plus the KV cache, so roughly 5–10 ms. With 64 sequences batched, that is about `64 / 0.008 s ≈ 8,000 tokens/s` as an upper bound. Real numbers are lower (prefill interleaving, scheduling, kernel efficiency). Treat this as an order-of-magnitude check, then benchmark.
+
+```mermaid
+flowchart LR
+    subgraph TPS["Tensor parallel: one server, NVLink"]
+        direction TB
+        L["Every layer's weight matrix"] --> G0["GPU 0: one quarter"]
+        L --> G1["GPU 1: one quarter"]
+        L --> G2["GPU 2: one quarter"]
+        L --> G3["GPU 3: one quarter"]
+        G0 --> AR["All-reduce after every layer"]:::hot
+        G1 --> AR
+        G2 --> AR
+        G3 --> AR
+    end
+    subgraph PPS["Pipeline parallel: across servers"]
+        direction TB
+        S1["Server 1: layers 1 to 40"] -->|only activations cross| S2["Server 2: layers 41 to 80"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Tensor parallel cuts each layer into slices and needs a fast sync after every layer; pipeline parallel cuts the stack of layers and only passes activations between stages.
+
+```mermaid
+flowchart LR
+    subgraph GA["GPU 0"]
+        E12["Experts 1 and 2"]:::dim
+    end
+    subgraph GB["GPU 1"]
+        E34["Experts 3 and 4"]:::hot
+    end
+    subgraph GC["GPU 2"]
+        E56["Experts 5 and 6"]:::dim
+    end
+    subgraph GD["GPU 3"]
+        E78["Experts 7 and 8"]:::hot
+    end
+    T["Token in a batch"] --> RT["Router picks top-2 experts"]
+    RT -->|all-to-all send| E34
+    RT -->|all-to-all send| E78
+    E34 -->|result back| C["Combine weighted outputs"]
+    E78 -->|result back| C
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Expert parallelism for MoE models: each GPU holds a few experts and tokens travel to the GPUs that hold their chosen experts, so no GPU stores all experts; idle GPUs in a batch are why load balancing matters.
 
 | | Tensor parallel | Pipeline parallel |
 |---|---|---|
@@ -408,6 +641,21 @@ print(out[0].outputs[0].text)
 3. Each request names its adapter. The engine batches requests for **different** adapters together: the base-model math is shared, and special kernels add each request's own small adapter math. This approach comes from S-LoRA and Punica (2023).
 4. Example: 50 adapters × 100 MB = 5 GB, plus a 16 GB base. One GPU serves all 50 customers.
 5. In vLLM: start with `--enable-lora --lora-modules support-bot=/path/to/adapter`. Clients pass `model="support-bot"` in the normal OpenAI-style call.
+
+```mermaid
+flowchart LR
+    R1["Request for support-bot"] --> B["One mixed batch"]
+    R2["Request for legal-bot"] --> B
+    R3["Request for sales-bot"] --> B
+    B --> BASE["Shared base model, 16 GB, one matmul for all"]:::hot
+    BASE --> A1["Plus support adapter, 100 MB"]
+    BASE --> A2["Plus legal adapter, 100 MB"]
+    BASE --> A3["Plus sales adapter, 100 MB"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The heavy base-model math is shared by the whole batch; each request adds only its own small adapter on top.
 
 **Interview tip:** "How would you serve 200 fine-tuned variants?" Say: "Train them as LoRA adapters on one base model, and serve with multi-LoRA in vLLM. One base copy in memory, adapters loaded on demand, and mixed batches across adapters. Cost scales with traffic, not with the number of variants."
 

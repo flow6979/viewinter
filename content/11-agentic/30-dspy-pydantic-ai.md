@@ -107,6 +107,24 @@ flowchart LR
 
 **Aise socho:** Sarkari form jisme labelled boxes hain. "Naam", "PIN code (6 digits)". Har box ke liye instructions nahi likhte; labels hi kaam kar dete hain.
 
+```mermaid
+flowchart LR
+    S["TriageTicket: ticket in, category and urgent out"] --> AD["ChatAdapter"]
+    D["Docstring: Classify a ticket"] --> AD
+    AD -->|builds| MSG["System message: field names, types, instruction"]
+    MSG --> LLM["LLM"]
+    LLM -->|field-tagged reply| PARSE["Adapter parses fields"]
+    PARSE --> CHK{"category one of 4 Literal labels?"}
+    CHK -->|yes| OUT["Prediction: category=refund, urgent=True"]
+    CHK -->|no| ERR["Parse error, fails loudly"]
+    class S,OUT hot
+    class ERR dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Tum sirf typed signature likhte ho; adapter usse asli prompt banata hai aur reply ko 4 Literal labels ke against check karta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. **Inline signature:** `"ticket -> category"` ya `"question, context -> answer"`. Jaldi kaam ke liye achha.
@@ -142,6 +160,22 @@ class TriageTicket(dspy.Signature):
 **Ye kyun chahiye:** Ek hi task alag tariko se hal ho sakta hai. Strategy badalna ek line ka kaam hona chahiye, naya prompt nahi.
 
 **Aise socho:** Exam ka ek sawal teen tarah: seedha jawab bolo (Predict), working dikhao phir jawab (ChainOfThought), ya steps ke beech library me cheezein dekho (ReAct).
+
+```mermaid
+flowchart LR
+    T["ticket: Order 8812 is late"] --> TR["triage: ChainOfThought"]
+    TR -->|reasoning then category| C["category: late_delivery"]
+    C --> AG["agent: ReAct, max_iters 5"]
+    T --> AG
+    AG -->|step 1 call tool| TOOL["order_status 8812"]
+    TOOL -->|picked up, ETA 25 min| AG
+    AG -->|step 2 finish| R["reply to customer"]
+    class TR,AG hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* SupportBot do modules ki line hai: ChainOfThought category chunta hai, phir ReAct tool ke saath loop karta hai jab tak finish na bulaye; optimizer dono highlighted modules ko saath me tune karta hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -193,6 +227,29 @@ class SupportBot(dspy.Module):
 
 **Aise socho:** Bowling machine aur scoreboard wala cricket coach. Ek grip try karo, achhi deliveries gino, best grip rakho.
 
+```mermaid
+flowchart LR
+    subgraph BS["BootstrapFewShot"]
+        B1["Run program on 50 train tickets"] --> B2{"Metric passes?"}
+        B2 -->|yes| B3["Keep trace as a demo, max 4"]
+        B2 -->|no| B4["Drop it"]
+    end
+    subgraph GP["GEPA"]
+        G1["Failures plus feedback text"] --> G2["Reflection LM reads them"]
+        G2 --> G3["Rewritten instruction"]
+        G3 --> G4["Pareto set of candidates"]
+        G4 -->|evaluate again| G1
+    end
+    B3 --> OUT["Tuned program: instruction plus demos"]
+    G4 --> OUT
+    class B3,G3,OUT hot
+    class B4 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Bootstrap sirf demos badalta hai (pass hone wale traces rakhta hai); GEPA fail hone ki wajah padh ke instruction badalta hai. Dono same saved program state me likhte hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. **Data:** `dspy.Example(ticket=..., category=..., urgent=...).with_inputs("ticket")`. Train (jaise 50) aur dev (jaise 100) me baanto.
@@ -241,6 +298,28 @@ tuned = gepa.compile(dspy.ChainOfThought(TriageTicket), trainset=train, valset=d
 **Ye kyun chahiye:** Ticket routing classic DSPy jeet hai: saaf label, naapna sasta, aur helpdesk history me bahut examples.
 
 **Aise socho:** Naya joinee jo 50 purane tickets sahi jawab ke saath padhta hai aur sorting me kaafi behtar ho jaata hai.
+
+```mermaid
+flowchart LR
+    subgraph OFF["Offline job in CI"]
+        D["150 labelled tickets"] --> BL["Evaluate baseline: 72%"]
+        BL --> CP["BootstrapFewShot compile"]
+        CP --> EV{"Dev score beats baseline?"}
+        EV -->|yes, 84 percent| SV["triage.json in Git"]
+        EV -->|no| KEEP["Keep the old program"]
+    end
+    subgraph ON["API server"]
+        LD["load triage.json at startup"] --> RQ["Ticket request"]
+        RQ --> PRD["category, urgent"]
+    end
+    SV --> LD
+    class CP,SV hot
+    class KEEP dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Compile offline chalta hai aur triage.json tabhi promote hota hai jab dev score badhe; server sirf woh JSON load karta hai, request path me kabhi optimize nahi karta.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -353,6 +432,23 @@ sequenceDiagram
 
 **Aise socho:** Bowling machine kharidna cricket academy ke liye theek hai, ek Sunday match ke liye nahi.
 
+```mermaid
+flowchart TD
+    S["LLM step you want to improve"] --> Q1{"Can you score an output automatically?"}
+    Q1 -->|no| N1["Skip DSPy, define the task first"]
+    Q1 -->|yes| Q2{"30+ labelled examples?"}
+    Q2 -->|no| N2["Label them first"]
+    Q2 -->|yes| Q3{"Runs thousands of times or may swap models?"}
+    Q3 -->|no| N3["A hand-written prompt is fine"]
+    Q3 -->|yes| Y["Compile with DSPy, start with BootstrapFewShot"]
+    class Y hot
+    class N1,N3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Lagataar teen 'haan' hon tabhi ek baar ka compile cost wasool hota hai; koi bhi 'nahi' pehle kahin aur bhejta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Poochho: kya output ko automatically score kar sakta hoon (exact label, numeric check, ya bharosemand LLM judge)? Nahi to ruk jao.
@@ -380,6 +476,25 @@ sequenceDiagram
 
 **Aise socho:** Swiggy order form jisme required, typed fields hain. Valid PIN code ke bina submit nahi hota. Model galat bhare to form error ke saath wapas aata hai aur dobara maangta hai.
 
+```mermaid
+flowchart LR
+    subgraph BEFORE["Plain LLM call"]
+        A1["LLM reply: days is eight"] --> A2["json.loads in your code"]
+        A2 --> A3["Crash or bad value downstream"]
+    end
+    subgraph AFTER["Pydantic AI"]
+        B1["LLM reply"] --> B2{"Valid LeaveDecision?"}
+        B2 -->|no, error text sent back| B1
+        B2 -->|yes| B3["result.output as a typed object"]
+    end
+    class A3 dim
+    class B2,B3 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Types ke bina galat shape baad me tumhare code me crash karti hai; Pydantic AI me woh error ke saath model ko wapas jaati hai jab tak pass na ho ya retry limit na aa jaye.
+
 **Kaise kaam karta hai, step by step:**
 
 1. `Agent("provider:model", deps_type=..., output_type=..., instructions=...)` banao.
@@ -403,6 +518,23 @@ sequenceDiagram
 **Ye kyun chahiye:** Har piece ek tarah ka bug hatata hai: globals (deps), shape errors (output types), untyped tool args (tools), aur provider lock-in (model strings).
 
 **Aise socho:** Restaurant kitchen. Order slip ka format (output type), har station tak pahunchne wale ingredients aur gas line (deps), saaf inputs wale stations (tools), aur head chef jo badla ja sake (model).
+
+```mermaid
+flowchart LR
+    AUTH["Auth layer: user E101"] -->|deps HRDeps| AG["Agent with deps_type and output_type"]
+    MS["Model string openai:gpt-5.2"] --> AG
+    AG -->|RunContext| T1["Tool leave_balance"]
+    T1 -->|reads ctx.deps.db| DB[("Leave DB")]
+    AG --> OT["output_type LeaveDecision"]
+    OT --> OV["Output validator"]
+    OV -->|ModelRetry| AG
+    OV --> OUT["Typed result"]
+    class AUTH,T1 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Identity tumhari auth layer se deps ke through aati hai, model se kabhi nahi; tool use RunContext se padhta hai, aur validator ModelRetry se model ko wapas bhej sakta hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -434,6 +566,27 @@ sequenceDiagram
 **Ye kyun chahiye:** Yahi core Pydantic AI pattern hai: typed deps andar, typed decision bahar, rules code me, tests bina LLM.
 
 **Aise socho:** HR executive jo leave register (deps) check karta hai, fixed approval form (output type) bharta hai, aur jiska manager balance se zyada din approve karne wala har form reject karta hai (validator).
+
+```mermaid
+flowchart LR
+    AG["Same agent code: tool plus validator"]
+    subgraph PROD["Production"]
+        P1["openai:gpt-5.2"] --> P3["Real run, paid tokens"]
+        P2["HRDeps with real DB"] --> P3
+    end
+    subgraph TEST["Unit test in CI"]
+        T1["TestModel via agent.override"] --> T3["Calls every tool, schema-valid output"]
+        T2["HRDeps with fake_db"] --> T3
+        T4["ALLOW_MODEL_REQUESTS False"] --> T3
+    end
+    AG --> P3
+    AG --> T3
+    class T1,T2,T3 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Agent ka code kabhi nahi badalta; sirf inject hone wala model aur deps badalte hain, isliye test bina LLM call ke milliseconds me chalta hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -574,6 +727,22 @@ Worked example: upar wale run me ek validator retry ki wajah se 2 ki jagah 3 mod
 
 **Aise socho:** Delivery fleet jisme har bike pe GPS (tracing), fixed route plan (graph), aur deliveries ka monthly audit (evals).
 
+```mermaid
+flowchart LR
+    RUN["agent.run"] --> SP["OTel spans: run, model call, tool call, tokens"]
+    SP --> LF["Logfire"]
+    SP --> LG["Langfuse, Phoenix or Grafana"]
+    RUN --> UL{"UsageLimits hit?"}
+    UL -->|yes| STOP["Raise and stop the run"]
+    DS["pydantic_evals Dataset of Cases"] --> CI["Evals in CI"]
+    CI -->|score dropped| BLOCK["Block the deploy"]
+    class SP,CI hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har run OTel spans ban jaata hai jo kisi bhi backend pe bhej sakte ho; UsageLimits ek run ko cap karta hai, aur CI me evals deploy se pehle quality drop pakadte hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. **Tracing:** `logfire.configure()` phir `logfire.instrument_pydantic_ai()`. Har run, model call aur tool call tokens ke saath OTel span banta hai. OTel hai, to Langfuse, Phoenix ya Grafana pe bhi bhej sakte ho.
@@ -595,6 +764,22 @@ Worked example: upar wale run me ek validator retry ki wajah se 2 ki jagah 3 mod
 **Ye kyun chahiye:** "Ye kyun, X kyun nahi?" core senior sawal hai. Ye do tools aksar confuse hote hain kyunki dono "structured LLM calls" ko chhute hain.
 
 **Aise socho:** DSPy coach hai jo technique sudharta hai. Pydantic AI umpire hai jo har ball pe rules lagata hai. LangGraph match schedule aur scoreboard hai.
+
+```mermaid
+flowchart TD
+    S["What is the hard part?"] --> Q1{"Prompt quality on a measurable task?"}
+    Q1 -->|yes| DS["DSPy"]
+    Q1 -->|no| Q2{"Typed output and testable tools for other code?"}
+    Q2 -->|yes| PA["Pydantic AI"]
+    Q2 -->|no| Q3{"Long stateful flow with approvals and resume?"}
+    Q3 -->|yes| LG["LangGraph, call DSPy or Pydantic AI inside nodes"]
+    Q3 -->|no| SDK["A provider SDK like OpenAI Agents SDK"]
+    class DS,PA,LG hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Sabse mushkil problem dekh ke chuno; teeno rivals nahi hain, ek LangGraph node typed Pydantic AI agent chala sakta hai jo DSPy-compiled router use kare.
 
 **Kaise kaam karta hai, step by step:**
 

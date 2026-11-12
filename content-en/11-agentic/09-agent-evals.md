@@ -66,6 +66,28 @@ flowchart LR
 3. Both are right. But the path differs and the words differ. `expected == actual` fails both.
 4. If each step is 95% right and the agent takes 10 steps, the chance the whole run is right is 0.95^10 ≈ 60%.
 
+```mermaid
+flowchart LR
+    subgraph RUN1["Run 1"]
+        R1["get_order"] --> C1["check_delay"] --> I1["issue_refund"] --> A1["Your ₹450 refund is done"]
+    end
+    subgraph RUN2["Run 2"]
+        R2["get_order"] --> I2["issue_refund"] --> A2["Started ₹450 refund, 3-5 days"]
+    end
+    A1 --> X["exact match: expected == actual"]
+    A2 --> X
+    X -->|both FAIL| F["Wrong test for an agent"]
+    A1 --> J["Goal check: was ₹450 refunded?"]
+    A2 --> J
+    J -->|both PASS| P["Grade outcome and path, not exact text"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class J,P hot
+    class X,F dim
+```
+
+*Diagram:* The same input took two different paths and wordings; exact string match fails both runs (dimmed), while checking the goal (was ₹450 refunded?) passes both.
+
 **In one line:** an agent is non-deterministic, multi-step, and has many valid paths to the same goal, so a simple "expected == actual" test does not work.
 
 **Terms:**
@@ -424,6 +446,23 @@ def agreement(examples, human_labels):
 
 **One example:** a Swiggy policy bot stated the wrong refund window. Checked: the "refund policy" chunk was not in the top 5 at all. The fix is in the retriever, not the prompt.
 
+```mermaid
+flowchart LR
+    Q["What is the refund window?"] --> RT["Retriever"]
+    RT -->|top-5 chunks| CH["delivery, coupons, ... refund policy chunk missing"]
+    CH --> GEN["LLM writes the answer"]
+    GEN --> ANS["Wrong refund window"]
+    RT -.-> RM["Retrieval metrics: recall, precision, hit@k"]
+    GEN -.-> GM["Generation metrics: faithfulness, relevance"]
+    RM -->|nothing in top 5| FIX["Fix the retriever, not the prompt"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RM,FIX hot
+    class GM dim
+```
+
+*Diagram:* Score the two halves separately: the retrieval metrics show the policy chunk never reached the top 5, so the fix is in the retriever, however much the prompt is tuned.
+
 **In one line:** if the agent retrieves, evaluate retrieval and generation separately.
 
 - **Retrieval:** context precision, context recall, MRR, nDCG, hit@k. All of them ask the same thing: were the right chunks found, and were they ranked near the top?
@@ -449,6 +488,24 @@ def agreement(examples, human_labels):
 4. **80 synthetic** Hindi/Hinglish paraphrases generated with an LLM, then a human reviewed them and removed the repetitive ones.
 5. All saved as `razorpay-merchant-golden-v1`. Each row has `metadata.intent` and `metadata.source`.
 6. An incident happened (the agent calculated GST wrong). That case was added to make **v2**. Results are always compared against a dataset version.
+
+```mermaid
+flowchart LR
+    P["150 prod traces: thumbs-down, escalated"] --> V1["razorpay-merchant-golden-v1"]
+    E["40 hand-written edge cases"] --> V1
+    AD["30 adversarial: injection, other merchant data"] --> V1
+    S["80 synthetic paraphrases"] --> HR["Human review: drop repetitive"]
+    HR --> V1
+    V1 --> RUN["Eval runs, compared per version"]
+    RUN --> INC["Prod incident: GST calculated wrong"]
+    INC -->|becomes a new row| V2["golden-v2"]
+    V2 --> RUN
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class P,INC,V2 hot
+```
+
+*Diagram:* Four sources feed one versioned set; synthetic rows pass a human first, and every prod incident comes back as a new row in the next version.
 
 **In one line:** an eval is only as good as its dataset: real prod traces, edge cases, adversarial cases, some synthetic, all versioned.
 

@@ -20,6 +20,38 @@ Basic RAG = query embed karo, top-k chunks lo, LLM ko do. Real users ke messy qu
 - **HyDE (Hypothetical Document Embeddings):** LLM pehle ek *fake answer* likhta hai, us answer ko embed karke search karo. Answer jaisa text, question se zyada, real answer chunks ke paas hota hai.
 - **Step-back prompting:** specific question se ek general question banao ("Section 80C ki limit 2023 me?" → "80C ke rules kya hain?").
 
+```mermaid
+flowchart LR
+    U["yesterday's order still not here, money back?"] --> LLM["LLM writes 3 phrasings"]
+    LLM --> Q1["refund for undelivered order"]
+    LLM --> Q2["order not delivered compensation"]
+    LLM --> Q3["late delivery money back policy"]
+    Q1 --> R1["Retrieve top 20"]
+    Q2 --> R2["Retrieve top 20"]
+    Q3 --> R3["Retrieve top 20"]
+    R1 --> F["RRF merge"]
+    R2 --> F
+    R3 --> F
+    F --> T["Top 5, refund policy chunk first"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Multi-query: har phrasing thoda alag set laati hai, aur RRF us chunk ko upar rakhta hai jo teeno me aaya; keemat hai 3 retrieval calls.
+
+```mermaid
+flowchart LR
+    Q["Question: 80C limit?"] --> L["LLM writes a fake answer"]
+    L --> H["Section 80C allows deduction up to 1.5 lakh for PPF, ELSS, insurance"]
+    H --> E["Embed the fake answer"]:::hot
+    E -->|cosine 0.88| C["Real 80C rules chunk"]:::hot
+    Q -.->|question embedding, cosine 0.61| C
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* HyDE: fake answer asli answer chunk jaisa dikhta hai, isliye uska embedding chhote question se zyada sahi chunk ke paas girta hai; fake text sirf search ke liye use hota hai.
+
 | Technique | Kab use karo | Cost |
 |---|---|---|
 | Rewriting | Chat follow-ups, messy queries | 1 chhoti LLM call |
@@ -59,6 +91,34 @@ flowchart LR
 - **GraphRAG:** docs se entities aur relations nikaal ke knowledge graph banao, community summaries banao. "Is poore dataset ke main themes kya hain?" jaise global questions me achha, jahan top-k chunks kaafi nahi.
 - GraphRAG ka cost: indexing me bahut LLM calls, graph update karna mehenga. Default choice nahi.
 
+```mermaid
+flowchart TD
+    Q["User question"] --> P["Plan: which index or tool"]
+    P --> R["Retrieve"]
+    R --> G{"Grade chunks: good enough?"}
+    G -->|yes| A["Answer with citations"]:::hot
+    G -->|no, tries left| W["Rewrite query"]
+    W --> R
+    G -->|no, tries used up| WEB["Fallback: web search or say I don't know"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Agentic aur corrective RAG ek grading step aur retrieval pe wapas loop jodte hain; har extra chakkar ek aur LLM call hai, 2-5x latency yahin se aati hai.
+
+```mermaid
+flowchart LR
+    D["Docs"] --> X["LLM extracts entities and relations"]
+    X --> G[("Knowledge graph")]
+    G --> CM["Detect communities"]
+    CM --> S["LLM writes community summaries"]
+    S --> A["Global question answered from summaries"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* GraphRAG ka bhaari LLM kaam indexing ke time hota hai; global question top-k chunks ki jagah community summaries se answer hota hai.
+
 **Interview tip:** "Pehle simple pipeline + eval. Agentic tab, jab questions sach me multi-step hon."
 
 ## ⭐ Context dena: lost-in-the-middle aur citations
@@ -70,6 +130,22 @@ flowchart LR
 - **Citations:** har chunk ko id do (`[1] hr-policy.pdf p.12`), prompt me bolo "har claim ke baad source id likho". UI me clickable source dikhao.
 - Citation verify karo: jo id quote hui wo sach me context me thi ya nahi. Trust aur debugging dono ke liye zaroori.
 - Prompt me bolo: "Context me answer nahi hai to 'pata nahi' bolo." Ye hallucination ka sabse sasta guard hai.
+
+```mermaid
+flowchart LR
+    subgraph CTX["Context window, in order"]
+        P1["Position 1: best chunk, well used"]:::hot
+        P2["Position 2"]:::dim
+        P3["Position 3: middle, least used"]:::dim
+        P4["Position 4"]:::dim
+        P5["Position 5: end, well used"]
+    end
+    P1 --> P2 --> P3 --> P4 --> P5
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Model context ki shuruaat aur end sabse zyada use karta hai aur beech ko skip karta hai, isliye reranker ka best chunk pehle rakho aur list chhoti rakho.
 
 **Interview tip:** "Top-k bada karna free nahi hai: cost, latency aur lost-in-the-middle. Main 50 retrieve, rerank karke 5 bhejta hoon, citations ke saath."
 **Common galti:** 20 chunks LLM ko dump karna, ye soch ke ki "zyada context = better answer".

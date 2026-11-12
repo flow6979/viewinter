@@ -103,6 +103,25 @@ Note: since early 2025 CrewAI does **not** depend on LangChain. It is a standalo
 
 **Picture it:** A job description on a Naukri post: title (role), what success looks like (goal), and the kind of person you want (backstory).
 
+```mermaid
+flowchart LR
+    R["role: Refund Resolver"] --> SP["System prompt: You are role, backstory, your goal is goal"]
+    G["goal"] --> SP
+    B["backstory: policy rules"] --> SP
+    T["tools: get_order schema"] --> SP
+    AD["allow_delegation True"] -.->|adds 2 tools| DT["delegate work, ask question to coworker"]
+    DT -.-> SP
+    SP -->|resent| C1["LLM call 1"]
+    SP -->|resent| C2["LLM call 2"]
+    SP -->|resent| C6["... LLM call 6"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class SP hot
+    class AD,DT dim
+```
+
+*Diagram:* The three role texts plus tool schemas become one system prompt that is resent on every call: 6 calls in a task means 6 copies of the persona.
+
 **How it works, step by step:**
 
 1. `role`: a short title, for example "Order Investigator". It is also the agent's name for delegation.
@@ -138,6 +157,22 @@ A worked number: the three role texts are often 80–200 tokens. They are sent o
 **Why it exists:** LLMs do better with a precise brief and a precise shape for the answer. `expected_output` is that shape. Tasks also let you chain work: the output of one task becomes context for the next.
 
 **Picture it:** A JIRA ticket. It has a title, acceptance criteria, an assignee and "blocked by" links.
+
+```mermaid
+flowchart LR
+    I["kickoff inputs: order_id, complaint"] --> T1["Task: description plus expected_output"]
+    T1 --> A1["Agent tool loop"]
+    A1 --> P["output_pydantic: parse RefundDecision"]
+    P --> GR{"guardrail function"}
+    GR -->|False plus feedback, max 3 retries| A1
+    GR -->|True plus value| O1["TaskOutput"]
+    O1 -->|context| T2["Next task"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class GR hot
+```
+
+*Diagram:* A task's answer is parsed into the Pydantic shape, then checked by the guardrail; a failure sends feedback back into the agent loop, a pass flows on as context.
 
 **How it works, step by step:**
 
@@ -200,6 +235,26 @@ summarise = Task(
 **Why it exists:** You need one object that owns the run: which tasks, in which order, with which shared settings (memory, knowledge, rate limits, tracing). The process is the main control knob.
 
 **Picture it:** A cricket team. In **sequential** the batting order is fixed: opener, one-down, two-down. In **hierarchical** the captain decides on the go who bowls the next over, and can ask any player for help.
+
+```mermaid
+flowchart LR
+    subgraph SEQ["Sequential: about 6 calls"]
+        S1["Task 1: Investigator"] -->|output as context| S2["Task 2: Resolver"]
+        S2 -->|context| S3["Task 3: Writer"]
+    end
+    subgraph HIE["Hierarchical: 10-14 calls"]
+        MG["Manager LLM"] -->|delegate work| W1["Investigator"]
+        W1 -->|result| MG
+        MG -->|delegate work| W2["Resolver"]
+        W2 -->|result| MG
+        MG -->|ask question| W3["Writer"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MG hot
+```
+
+*Diagram:* Left: list order decides the next step and outputs flow straight on. Right: every hop goes through the manager LLM, which is where the extra calls and surprises come from.
 
 **How it works, step by step:**
 
@@ -275,6 +330,24 @@ print(result.token_usage)                                    # total tokens for 
 
 **Picture it:** Memory is the shift manager's diary of what happened. Knowledge is the policy binder on the shelf.
 
+```mermaid
+flowchart LR
+    TO["Task output or self.remember"] --> INF["LLM infers scope, categories, importance"]
+    INF --> DB[("Memory: LanceDB via crew embedder")]
+    Q["Later task needs facts"] --> D{"recall depth"}
+    D -->|shallow: 1 vector search| DB
+    D -->|deep: LLM splits into sub-queries| SQ["parallel searches"]
+    SQ --> DB
+    KS["Knowledge: policy PDF"] -->|chunk and embed up front| KDB[("Knowledge store")]
+    DB -->|recalled facts| PR["Agent prompt"]
+    KDB -->|relevant chunks| PR
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class DB,KDB hot
+```
+
+*Diagram:* Memory is written during runs and recalled later (deep recall costs extra LLM calls); knowledge is loaded up front and searched like RAG. Both end up in the prompt.
+
 **How it works, step by step:**
 
 1. `Crew(memory=True)` creates one **unified `Memory`** object. On save, an LLM infers a scope, categories and importance for the item. Storage is LanceDB locally by default. Embeddings come from the crew's `embedder` setting.
@@ -298,6 +371,23 @@ What changed: older CrewAI (0.x) had separate short-term, long-term and entity m
 **Why it exists:** Keeping agent and task texts in config files lets non-engineers edit prompts, keeps code small and makes reviews easy.
 
 **Picture it:** A restaurant menu card (config) kept separate from the kitchen equipment (code). You can change the menu without rewiring the kitchen.
+
+```mermaid
+flowchart TD
+    CMD["crewai create crew support_bot"] --> J["Default: JSON-first"]
+    CMD -->|with classic flag| C["Classic: YAML plus crew.py"]
+    J --> J1["agents/*.jsonc: one file per agent"]
+    J --> J2["crew.jsonc: tasks, process, inputs"]
+    J --> J3["tools/, knowledge/, skills/"]
+    C --> C1["config/agents.yaml"]
+    C --> C2["config/tasks.yaml"]
+    C --> C3["crew.py: @CrewBase with @agent, @task, @crew"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class J hot
+```
+
+*Diagram:* Both layouts keep prompts in config files; the JSON-first one is loaded directly by `crewai run`, the classic one is wired by decorated methods in `crew.py`.
 
 **How it works, step by step:**
 
@@ -338,6 +428,26 @@ investigate:
 **Why it exists:** Crews are autonomous, which is great for open-ended work and bad for things that must happen in a fixed way: validate input, branch on a category, call an API, save to a DB, retry. Flows let you write that control in normal code and call a crew only where you want LLM judgement. They also add state persistence and resume.
 
 **Picture it:** An IRCTC booking process. Login, pick train, fill passengers, pay, confirm: fixed steps with clear branches (payment failed → retry page). One step, "suggest alternate trains", could be a smart assistant. The flow is fixed; the assistant inside one step is free.
+
+```mermaid
+flowchart LR
+    K["kickoff inputs"] --> S1["@start load_order"]
+    K --> S2["@start load_customer"]
+    S1 --> AND{"and_: both done"}
+    S2 --> AND
+    AND --> RT["@router route: returns a label"]
+    RT -->|refund| RF["@listen refund"]
+    RT -->|other| OT["@listen other"]
+    RF --> OR{"or_: either done"}
+    OT --> OR
+    OR --> SV["@listen save_reply"]
+    ST[("self.state: id, order, reply. @persist saves after steps")] -.- RT
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RT hot
+```
+
+*Diagram:* Two `@start` steps run first, `and_` waits for both, the router's label picks one branch, `or_` joins them; every step reads and writes the same typed `self.state`.
 
 **How it works, step by step:**
 
@@ -381,6 +491,26 @@ flowchart LR
 **Why it exists:** This is the shape of most real CrewAI apps: deterministic routing in a Flow, a small crew where judgement is needed, and code checks on anything that touches money.
 
 **Picture it:** A support desk. The front desk sorts tickets (Flow). Refund tickets go to a two-person team: one checks the order system, one decides the refund under policy. The finance rule "never refund more than the bill" is checked by a machine, not trusted to people.
+
+```mermaid
+flowchart LR
+    IN["complaint plus order_id"] --> CL["@start classify"]
+    CL --> RT{"@router route"}
+    RT -->|refund| INV["Investigator plus Order lookup tool"]
+    RT -->|other| CN["canned reply"]
+    subgraph CREW["Sequential refund crew"]
+        INV -->|facts as context| RES["Resolver: RefundDecision"]
+        RES --> GR{"guardrail: refund within order amount?"}
+        GR -->|no, feedback| RES
+    end
+    GR -->|yes| RP["reply to customer"]
+    CN --> RP
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class GR hot
+```
+
+*Diagram:* The Flow does the routing in code; only refund tickets reach the two-agent crew, and the money rule is enforced by a code guardrail, not by the prompt.
 
 **How it works, step by step:**
 
@@ -589,6 +719,23 @@ sequenceDiagram
 
 **Picture it:** Four people in a meeting each repeating their designation before every sentence.
 
+```mermaid
+flowchart LR
+    subgraph ONE["Single agent, 3 tools"]
+        O1["4 calls x 2,500 tokens"] --> O2["10,000 input tokens"]
+    end
+    subgraph CRW["Crew: 3 agents, hierarchical"]
+        C1["6-9 worker calls"] --> C3["12 calls x 3,000 tokens"]
+        C2["4-6 manager calls"] --> C3
+        C3 --> C4["36,000 input tokens, about 3.6x"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class C4 hot
+```
+
+*Diagram:* Same job, two designs: personas, manager calls and passed-along context push the crew to roughly 3–4× the tokens of one agent.
+
 **How it works, step by step:**
 
 1. Count calls: 3 agents × 3 tasks, about 2–3 calls each, is 6–9 calls. Hierarchical adds 4–6 manager calls.
@@ -608,6 +755,20 @@ sequenceDiagram
 **Why it exists:** "Why this and not X" is the most common senior question about frameworks.
 
 **Picture it:** Ready-made thali vs ordering a la carte. The thali (CrewAI) is fast and good for most people. A la carte (LangGraph) gives exact control but you plan every dish.
+
+```mermaid
+flowchart TD
+    Q{"What is the hard part?"}
+    Q -->|role split, fast iteration| CR["CrewAI: Flow plus small crews"]
+    Q -->|approvals, retries, durable branches| LG["LangGraph"]
+    Q -->|Azure or .NET team| MAF["Microsoft Agent Framework"]
+    Q -->|one agent with a few tools| SDK["No framework or a thin SDK"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CR hot
+```
+
+*Diagram:* Ask what is hard first; CrewAI wins when the work is shaped like a team of roles and speed of building matters.
 
 **How it works, step by step:**
 

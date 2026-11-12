@@ -87,6 +87,18 @@ flowchart TD
 
 **Simplest-first ladder:** single LLM call (+ retrieval, tools) → workflow → agent → multi-agent. Each step up must be justified by an eval number, not by "it looks cool".
 
+```mermaid
+flowchart LR
+    A["Single LLM call + retrieval, tools"] -->|eval says not enough| B["Workflow"]
+    B -->|eval says not enough| C["Agent"]
+    C -->|eval says not enough| D["Multi-agent"]
+    class A hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Start at the highlighted left end and move one step right only when an eval number shows the current step fails; cost and unpredictability grow with each step.
+
 | Shape of the problem | Pattern | Who has control |
 |---|---|---|
 | Fixed sequence, each step depends on the previous one | Prompt chaining | Code |
@@ -214,14 +226,18 @@ out = app.invoke({"raw": "Rangeela cotton kurta, Jaipur print, sizes M L XL, MRP
 
 ```mermaid
 flowchart LR
-    U["Seller message"] --> C["Classifier: structured output"]
-    C -->|listing_issue| O["Listing help branch"]
-    C -->|payment_status| R["Payment branch"]
-    C -->|other or low confidence| H["Human handoff"]
-    O --> E["Reply"]
+    U["Priya: listing rejected, why?"] --> C["Classifier: structured output"]:::hot
+    C -->|listing_issue, 0.93 over 0.7| O["Listing help branch"]:::hot
+    C -->|payment_status| R["Payment branch"]:::dim
+    C -->|other or under 0.7| H["Human handoff"]:::dim
+    O --> E["Reply: image has a watermark"]:::hot
     R --> E
     H --> E
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* For Priya's question only the highlighted branch runs; the payment branch's prompt and tools are never touched.
 
 **Now the terms:**
 - **Classifier / router:** the step that only names the category; it does not do the work.
@@ -306,6 +322,22 @@ flowchart LR
     T --> J
     J --> E["END"]
 ```
+
+```mermaid
+flowchart LR
+    Q["Is this Rangeela brand fake or a copy?"] --> P1["Prompt 1: yes"]
+    Q --> P2["Prompt 2: yes"]
+    Q --> P3["Prompt 3: no"]
+    P1 --> V{"Count votes"}
+    P2 --> V
+    P3 --> V
+    V -->|2 of 3 say yes| MR["Manual review"]:::hot
+    V -->|fewer than 2| OK["Listing goes live"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Voting: the same question asked three different ways at the same time; a 2-of-3 majority sends the listing to manual review.
 
 **Now the terms:**
 - **Sectioning:** different jobs at the same time. Benefit: lower latency, each branch stays focused. Running a guardrail in one branch and the answer in another is also sectioning.
@@ -462,15 +494,18 @@ app = g.compile()
 
 ```mermaid
 flowchart LR
-    I["Seller question"] --> O["Orchestrator: plan subtasks"]
-    O -->|Send| W1["Worker: price"]
-    O -->|Send| W2["Worker: reviews"]
-    O -->|Send| W3["Worker: stock if needed"]
-    W1 --> SY["Synthesizer"]
-    W2 --> SY
-    W3 --> SY
-    SY --> E["Report"]
+    I["Why did sales drop 30 percent?"] --> O["Orchestrator plans 2 tasks"]:::hot
+    O -->|Send| W1["Worker: price"]:::hot
+    O -->|Send| W2["Worker: reviews"]:::hot
+    O -.->|not planned this time| W3["Worker: stock"]:::dim
+    W1 -->|competitors cut 100| SY["Synthesizer"]
+    W2 -->|12 size complaints| SY
+    SY --> E["Report: fix size chart, try 699"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* The orchestrator decided at runtime that only 2 workers are needed; the stock worker (dimmed) was never sent, and another seller could get 4.
 
 **Now the terms and the differences:**
 

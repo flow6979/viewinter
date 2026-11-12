@@ -14,6 +14,22 @@ PageIndex ek retrieval idea hai: document ko random chunks me kaatne ke bajaye u
 
 > **Example:** Infosys ki 200-page annual report pe bot. "Main risk factors kya hain aur unka mitigation kya hai?" Risk table page 41–42 pe phaili hai; chunking usko do tukdon me tod deta hai. LLM ko aadhi table milti hai aur wo confidently aadha answer deta hai.
 
+```mermaid
+flowchart LR
+    subgraph CK["512-token chunks"]
+        P41["Page 41: risk table rows 1-6"] --> CA["Chunk A, retrieved"]:::hot
+        P42["Page 42: rows 7-12, mitigations"] --> CB["Chunk B, not retrieved"]:::dim
+    end
+    subgraph PI["Page-level index"]
+        Q41["Page 41, top match"] --> CTX["Pages 41 and 42 in order, full table"]:::hot
+        Q42["Page 42, neighbour"] --> CTX
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Chunking table ko page break pe tod deta hai aur sirf aadha wapas aata hai; page index dono pages order me laata hai, to LLM ko poori table dikhti hai.
+
 - **Context bleed:** chunk beech table ya beech argument me khatam → LLM ko adhoora thought, embedding bhi weak.
 - **Cross-page references toot-te hain:** "pichle page ki table dekho", "Section 3 ke hisaab se" ka koi matlab nahi bachta. Chunk retrieval ko page proximity ka pata nahi.
 - **Tables/figures mangle:** do pages pe phaili table = do disconnected chunks.
@@ -34,6 +50,19 @@ PageIndex ek retrieval idea hai: document ko random chunks me kaatne ke bajaye u
 - Bahut lambe pages (~1,500+ words): page ke andar store ke liye chhote tukde, par retrieve page level pe; ya serve time pe sirf relevant paragraph slice karo.
 - Author ke financial-report test me precision@3 roughly 18–25% better (512-token chunking ke comparison me), aur hallucination kam, kyunki poora page apne caveats saath laata hai.
 
+```mermaid
+flowchart LR
+    Q["Query"] --> H["Hybrid search over pages, top 20"]
+    H --> R["Rerank: section match, neighbour pages"]
+    R --> K["Top 3 by score: p42, p17, p41"]
+    K --> O["Reorder by page: p17, p41, p42"]:::hot
+    O --> L["LLM with page citations"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Pages score se chune jaate hain par LLM ko page order me diye jaate hain, taaki report ka flow aur cross-page tables sahi rahein.
+
 **2. Vectorless, reasoning-based tree index (PageIndex-style)**
 - Indexing: document se ek **hierarchical tree** banao, jaise smart table of contents: document → sections → sub-sections → pages. Har node pe title, short LLM-generated summary, page range.
 - Retrieval: LLM ko query + tree ka top level do. Wo **reason** karta hai "answer kis section me hoga?", us node me neeche jaata hai, zarurat ho to backtrack karta hai. Jaise ek human analyst ToC dekh ke report padhta hai.
@@ -41,13 +70,20 @@ PageIndex ek retrieval idea hai: document ko random chunks me kaatne ke bajaye u
 - Similarity ≠ relevance: vector search "jo similar dikhta hai" laata hai; tree reasoning "jahan answer hona chahiye" wahan jaata hai.
 
 ```mermaid
-flowchart LR
-    Q["Query: FY24 forex risk"] --> R["LLM reads root ToC"]
-    R --> S["Pick Risk Factors"]
-    S --> M["Pick Market Risk"]
-    M --> P["Read pages 41-42"]
-    P --> A["Answer with page cite"]
+flowchart TD
+    Q["Query: FY24 forex risk"] --> ROOT["Annual report ToC"]
+    ROOT --> BO["Business overview"]:::dim
+    ROOT --> RF["Risk factors, pages 38-45"]:::hot
+    ROOT --> FS["Financial statements"]:::dim
+    RF --> OR["Operational risk"]:::dim
+    RF --> MR["Market risk: forex, rates"]:::hot
+    MR --> PG["Read pages 41-42"]:::hot
+    PG --> A["Answer with page 42 citation"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* LLM sirf node titles aur summaries padhta hai, Risk factors phir Market risk chunta hai, aur sirf pages 41-42 kholta hai; dim branches kabhi padhi hi nahi jaati.
 
 | | Chunk + vector | Page-level index | Vectorless tree |
 |---|---|---|---|
@@ -72,6 +108,21 @@ flowchart LR
   - Bahut saare documents ke across search me scale nahi karta; pehle doc select karna padta (metadata ya vector search se), phir tree navigate.
   - Tree ki quality (ToC, summaries) pe sab depend; bina headings wale docs pe tree banana mushkil.
 - **Hybrid combo:** page-level BM25 ko zyada context milta hai (better IDF), dense ko page theme. "Connection handling ke baare me hai AUR exact error code bhi hai" dono pakad lo. Dekho [Hybrid Search](04-hybrid-search.md).
+
+```mermaid
+flowchart TD
+    D{"How was the document made to be read?"} -->|scanned and searched, FAQ, tickets| C["Chunk plus vector"]
+    D -->|page by page, reports, contracts| M{"Many documents?"}
+    M -->|yes| S["Pick the doc with vector search first"]
+    M -->|no, one doc| E{"Accuracy and explainability over latency?"}
+    S --> E
+    E -->|yes| T["Vectorless tree navigation"]:::hot
+    E -->|no| P["Page-level index plus hybrid"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Chhote searchable docs ke liye chunking theek hai; lambe page-wise docs page index ya tree pe jaate hain, pehle sahi document chun ke.
 
 **Interview tip:** "Pehle collection level pe vector/hybrid search se sahi document dhoondhunga, phir us document ke andar tree navigation ya page-level retrieval. Dono ka best."
 

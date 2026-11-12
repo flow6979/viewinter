@@ -68,6 +68,23 @@ flowchart LR
 
 **Aise socho:** Zomato ki cloud kitchen. Head chef (`LlmAgent`) order dekh ke decide karta hai kya banana hai. "Dhona, kaatna, talna" jaise fixed stations order me = workflow agents. Dish ke saath chalne wala order ticket = session state. Kitchen manager jo order leta hai, kitchen chalata hai aur har step log book me likhta hai = `Runner`. Log book ki entries = events.
 
+```mermaid
+flowchart TD
+    RN["Runner with session service"] --> ROOT["root_agent: LlmAgent front_desk"]
+    ROOT -->|sub_agents| LA["LlmAgent refund_desk"]
+    ROOT -->|sub_agents| SEQ["SequentialAgent checkout"]
+    SEQ --> S1["LlmAgent fetch_order"]
+    SEQ --> S2["LlmAgent write_reply"]
+    LA -->|tools| T1["issue_refund function"]
+    LA -->|tools| T2["AgentTool web_search"]
+    RN -.->|every step yields| EV["Event with state_delta, saved to session"]
+    class RN,EV hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Runner ke neeche sab agents ka tree hai (LLM ya workflow), patton pe tools; Runner tree chalata hai aur har step ko save hone wale event me badalta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Tum ek root agent likhte ho. Ye `LlmAgent`, workflow agent, ya `Workflow` graph ho sakta hai.
@@ -104,6 +121,20 @@ flowchart LR
 
 **Aise socho:** Swiggy support executive jiske paas script (instruction), departments ki phone list (tools aur sub-agents), aur screen pe chat history (session events) hai.
 
+```mermaid
+flowchart LR
+    REQ["instruction with state filled, history from events, tool schemas"] --> M["Gemini"]
+    M -->|function call| T["ADK runs the tool"]
+    T -->|result added to history| REQ
+    M -->|plain text, no tool calls| F["Final answer"]
+    F -->|output_key intent| ST[("state intent")]
+    class M hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* LlmAgent yahi chhota loop hai: model ya to tool maangta hai (aur ADK loop karta hai) ya plain text deta hai, jise output_key state me save kar sakta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Tum `name`, `model`, `instruction`, `description` aur `tools` set karte ho.
@@ -114,6 +145,19 @@ flowchart LR
 6. `generate_content_config` se temperature, max tokens aur safety settings set hoti hain.
 
 Worked example: `output_key="intent"` wala triage agent `"refund"` reply karta hai. Us turn ke baad `state = {"intent": "refund"}`. Agle agent ka instruction `"Handle a {intent} request"` ban jaata hai `"Handle a refund request"`.
+
+```mermaid
+flowchart LR
+    U["User: food came cold"] --> TA["triage, output_key intent"]
+    TA -->|replies refund| SD["Event state_delta: intent is refund"]
+    SD --> ST[("Session state")]
+    ST -->|fills the intent placeholder| NA["Next agent instruction: Handle a refund request"]
+    class SD hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Agents ek doosre ke messages parse nahi karte: ek event ke state_delta se state key likhta hai, agla apni instruction ke placeholder se padhta hai.
 
 ```python
 from google.adk.agents import LlmAgent   # same class: from google.adk import Agent
@@ -149,6 +193,27 @@ triage = LlmAgent(
 
 **Aise socho:** IRCTC booking counter. Form bharo, phir pay karo, phir ticket print: hamesha isi order me (sequential). Do clerk ek saath ID aur payment check karein (parallel). Proofreader jo ticket tab tak dobara check kare jab tak sahi na ho, max teen baar (loop).
 
+```mermaid
+flowchart LR
+    subgraph SQ["SequentialAgent"]
+        A["fill form"] --> B["pay"]
+        B --> C["print ticket"]
+    end
+    subgraph PA["ParallelAgent"]
+        P0["start"] --> X["check ID"]
+        P0 --> Y["check payment"]
+        X --> J["both done"]
+        Y --> J
+    end
+    subgraph LP["LoopAgent, max_iterations 3"]
+        D["draft"] --> R["review"]
+        R -->|not good, try again| D
+        R -->|exit_loop sets escalate| E["done"]
+    end
+```
+
+*Diagram:* Teen fixed shapes, order koi LLM nahi chunta: seedhi line, fan-out jo join hota hai, aur loop jo exit_loop pe ya 3 round ke baad rukta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. **`SequentialAgent(sub_agents=[a, b, c])`**: a, phir b, phir c. Sab same session state share karte hain, to `a` ka `output_key` `b` ko dikhta hai.
@@ -165,6 +230,20 @@ triage = LlmAgent(
 | Human ke liye pause | khud banao | built-in human-in-the-loop input |
 
 Worked example: parallel step me flights agent (2.1 s) aur hotels agent (1.6 s). Sequential me 3.7 s lagte; parallel me lagbhag 2.1 s, yaani sabse slow branch jitna.
+
+```mermaid
+flowchart LR
+    S["START"] --> TR["triage LlmAgent"]
+    TR -->|one word| RT{"route_by_intent: plain Python"}
+    RT -->|route refund| RA["refund_agent"]
+    RT -->|route delivery| DA["delivery_agent"]
+    RT -->|route other| FA["faq_agent"]
+    class RT hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Ye wahi graph hai jo neeche wala 2.0 Workflow banata hai: sirf triage LLM use karta hai; highlighted function route yield karke free me agla node chunta hai.
 
 ```python
 from google.adk import START, Event, Workflow
@@ -202,6 +281,20 @@ support_flow = Workflow(
 **Ye kyun chahiye:** Real flows me rules hote hain jaise "cart value ₹5,000 se upar ho to pehle fraud agent chalao, warna skip". Ye plain code hai, prompt nahi.
 
 **Aise socho:** Kitchen manager special cases ke liye har baar chef se poochhne ki jagah laminated rule card follow karta hai.
+
+```mermaid
+flowchart TD
+    IN["orchestrate node, rerun_on_resume True"] --> C{"state cart_value above 5000?"}
+    C -->|yes, cart 7200| F["ctx.run_node fraud_agent"]
+    C -->|no, cart 1800| R["ctx.run_node reply_agent"]
+    F --> R
+    R --> OUT["yield Event output reply"]
+    class C hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Branch Python ka if hai, prompt nahi; pause ke baad poora node upar se dobara chalta hai, isliye har child call repeat karne pe safe honi chahiye.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -243,6 +336,22 @@ root_agent = Workflow(name="checkout", edges=[("START", orchestrate)])
 
 **Aise socho:** Support executive ki desk: calculator (function tool), browser pe Google (built-in search), senior colleague ka phone jo jawab deke rakh deta hai (`AgentTool`), aur office ka shared printer jo koi bhi use kare (MCP server).
 
+```mermaid
+flowchart LR
+    FN["Python function with docstring"] --> TL["One tool list the model sees"]
+    BI["google_search built-in"] --> SA["search_agent holding only that tool"]
+    SA -->|wrapped in AgentTool| TL
+    MCP["McpToolset over stdio or HTTP"] --> TL
+    OA["OpenAPIToolset: one tool per endpoint"] --> TL
+    TL --> AG["LlmAgent helper"]
+    AG -->|function call| CTX["ADK injects ToolContext: state, actions"]
+    class TL hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Paanch alag sources model ko ek jaise dikhte hain; dhyan do built-in search apne agent me hai aur mixing limit se bachne ke liye AgentTool se judta hai.
+
 **Kaise kaam karta hai, step by step:**
 
 1. **Function tool:** `tools=[...]` me plain Python function do. ADK type hints aur docstring se JSON schema banata hai. `{"status": "ok", "eta_min": 25}` jaisa dict return karo.
@@ -254,6 +363,24 @@ root_agent = Workflow(name="checkout", edges=[("START", orchestrate)])
 7. **Long-running tools aur confirmation:** tool chalne se pehle human confirmation maang sakta hai (tool confirmation flow).
 
 **Sub-agent transfer vs `AgentTool`:**
+
+```mermaid
+flowchart LR
+    subgraph TRF["sub_agents: transfer"]
+        P1["front_desk"] -->|transfer_to_agent| X1["refund_desk"]
+        X1 -->|replies to user from now on| U1["User"]
+    end
+    subgraph AGT["AgentTool: call and return"]
+        P2["helper"] -->|call web_search| X2["search_agent"]
+        X2 -->|answer as tool result| P2
+        P2 -->|helper writes the reply| U2["User"]
+    end
+    class X1,P2 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Highlighted agent agla user se baat karta hai: transfer me control sub-agent ke paas jaata hai; AgentTool me wapas parent ke paas aata hai.
 
 | | `sub_agents=[x]` (transfer) | `tools=[AgentTool(agent=x)]` |
 |---|---|---|
@@ -303,6 +430,25 @@ helper = LlmAgent(
 
 **Aise socho:** Hospital visit ki file (session) me aaj ke notes. Patient ka master record (memory) me pichhle saare visits ki allergies.
 
+```mermaid
+flowchart TD
+    SS[("Session service: InMemory, Database or VertexAi")] --> SE["Session: app support, user u42"]
+    SE --> EV["events: 30 per chat"]
+    SE --> ST["state"]
+    ST --> K1["order_id: this session only"]
+    ST --> K2["user:diet veg: every session of u42"]
+    ST --> K3["app:refund_limit 2000: all users"]
+    ST --> K4["temp:raw_api_json: this invocation, never saved"]
+    SE -->|add_session_to_memory| MS[("Memory service: Memory Bank")]
+    MS -->|load_memory or PreloadMemoryTool| NX["A later session of u42"]
+    class MS,NX hot
+    class K4 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Session ek chat ke events aur state rakhta hai, key prefix decide karta hai value kitni door tak dikhe; memory service alag long-term store hai jise baad ki chats search karti hain.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Session service options: `InMemorySessionService` (sirf dev), `DatabaseSessionService` (Postgres jaisa SQL database), `VertexAiSessionService` (Google Cloud managed).
@@ -322,6 +468,23 @@ helper = LlmAgent(
 
 Worked example: Postgres session table me har event 2 KB, ek chat me 30 events, roz 100,000 chats = roz lagbhag 6 GB events. Retention plan karo, jaise 30 din rakho.
 
+```mermaid
+flowchart LR
+    subgraph OK["Saved"]
+        T1["tool_context.state order_id 8812"] --> E1["Event carries state_delta"]
+        E1 --> C1["Runner commits to session service"]
+    end
+    subgraph BAD["Lost"]
+        T2["Fetch session, then set session.state x"] --> C2["Only your local copy changed"]
+    end
+    class C1 hot
+    class C2 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Step 4 ki picture: state change tabhi save hota hai jab woh event pe chalta hai; fetched session object edit karne se storage me kuch nahi badalta.
+
 **Interview tip:** "ADK me session vs memory?" Bolo: "Session short-term hai: ek conversation ke events aur state, session service store karti hai. Memory long-term hai aur sessions ke paar search hoti hai, memory service store karti hai jaise Vertex AI Memory Bank. User-level facts `user:` prefix wali state me bhi reh sakte hain."
 
 **Common galti:**
@@ -335,6 +498,29 @@ Worked example: Postgres session table me har event 2 KB, ek chat me 30 events, 
 **Ye kyun chahiye:** Aise checks chahiye jinhe model baaton se ghuma na sake: limit se upar refund block karna, prompts me PII mask karna, answers cache karna, har tool call log karna.
 
 **Aise socho:** Bank teller ka supervisor jo ₹50,000 se upar ki har withdrawal slip cash nikalne se pehle check karta hai.
+
+```mermaid
+sequenceDiagram
+    participant R as Runner
+    participant CB as Your callbacks
+    participant M as Gemini
+    participant T as issue_refund
+    R->>CB: before_agent_callback
+    R->>CB: before_model_callback
+    CB-->>R: None, continue
+    R->>M: LlmRequest
+    M-->>R: call issue_refund amount 2500
+    R->>CB: after_model_callback
+    R->>CB: before_tool_callback refund_guard
+    CB-->>R: dict blocked, above 2000
+    Note over R,T: real tool is skipped, the dict becomes the tool result
+    R->>CB: after_tool_callback
+    R->>M: tool result blocked
+    M-->>R: final text, a human will call back
+    R->>CB: after_agent_callback
+```
+
+*Diagram:* Chhe hooks agent, har model call aur har tool call ko gherte hain; refund_guard dict lautata hai, isliye Rs 2,500 ke liye issue_refund kabhi nahi chalta.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -374,6 +560,23 @@ def refund_guard(tool: BaseTool, args: dict[str, Any],
 **Ye kyun chahiye:** Zyada tar real ADK apps ki shape yahi hai: ek coordinator jo route kare, tools wale specialists, code guardrail, aur tumhare API server me Runner.
 
 **Aise socho:** Front-desk executive sunta hai aur tumhe "delivery desk" ya "refund desk" pe transfer karta hai. Refund desk pe bade amounts ke liye supervisor ka rule hai.
+
+```mermaid
+flowchart LR
+    APP["API server: runner.run_async"] --> FD["front_desk LlmAgent"]
+    FD -->|transfer: where is order 8812| DD["delivery_desk: get_order"]
+    FD -->|transfer: refund Rs 640| RD["refund_desk: get_order, issue_refund"]
+    RD --> CB{"refund_guard: amount above 2000?"}
+    CB -->|no, 640| IR["issue_refund runs"]
+    CB -->|yes| BL["blocked, needs_human set"]
+    APP --- SS[("Session service: order_id 8812 in state")]
+    class RD,CB,IR hot
+    class BL dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Example ka turn 2 highlighted raasta leta hai: refund_desk ko transfer, guard check, aur Rs 640 pass kyunki Rs 2,000 limit se kam hai.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -587,6 +790,23 @@ Cost ka worked example: agar triage flash model pe bade model ke lagbhag ek-dasv
 
 **Aise socho:** Driving test ka route. Har baar same route; examiner dekhta hai tumne kaunse turns liye aur kahan pahunche, dono.
 
+```mermaid
+flowchart LR
+    CASE["Eval case: user turns, expected tools, reference answer"] --> RUN["Run the agent"]
+    RUN --> TRJ["Actual tools: issue_refund only"]
+    RUN --> ANS["Final answer text"]
+    TRJ -->|vs get_order then issue_refund| S1["tool_trajectory_avg_score 0.0, fail"]
+    ANS -->|similarity vs reference| S2["response_match_score 0.85, pass at 0.8"]
+    S1 --> GATE{"All 50 cases pass?"}
+    S2 --> GATE
+    GATE -->|46 of 50| BLOCK["Block deploy, fix the instruction"]
+    class S1,BLOCK hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har case do baar score hota hai: tool calls ka raasta aur final text; yahan jawab theek dikhta hai par get_order skip karne se trajectory fail aur deploy block.
+
 **Kaise kaam karta hai, step by step:**
 
 1. Achhi conversations `adk web` se eval cases ki tarah save karo, ya `.test.json` / `.evalset.json` files haath se likho.
@@ -609,6 +829,22 @@ Worked example: 50 cases, trajectory threshold 1.0. Prompt change ke baad 46 pas
 **Ye kyun chahiye:** Laptop ke demo me na persistence hai, na scaling, na auth, na traces.
 
 **Aise socho:** Ghar ki kitchen se licensed restaurant: fridge logs, CCTV, fire exits.
+
+```mermaid
+flowchart LR
+    CI["CI: adk eval"] -->|gate| CR["Cloud Run container: Runner and agents"]
+    U["Users"] -->|SSE stream| CR
+    CR --> DB[("Cloud SQL Postgres: sessions")]
+    CR --> MB[("Memory Bank: long-term memory")]
+    CR --> GM["Gemini on Vertex AI"]
+    CR -.->|OTel traces| TR["Cloud Trace or Langfuse"]
+    CR -->|A2A via agent card URL| RA["Another team's agent"]
+    class CR hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Typical production layout: stateless container, durable sessions aur memory bahar, traces export, evals deploy ko gate karte hain, aur A2A sirf doosri teams ke liye.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -639,6 +875,21 @@ Worked example: 50 cases, trajectory threshold 1.0. Prompt change ke baad 46 pas
 **Ye kyun chahiye:** "ADK kyun, X kyun nahi?" standard senior sawal hai. Reasons chahiye, brand loyalty nahi.
 
 **Aise socho:** Ek ecosystem ka phone lena. Android phone Google services ke saath best chalta hai, par doosre apps bhi install kar sakte ho.
+
+```mermaid
+flowchart TD
+    Q1{"On Google Cloud, or need Gemini built-ins or Agent Engine?"} -->|yes| ADK["Google ADK"]
+    Q1 -->|no| Q2{"Complex long-running flow needing explicit control?"}
+    Q2 -->|yes| LG["LangGraph"]
+    Q2 -->|no| Q3{"OpenAI-centric bot with routing?"}
+    Q3 -->|yes| OA["OpenAI Agents SDK"]
+    Q3 -->|no, quick role-based pipeline| CR["CrewAI"]
+    class ADK hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Model brand se nahi, platform aur runtime needs se shuru karo; jab Google Cloud features matter karein to ADK pehla stop hai.
 
 **Kaise kaam karta hai, step by step:**
 

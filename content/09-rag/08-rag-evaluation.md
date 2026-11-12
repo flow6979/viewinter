@@ -19,6 +19,23 @@ RAG me do cheezein fail ho sakti hain: retrieval (sahi chunk aaya hi nahi) aur g
 - LLM se synthetic questions generate kar sakte ho (chunk do, question banwao), par kuch human review zaroori.
 - Golden set ko version karo; har pipeline change pe same set pe run karo (regression test jaisa).
 
+```mermaid
+flowchart LR
+    L["Production logs"] --> S["Sample 100 real queries"]
+    S --> H["Human labels the gold doc id"]
+    H --> G[("Golden set v3")]:::hot
+    G --> R["Run the pipeline change"]
+    R --> M["Recall, nDCG, faithfulness"]
+    M --> D{"Better than baseline?"}
+    D -->|yes| SH["Ship"]
+    D -->|no| RV["Revert or retune"]
+    SH -->|bad online cases| G
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har change same versioned set pe chalta hai, regression test ki tarah, aur production me dikhe failures wapas usi set me jud jaate hain.
+
 **Interview tip:** "Pehla kaam: logs se 100 queries ka golden set. Bina iske koi tuning blind hai."
 **Common galti:** sirf 5–10 handpicked demo questions pe test karke "kaam kar raha hai" bolna.
 
@@ -37,6 +54,21 @@ RAG me do cheezein fail ho sakti hain: retrieval (sahi chunk aaya hi nahi) aur g
 - **MRR:** gold chunk rank 1 pe → 1.0, rank 3 pe → 0.33. Position ke liye sensitive.
 - **nDCG:** "highly relevant" aur "thoda relevant" me fark karta hai, upar wale ranks ko zyada weight. [Reranking](05-reranking.md) ka impact isi se naapo.
 - Notes se: reranking on top of hybrid search ne **nDCG@5 roughly 12–18 points** improve kiya; kahin sirf 2 points for 200ms latency. Isliye measure karo.
+
+```mermaid
+flowchart LR
+    Q["Query, gold = leave-policy p4"] --> R1["rank 1: holiday list"]:::dim
+    R1 --> R2["rank 2: leave overview"]:::dim
+    R2 --> R3["rank 3: leave-policy p4, gold"]:::hot
+    R3 --> R4["rank 4"]:::dim
+    R4 --> R5["rank 5"]:::dim
+    R3 --> M1["Recall@5 = 1, gold is in the top 5"]
+    R3 --> M2["Reciprocal rank = 1/3 = 0.33"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Recall@5 sirf poochta hai ki gold chunk list me hai ya nahi (hai); MRR ye bhi dekhta hai ki kahan hai, isliye rank 3 pe score 1.0 ki jagah 0.33.
 
 ```python
 def mrr(results, gold):  # results: list of ranked id lists
@@ -63,6 +95,22 @@ def mrr(results, gold):  # results: list of ranked id lists
 - **LLM-as-judge:** ek strong LLM ko rubric do ("1–5 score, kya har claim context se supported hai?"). Sasta aur scale hota hai.
 - Judge ki kamiyan: position bias, lambe answer pasand karna, apne hi model ko favour. Fix: clear rubric, kuch samples pe human se agreement check, temperature 0.
 
+```mermaid
+flowchart LR
+    Q["Question"] --> RT["Retriever"]
+    RT --> C["Context chunks"]
+    C --> L["LLM"]
+    L --> A["Answer"]
+    MP["Context precision: how much noise"]:::hot -.-> C
+    MR["Context recall: needed facts present"]:::hot -.-> C
+    MF["Faithfulness: claims backed by context"]:::hot -.-> A
+    MA["Answer relevance: addresses the question"]:::hot -.-> A
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Context precision aur recall retriever ke output ko grade karte hain; faithfulness aur answer relevance LLM ke likhe answer ko, isliye low score batata hai kaunsa stage fix karna hai.
+
 | Problem dikha | Kaunsa metric | Fix kahan |
 |---|---|---|
 | Sahi chunk nahi aaya | Recall@k low | Chunking, hybrid, query rewrite |
@@ -78,6 +126,20 @@ def mrr(results, gold):  # results: list of ranked id lists
 - **A/B test:** naya reranker 10% traffic pe, thumbs-up rate aur latency compare karo.
 - Production logs se sample karke LLM-judge se faithfulness monitor karo (har request pe nahi, cost).
 - Bure online cases ko golden set me add karo; set time ke saath strong hota hai.
+
+```mermaid
+flowchart LR
+    CH["Code or config change"] --> OFF["Offline eval on golden set, CI gate"]
+    OFF -->|passes| AB["A/B test on 10% of traffic"]
+    AB --> ON["Online signals: thumbs, regenerate, escalations"]
+    ON -->|wins| FULL["Roll out to 100%"]:::hot
+    ON -->|bad cases| GS[("Golden set")]
+    GS --> OFF
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Offline eval decide karta hai ki change ship ho sakta hai ya nahi; online signals batate hain ki fayda hua ya nahi, aur unke bad cases agla offline run aur strong banate hain.
 
 **Interview tip:** "Offline eval change ko ship karne deta hai, online eval batata hai ki users ko sach me fayda hua."
 

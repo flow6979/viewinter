@@ -67,6 +67,26 @@ flowchart TD
 
 **Picture it:** a kirana shop adds a UPI QR code on the counter. It does not open a second shop for digital payments. Only when the volume gets huge does it make sense to get a separate billing setup.
 
+```mermaid
+flowchart LR
+    subgraph SEP["Separate vector DB"]
+        PG1[("Postgres rows")] -->|sync pipeline| VDB[("Vector DB copy")]
+        VDB --> X["Second backup, second auth, drift"]
+    end
+    subgraph ONE["Vector as a column"]
+        T["policy_chunks: id, tenant_id, content, embedding"] --> BT["B-tree on tenant_id"]
+        T --> HN["HNSW on embedding"]
+        BT --> QY["One SQL: WHERE tenant_id = 7 ORDER BY distance LIMIT 5"]
+        HN --> QY
+    end
+    class VDB,X dim
+    class HN,QY hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Left: a second copy of the data to sync, back up and secure. Right: the vector is just another column with its own index, used in the same SQL as the tenant filter.
+
 **How it works, step by step:**
 1. You add a vector column (or field) next to your normal columns, for example `embedding vector(1536)` on a `policy_chunks` table.
 2. You build an ANN index on that column, the same way you build a B-tree index on `email`.
@@ -92,6 +112,22 @@ flowchart TD
 **Why it exists:** one size does not fit all. A 3072-dim model in `vector` is too big to index (limit 2000 dims). Learned sparse models like SPLADE produce vectors that are mostly zeros. Binary vectors are 32 times smaller. Each type matches one of these needs.
 
 **Picture it:** storing photos. RAW files (`vector`), high-quality JPEG (`halfvec`), a list of only the non-empty pixels (`sparsevec`), and a black-and-white thumbnail (`bit`).
+
+```mermaid
+flowchart LR
+    E["One 1536-dim embedding"] --> V["vector: 4 bytes each, about 6 KB"]
+    E --> H["halfvec: 2 bytes each, about 3 KB"]
+    E --> B["bit: 1 bit each, 192 bytes"]
+    S["SPLADE output, mostly zeros"] --> SP["sparsevec: only non-zero pairs"]
+    V -->|5M rows| V5["about 30 GB"]
+    H -->|5M rows| H5["about 15 GB"]
+    B -->|5M rows| B5["about 1 GB"]
+    class H,H5 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The same embedding costs 6 KB, 3 KB or 192 bytes depending on the type; at 5 million rows that is 30 GB vs 15 GB vs 1 GB.
 
 **How it works, step by step:**
 
@@ -119,6 +155,28 @@ flowchart TD
 **Why it exists:** without an index, `ORDER BY embedding <=> $1 LIMIT 5` compares the query with every row. That is exact but takes seconds at 10 million rows. An index looks at a small part of the data.
 
 **Picture it:** HNSW is like asking for directions in a new city: first a highway sign, then the area, then the lane. IVFFlat is like a library: go to the 3 shelves whose label is closest to your topic and scan only those shelves.
+
+```mermaid
+flowchart LR
+    subgraph HN["HNSW: layered graph"]
+        Q1["Query"] --> L2["Top layer: few nodes, long jumps"]
+        L2 --> L1["Middle layer"]
+        L1 --> L0["Layer 0: all rows, up to 2m = 32 links"]
+        L0 -->|keep ef_search 40 best| R1["Top 10"]
+    end
+    subgraph IV["IVFFlat: clusters and lists"]
+        Q2["Query"] --> CEN["Compare with 1000 centroids"]
+        CEN -->|probes 32| LS["Scan 32 nearest lists, about 32,000 rows"]
+        CEN -.->|skip| SK["Other 968 lists, about 968,000 rows"]
+        LS --> R2["Top 10"]
+    end
+    class L0,LS hot
+    class SK dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* HNSW narrows down layer by layer and keeps ef_search candidates; IVFFlat jumps to the probes nearest clusters and skips the rest of the 1 million rows.
 
 **How it works, step by step:**
 1. **HNSW build:** each row becomes a graph node linked to about `m` neighbours per layer (`m` default 16; layer 0 keeps up to `2 × m`). `ef_construction` (default 64) is how many candidates the builder looks at to choose those links.
@@ -175,6 +233,21 @@ COMMIT;
 
 **Picture it:** a shop that sorts its shelves by price cannot quickly answer "sort by weight". The shelf order and the question must match.
 
+```mermaid
+flowchart TD
+    Q["Query ordering by embedding distance, LIMIT 10"] --> A{"Operator matches the index operator class?"}
+    A -->|no, l2_ops index but cosine query| SEQ["Seq Scan plus Sort over every row"]
+    A -->|yes| B{"ORDER BY ascending distance with LIMIT?"}
+    B -->|no| SEQ
+    B -->|yes| IDX["Index Scan using policy_chunks_hnsw"]
+    class IDX hot
+    class SEQ dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Both checks must pass for the planner to use the ANN index; failing either one silently falls back to a full scan.
+
 **How it works, step by step:**
 
 | Operator | Distance | Index operator class (vector) | Smaller means |
@@ -215,6 +288,20 @@ COMMIT;
    - **B-tree index on the filter column.** For a very selective filter (say 2,000 matching rows), the planner may skip HNSW and do an exact scan of those rows. That is fast and 100% recall.
    - **Partial index** per hot value: `CREATE INDEX ... USING hnsw (embedding vector_cosine_ops) WHERE country = 'IN'`.
    - **Partitioning** by tenant or region, so each partition has its own smaller index.
+
+```mermaid
+flowchart TD
+    F["Filtered vector query"] --> S{"What shape is the filter?"}
+    S -->|very selective, a few thousand rows| BT["B-tree on filter column, exact scan, 100% recall"]
+    S -->|one hot value used a lot| PI["Partial HNSW index WHERE country = IN"]
+    S -->|split by tenant or region| PT["Partitions, smaller index each"]
+    S -->|anything else| IT["HNSW plus iterative_scan relaxed_order"]
+    class IT hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Pick the filter tool by the filter's shape; iterative scan is the general default and the other three cover special cases.
 
 ```mermaid
 sequenceDiagram
@@ -265,6 +352,20 @@ COMMIT;
 
 **Picture it:** first sort exam papers by the total on the cover page (quick, rough). Then carefully re-check only the top 50 papers.
 
+```mermaid
+flowchart LR
+    Q["Query vector, 1536 floats"] --> BQ["binary_quantize: 192 bytes"]
+    BQ --> HI["HNSW on bit 1536, Hamming distance"]
+    HI -->|over-fetch 40| C["40 candidate rows"]
+    C --> EX["Exact cosine on full vector column, 6 KB each"]
+    EX -->|re-rank| R["Top 5"]
+    class HI,EX hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The rough pass searches tiny 192-byte codes; the exact pass reads full vectors for only 40 rows, which brings the recall back.
+
 **How it works, step by step:**
 1. **Half precision:** index `embedding::halfvec(1536)`. Recall barely changes for most text models, and memory halves.
 2. **Binary quantization:** `binary_quantize(embedding)` turns each positive number into 1 and each other number into 0. 1536 dims → 192 bytes.
@@ -305,6 +406,24 @@ LIMIT 5;
 **Why it exists:** vectors miss exact tokens like `LTA-2024`, `Form 16` or an employee ID. Keyword search misses paraphrases like "time off after a baby" versus "maternity leave". [Hybrid Search](../09-rag/04-hybrid-search.md) explains the theory; here it is in pure Postgres.
 
 **Picture it:** two shop assistants search the store, one by product label, one by "what you meant". You trust items that both bring back.
+
+```mermaid
+flowchart LR
+    QT["Query text: paternity leave days"] --> KW["keyword CTE: GIN on tsv, top 20"]
+    QE["Query embedding"] --> SM["semantic CTE: HNSW, top 20"]
+    KW --> J["FULL OUTER JOIN on id"]
+    SM --> J
+    J --> RRF["score = 1/(60 + keyword rank) + 1/(60 + vector rank)"]
+    RRF --> A["Chunk A: keyword 1, vector 3, score 0.0323"]
+    RRF --> B["Chunk B: vector 1 only, score 0.0164"]
+    A --> TOP["Top 5: A ranks above B"]
+    class A,TOP hot
+    class B dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Two indexes rank independently and only the ranks are fused, so a chunk both sides agree on (A) beats one that tops a single list (B).
 
 **How it works, step by step:**
 1. Add a generated `tsvector` column and a GIN index on it. Postgres keeps it updated on every insert and update.
@@ -360,6 +479,24 @@ LIMIT 5;
 **Why it exists:** this ties the sections together: schema, bulk insert, index, a filtered query with iterative scan, and safe per-transaction settings.
 
 **Picture it:** the HR team's handbook, cut into paragraphs, each paragraph tagged with country and with its "meaning numbers" stored next to it.
+
+```mermaid
+sequenceDiagram
+    participant U as Employee
+    participant App
+    participant EMB as Embeddings API
+    participant PG as Postgres
+    U->>App: How many days off do new fathers get?
+    App->>EMB: embed question, same model as docs
+    EMB-->>App: 1536-dim vector
+    App->>PG: BEGIN, SET LOCAL ef_search 100 and iterative_scan
+    App->>PG: WHERE tenant_id = 1 AND country = IN, ORDER BY distance LIMIT 3
+    PG-->>App: Paternity leave is 10 working days, similarity 0.62
+    App->>PG: COMMIT, settings end here
+    App-->>U: top chunks go to the LLM
+```
+
+*Diagram:* One request: embed with the same model, then a filtered query inside a transaction so the SET LOCAL tuning ends at COMMIT.
 
 **How it works, step by step:**
 1. Create the table once, with tenant and country columns for filters.
@@ -461,6 +598,27 @@ for content, sim in search("How many days off do new fathers get?", 1, "IN"):
 
 **Picture it:** instead of keeping every file on your desk (RAM), you keep a one-line summary of each file on the desk and fetch the full file from the cupboard (SSD) only for the final shortlist.
 
+```mermaid
+flowchart LR
+    subgraph RAM["RAM: small"]
+        SBQ["SBQ codes, 1-2 bits per dim"]
+    end
+    subgraph SSD["SSD: big"]
+        G["DiskANN graph neighbours"]
+        FV["Full float vectors"]
+    end
+    Q["Query"] --> SBQ
+    SBQ -->|walk graph, search_list_size 100| G
+    G --> CAND["Candidate list"]
+    CAND -->|query_rescore 50| FV
+    FV --> R["Top 10 in exact order"]
+    class SBQ,FV hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Compressed codes guide the graph walk cheaply; only the final rescore candidates read full vectors from SSD.
+
 **How it works, step by step:**
 1. Install both `vector` and `vectorscale` extensions. The column type stays `vector`.
 2. Build with `USING diskann (embedding vector_cosine_ops)`. The default `storage_layout = memory_optimized` uses Statistical Binary Quantization (SBQ), about 1–2 bits per dimension.
@@ -517,6 +675,21 @@ SELECT id FROM policy_chunks ORDER BY embedding <=> $1 LIMIT 10;
 **Why it exists:** search teams already have the cluster, the sync pipeline from the main DB, analyzers and dashboards. Adding a vector field avoids a second retrieval system, and BM25 there is the real thing (better than Postgres `ts_rank`). See [Search with Elasticsearch](../05-db/08-search.md) for the basics.
 
 **Picture it:** a big library with a great catalogue (BM25) adds a "find similar books" desk in the same building.
+
+```mermaid
+flowchart TD
+    R["rrf retriever, rank_constant 60, window 50"] --> ST["standard retriever: BM25 match on content"]
+    R --> KN["knn retriever: k 20, num_candidates 100 per shard"]
+    KN --> FL["filter country IN applied during the search"]
+    ST --> FU["Fuse ranks"]
+    FL --> FU
+    FU --> T["Top 5 hits"]
+    class FL hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* One request runs BM25 and kNN side by side on the same index and fuses their ranks; the filter sits inside knn, so it is a pre-filter.
 
 **How it works, step by step:**
 1. **Elasticsearch:** map a `dense_vector` field with `dims`, `similarity` and `index_options`. In 9.x vectors are quantized by default: `int8_hnsw` for smaller dims and `bbq_hnsw` (Better Binary Quantization, 1 bit per dim plus re-scoring) for 384+ dims since 9.1. Newer releases add disk-friendly `bbq_disk` on higher licence tiers.
@@ -585,6 +758,23 @@ GET hr-policies/_search
 2. **Vector sets** (new native type in Redis 8): `VADD` adds an element with its vector, `VSIM` finds similar ones. Vectors are stored with 8-bit quantization by default. Attributes set with `SETATTR` can be filtered with `FILTER`.
 3. Everything lives in RAM: great for a semantic cache of LLM answers (thousands to a few million entries), costly for 100 million vectors.
 
+```mermaid
+flowchart LR
+    Q["User question"] --> E["Embed the question"]
+    E --> K["Redis KNN 1 or VSIM"]
+    K --> D{"Similarity above threshold, e.g. 0.92?"}
+    D -->|hit| C["Return cached answer in about 1 ms"]
+    D -->|miss| L["Call the LLM, seconds"]
+    L --> S["Store vector plus answer with a TTL"]
+    S --> A["Return answer"]
+    class C hot
+    class L dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* As a semantic cache Redis sits in front of the LLM: a close-enough old question returns its stored answer in about a millisecond, and only misses pay for the LLM.
+
 ```bash
 # Redis Query Engine: index hashes with prefix faq:
 FT.CREATE faq_idx ON HASH PREFIX 1 faq: SCHEMA lang TAG embedding VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE
@@ -644,6 +834,29 @@ db.policies.aggregate([
 **Why it exists:** sometimes you want raw speed with no network hop: offline batch jobs, deduplication of 100 million images, research, or the engine inside a bigger system (several vector DBs use FAISS or similar code inside).
 
 **Picture it:** FAISS is a car engine. A vector DB is the whole car with seats, brakes and insurance.
+
+```mermaid
+flowchart LR
+    subgraph FG["FAISS gives you"]
+        F1["index_factory IVF1024,PQ64"] --> F2["train: k-means plus PQ codebooks"]
+        F2 --> F3["add_with_ids, 64 bytes per vector"]
+        F3 --> F4["search with nprobe 16"]
+        F4 --> F5["write_index to a file"]
+    end
+    subgraph YB["You build around it"]
+        Y1["Map int64 ids to doc ids"]
+        Y2["Metadata filters"]
+        Y3["Deletes, updates, concurrent writes"]
+        Y4["Replication, backups, serving API"]
+    end
+    F5 -.-> Y1
+    class F2,F4 hot
+    class Y1,Y2,Y3,Y4 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* FAISS covers the index pipeline from train to search; everything that makes it a database is the dimmed box you must build yourself.
 
 **How it works, step by step:**
 
@@ -748,6 +961,21 @@ flowchart TD
 **Why it exists:** demos have 10,000 rows and no updates. Production has 20 million rows, daily document edits, a new embedding model every year, and tenants with very different sizes.
 
 **Picture it:** opening a restaurant is easy. Running it daily with deliveries, cleaning and menu changes is the real work.
+
+```mermaid
+flowchart LR
+    U["UPDATE the embedding of a row"] --> NV["New row version plus new HNSW entry"]
+    U --> DT["Old version becomes a dead tuple"]
+    DT --> BL["Table and index bloat, slower scans"]
+    BL --> RI["REINDEX INDEX CONCURRENTLY"]
+    RI --> VC["VACUUM cleans the dead tuples"]
+    class DT,BL dim
+    class RI,VC hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Every update leaves a dead version behind in Postgres; with many changed rows, reindex first and then vacuum, as step 3 below explains.
 
 **How it works, step by step:**
 1. **Index build time and memory.** HNSW build on 10 million × 1536 can take hours. Give `maintenance_work_mem` enough RAM for the graph, use parallel workers, build after bulk loads, and use `CREATE INDEX CONCURRENTLY` on live tables. Building on a replica-sized test box first tells you the time.

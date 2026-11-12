@@ -107,6 +107,24 @@ flowchart LR
 
 **Picture it:** A government form with labelled boxes. "Name", "PIN code (6 digits)". You do not write instructions for each box; the labels do the job.
 
+```mermaid
+flowchart LR
+    S["TriageTicket: ticket in, category and urgent out"] --> AD["ChatAdapter"]
+    D["Docstring: Classify a ticket"] --> AD
+    AD -->|builds| MSG["System message: field names, types, instruction"]
+    MSG --> LLM["LLM"]
+    LLM -->|field-tagged reply| PARSE["Adapter parses fields"]
+    PARSE --> CHK{"category one of 4 Literal labels?"}
+    CHK -->|yes| OUT["Prediction: category=refund, urgent=True"]
+    CHK -->|no| ERR["Parse error, fails loudly"]
+    class S,OUT hot
+    class ERR dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* You write only the typed signature; the adapter turns it into the real prompt and checks the reply against the 4 Literal labels.
+
 **How it works, step by step:**
 
 1. **Inline signature:** `"ticket -> category"` or `"question, context -> answer"`. Good for quick work.
@@ -142,6 +160,22 @@ class TriageTicket(dspy.Signature):
 **Why it exists:** The same task can be solved in different ways. Swapping the strategy should be one line, not a new prompt.
 
 **Picture it:** The same exam question answered three ways: say the answer (Predict), show working then answer (ChainOfThought), or look things up in the library between steps (ReAct).
+
+```mermaid
+flowchart LR
+    T["ticket: Order 8812 is late"] --> TR["triage: ChainOfThought"]
+    TR -->|reasoning then category| C["category: late_delivery"]
+    C --> AG["agent: ReAct, max_iters 5"]
+    T --> AG
+    AG -->|step 1 call tool| TOOL["order_status 8812"]
+    TOOL -->|picked up, ETA 25 min| AG
+    AG -->|step 2 finish| R["reply to customer"]
+    class TR,AG hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* SupportBot is two modules in a row: ChainOfThought picks the category, then ReAct loops with the tool until it calls finish; an optimizer tunes both highlighted modules together.
 
 **How it works, step by step:**
 
@@ -193,6 +227,29 @@ class SupportBot(dspy.Module):
 
 **Picture it:** A cricket coach with a bowling machine and a scoreboard. Try a grip, count good deliveries, keep the best grip.
 
+```mermaid
+flowchart LR
+    subgraph BS["BootstrapFewShot"]
+        B1["Run program on 50 train tickets"] --> B2{"Metric passes?"}
+        B2 -->|yes| B3["Keep trace as a demo, max 4"]
+        B2 -->|no| B4["Drop it"]
+    end
+    subgraph GP["GEPA"]
+        G1["Failures plus feedback text"] --> G2["Reflection LM reads them"]
+        G2 --> G3["Rewritten instruction"]
+        G3 --> G4["Pareto set of candidates"]
+        G4 -->|evaluate again| G1
+    end
+    B3 --> OUT["Tuned program: instruction plus demos"]
+    G4 --> OUT
+    class B3,G3,OUT hot
+    class B4 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Bootstrap only changes the demos (it keeps passing traces); GEPA changes the instruction by reading why examples failed. Both write into the same saved program state.
+
 **How it works, step by step:**
 
 1. **Data:** `dspy.Example(ticket=..., category=..., urgent=...).with_inputs("ticket")`. Split into train (e.g. 50) and dev (e.g. 100).
@@ -241,6 +298,28 @@ tuned = gepa.compile(dspy.ChainOfThought(TriageTicket), trainset=train, valset=d
 **Why it exists:** Ticket routing is a classic DSPy win: a clear label, cheap to measure, and many examples in your helpdesk history.
 
 **Picture it:** A new joinee who reads 50 old tickets with the right answers and gets much better at sorting.
+
+```mermaid
+flowchart LR
+    subgraph OFF["Offline job in CI"]
+        D["150 labelled tickets"] --> BL["Evaluate baseline: 72%"]
+        BL --> CP["BootstrapFewShot compile"]
+        CP --> EV{"Dev score beats baseline?"}
+        EV -->|yes, 84 percent| SV["triage.json in Git"]
+        EV -->|no| KEEP["Keep the old program"]
+    end
+    subgraph ON["API server"]
+        LD["load triage.json at startup"] --> RQ["Ticket request"]
+        RQ --> PRD["category, urgent"]
+    end
+    SV --> LD
+    class CP,SV hot
+    class KEEP dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Compile runs offline and triage.json is promoted only if the dev score improves; the server just loads that JSON and never optimizes in the request path.
 
 **How it works, step by step:**
 
@@ -353,6 +432,23 @@ sequenceDiagram
 
 **Picture it:** Buying a bowling machine makes sense for a cricket academy, not for one Sunday game.
 
+```mermaid
+flowchart TD
+    S["LLM step you want to improve"] --> Q1{"Can you score an output automatically?"}
+    Q1 -->|no| N1["Skip DSPy, define the task first"]
+    Q1 -->|yes| Q2{"30+ labelled examples?"}
+    Q2 -->|no| N2["Label them first"]
+    Q2 -->|yes| Q3{"Runs thousands of times or may swap models?"}
+    Q3 -->|no| N3["A hand-written prompt is fine"]
+    Q3 -->|yes| Y["Compile with DSPy, start with BootstrapFewShot"]
+    class Y hot
+    class N1,N3 dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Three yes answers in a row make the one-time compile cost worth it; any no sends you somewhere else first.
+
 **How it works, step by step:**
 
 1. Ask: can I score an output automatically (exact label, numeric check, or a reliable LLM judge)? If no, stop.
@@ -380,6 +476,25 @@ sequenceDiagram
 
 **Picture it:** A Swiggy order form with required, typed fields. You cannot submit without a valid PIN code. If the model fills it wrong, the form bounces back with the error and asks again.
 
+```mermaid
+flowchart LR
+    subgraph BEFORE["Plain LLM call"]
+        A1["LLM reply: days is eight"] --> A2["json.loads in your code"]
+        A2 --> A3["Crash or bad value downstream"]
+    end
+    subgraph AFTER["Pydantic AI"]
+        B1["LLM reply"] --> B2{"Valid LeaveDecision?"}
+        B2 -->|no, error text sent back| B1
+        B2 -->|yes| B3["result.output as a typed object"]
+    end
+    class A3 dim
+    class B2,B3 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Without types a wrong shape crashes later in your own code; with Pydantic AI it bounces back to the model with the error until it passes or hits the retry limit.
+
 **How it works, step by step:**
 
 1. Create `Agent("provider:model", deps_type=..., output_type=..., instructions=...)`.
@@ -403,6 +518,23 @@ sequenceDiagram
 **Why it exists:** Each piece removes one class of bug: globals (deps), shape errors (output types), untyped tool args (tools), and provider lock-in (model strings).
 
 **Picture it:** A restaurant kitchen. The order slip format (output type), the ingredients and gas line delivered to each station (deps), stations with clear inputs (tools), and the head chef who can be swapped (model).
+
+```mermaid
+flowchart LR
+    AUTH["Auth layer: user E101"] -->|deps HRDeps| AG["Agent with deps_type and output_type"]
+    MS["Model string openai:gpt-5.2"] --> AG
+    AG -->|RunContext| T1["Tool leave_balance"]
+    T1 -->|reads ctx.deps.db| DB[("Leave DB")]
+    AG --> OT["output_type LeaveDecision"]
+    OT --> OV["Output validator"]
+    OV -->|ModelRetry| AG
+    OV --> OUT["Typed result"]
+    class AUTH,T1 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Identity flows in from your auth layer through deps, never from the model; the tool reads it via RunContext, and the validator can send the model back with ModelRetry.
 
 **How it works, step by step:**
 
@@ -434,6 +566,27 @@ sequenceDiagram
 **Why it exists:** This is the core Pydantic AI pattern: typed deps in, typed decision out, rules in code, tests without an LLM.
 
 **Picture it:** An HR executive who checks the leave register (deps), fills a fixed approval form (output type), and whose manager rejects any form approving more days than the balance (validator).
+
+```mermaid
+flowchart LR
+    AG["Same agent code: tool plus validator"]
+    subgraph PROD["Production"]
+        P1["openai:gpt-5.2"] --> P3["Real run, paid tokens"]
+        P2["HRDeps with real DB"] --> P3
+    end
+    subgraph TEST["Unit test in CI"]
+        T1["TestModel via agent.override"] --> T3["Calls every tool, schema-valid output"]
+        T2["HRDeps with fake_db"] --> T3
+        T4["ALLOW_MODEL_REQUESTS False"] --> T3
+    end
+    AG --> P3
+    AG --> T3
+    class T1,T2,T3 hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The agent code never changes; only the injected model and deps do, which is why the test runs in milliseconds with no LLM call.
 
 **How it works, step by step:**
 
@@ -574,6 +727,22 @@ Worked example: the run above costs 3 model requests instead of 2 because of one
 
 **Picture it:** A delivery fleet with GPS on every bike (tracing), a fixed route plan (graph), and a monthly audit of deliveries (evals).
 
+```mermaid
+flowchart LR
+    RUN["agent.run"] --> SP["OTel spans: run, model call, tool call, tokens"]
+    SP --> LF["Logfire"]
+    SP --> LG["Langfuse, Phoenix or Grafana"]
+    RUN --> UL{"UsageLimits hit?"}
+    UL -->|yes| STOP["Raise and stop the run"]
+    DS["pydantic_evals Dataset of Cases"] --> CI["Evals in CI"]
+    CI -->|score dropped| BLOCK["Block the deploy"]
+    class SP,CI hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Every run becomes OTel spans you can send to any backend; UsageLimits cap a single run, and evals in CI catch quality drops before deploy.
+
 **How it works, step by step:**
 
 1. **Tracing:** `logfire.configure()` then `logfire.instrument_pydantic_ai()`. Each run, model call and tool call becomes an OTel span with tokens. Because it is OTel, you can send it to Langfuse, Phoenix or Grafana instead.
@@ -595,6 +764,22 @@ Worked example: the run above costs 3 model requests instead of 2 because of one
 **Why it exists:** "Why this and not X?" is the core senior question. These two tools are often confused because both touch "structured LLM calls".
 
 **Picture it:** DSPy is the coach who improves technique. Pydantic AI is the referee who enforces rules on every ball. LangGraph is the match schedule and scoreboard.
+
+```mermaid
+flowchart TD
+    S["What is the hard part?"] --> Q1{"Prompt quality on a measurable task?"}
+    Q1 -->|yes| DS["DSPy"]
+    Q1 -->|no| Q2{"Typed output and testable tools for other code?"}
+    Q2 -->|yes| PA["Pydantic AI"]
+    Q2 -->|no| Q3{"Long stateful flow with approvals and resume?"}
+    Q3 -->|yes| LG["LangGraph, call DSPy or Pydantic AI inside nodes"]
+    Q3 -->|no| SDK["A provider SDK like OpenAI Agents SDK"]
+    class DS,PA,LG hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Pick by the hardest problem; the three are not rivals, since a LangGraph node can run a typed Pydantic AI agent that uses a DSPy-compiled router.
 
 **How it works, step by step:**
 

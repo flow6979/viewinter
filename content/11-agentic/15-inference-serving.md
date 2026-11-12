@@ -73,6 +73,26 @@ flowchart LR
 5. **Batching lagbhag free kyun hai.** 64 users saath decode karein to bhi GPU har step 16 GB ek hi baar padhta hai, bas math 64 guna. Step thoda hi lamba hota hai, par 64 tokens banta hai. Isliye serving engines zyada se zyada requests batch karne ki koshish karte hain.
 6. **Yaad rakhne wala ratio.** Batch 1 pe decode har padhe gaye byte pe ~1 FLOP karta hai. H100 har padhe byte pe ~300 FLOPs kar sakta hai. Jab tak batch sau ke aas paas nahi, compute waste ho raha hai.
 
+```mermaid
+flowchart LR
+    subgraph PF["Prefill: compute-bound"]
+        direction TB
+        PT["2,000 prompt tokens at once"] --> MM["One big matrix multiply, 32 TFLOPs"]
+        MM --> BUSY["Math units busy, about 50 to 150 ms"]:::hot
+    end
+    subgraph DC["Decode: memory-bound"]
+        direction TB
+        W["Read all 16 GB of weights, about 5 ms"]:::hot --> M1["Math for 1 token, about 16 microseconds"]
+        M1 --> IDLE["Math units idle about 99 percent"]:::dim
+        W -->|same read| B64["Batch of 64: 64 tokens per read"]
+    end
+    BUSY -->|first token, then the loop| W
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Same 8B model, do phases: prefill math units ko busy rakhta hai, jabki har decode step zyada tar 16 GB memory read ka wait karta hai, isliye decode ko batch karna lagbhag free hai.
+
 **Metrics jo pata hone chahiye:**
 
 | Metric | Matlab | Zyada tar kisse set hota hai | Typical chat target |
@@ -86,7 +106,31 @@ flowchart LR
 
 Example: TTFT 300 ms, TPOT 25 ms, 400 output tokens → `0.3 + 0.025 × 399 ≈ 10.3 s` total.
 
+```mermaid
+flowchart LR
+    S["Request sent"] -->|TTFT, queue and prefill| T1["Token 1 at 300 ms"]:::hot
+    T1 -->|TPOT 25 ms| T2["Token 2 at 325 ms"]
+    T2 -->|TPOT 25 ms| T3["Token 3 at 350 ms"]
+    T3 -->|397 more decode steps| TN["Token 400 at about 10.3 s"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* TTFT pehle token se pehle ka ek lamba wait hai; uske baad har token ek TPOT baad aata hai, isliye end-to-end time zyada tar TPOT guna output length hota hai.
+
 **Throughput vs latency trade-off.** Bada batch zyada total tokens/s deta hai (per token sasta) par har step slow hota hai (har user ka TPOT badhta hai). Tum woh batch size choose karte ho jo throughput max kare aur TPOT target ke andar rahe.
+
+```mermaid
+flowchart LR
+    U["New request"] --> R["Scheduler"]
+    R --> PP["Prefill GPU pool: compute-heavy, tuned for TTFT"]:::hot
+    PP -->|ship KV cache over NVLink or RDMA| DP["Decode GPU pool: big batches, tuned for TPOT"]:::hot
+    DP --> S["Tokens streamed to the user"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Disaggregated prefill aur decode (DistServe, Mooncake, naye vLLM aur SGLang setups): har phase ko apne GPUs milte hain, isliye lamba prompt streaming users ko kabhi nahi rokta; keemat hai KV cache ko pools ke beech bhejna.
 
 **Interview tip:** "Decode memory-bound kyun hai?" Bolo: "Har decode step har sequence ke liye ek token banata hai, par GPU memory se saare weights aur KV cache padhne padte hain. 8B BF16 model ke liye ye per step 16 GB hai, aur math sirf 16 GFLOPs. 3.35 TB/s pe ~5 ms padhna aur microseconds ka math, to bandwidth speed tay karti hai. Batching ek weight read ko kai sequences me baant ke isse theek karti hai."
 
@@ -115,6 +159,23 @@ Example: TTFT 300 ms, TPOT 25 ms, 400 output tokens → `0.3 + 0.025 × 399 ≈ 
 7. **GQA ka asar.** Grouped-Query Attention (GQA) me kai query heads ek K/V head share karte hain. Llama-3-8B me 32 query heads hain par sirf 8 KV heads. Purane Llama-2-7B me 32 KV heads the: `2 × 32 × 32 × 128 × 2 = 512 KB per token`, 4 guna bada. GQA thode quality cost pe cache memory 4 guna kam karta hai. Multi-Query Attention (MQA) ek hi shared KV head tak jaata hai.
 8. **Bada model, same idea.** Llama-3-70B jaisa model (80 layers, 8 KV heads, head_dim 128): `2 × 80 × 8 × 128 × 2 = 320 KB per token`, to 8k context ≈ 2.5 GB per request.
 
+```mermaid
+flowchart LR
+    subgraph H["One H100, 80 GB"]
+        WT["Weights: 16 GB, fixed"]
+        KVM["KV cache: 32 GB and growing"]:::hot
+        FREE["Left for more users"]:::dim
+    end
+    P["Prefill: 2,000 prompt tokens"] -->|writes K and V for every token, every layer| KV["KV cache"]
+    D["Each decode step"] -->|appends 1 more token| KV
+    KV -->|128 KB per token| R1["One 8K chat: 1 GB"]
+    R1 -->|x 32 users| KVM
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Cache har user ke har token ke saath badhta hai; 32 users aur 8K context pe ye weights se do guna ho jaata hai, isliye kitne users fit honge ye model nahi, KV cache tay karta hai.
+
 | Model shape | KV per token (FP16) | 8k context per request |
 |---|---|---|
 | 7B, bina GQA (32 KV heads) | 512 KB | 4 GB |
@@ -122,6 +183,19 @@ Example: TTFT 300 ms, TPOT 25 ms, 400 output tokens → `0.3 + 0.025 × 399 ≈ 
 | 70B GQA ke saath (8 KV heads) | 320 KB | 2.5 GB |
 
 **Prefix caching.** Bahut si requests same tokens se shuru hoti hain: 2,000 token ka system prompt, same tool list, same document. Unka KV cache identical hota hai. Engine woh blocks rakh leta hai aur same prefix wali agli request me reuse karta hai. Us request ka zyada tar prefill skip ho jaata hai, to TTFT aur GPU kaam dono girte hain. vLLM ye block hashes se karta hai ("automatic prefix caching"); SGLang radix tree use karta hai. Provider ka "prompt caching" (Anthropic, OpenAI) yahi idea hai jo discount ki tarah bikta hai.
+
+```mermaid
+flowchart LR
+    R1["Request 1: system prompt 2,000 tokens + question A"] -->|full prefill| B["KV blocks of the system prompt, hashed"]
+    R2["Request 2: same system prompt + question B"] -->|hash match| B
+    B -->|reused, no recompute| H["Skip 2,000 tokens of prefill"]:::hot
+    R2 -->|prefill only the new part| QB["Question B tokens"]
+    H --> T["Lower TTFT and less GPU work"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Doosri request ko shared prefix pehle se cached milta hai, aur wo sirf apne naye tokens ka prefill karti hai.
 
 ```python
 # KV cache calculator: "KV cache estimate karo" wale sawalon ke liye
@@ -172,6 +246,29 @@ print(kv_bytes_per_token(80, 8, 128) / 1024, "KB per token")  # 320.0
 4. Attention kernel block table follow karke K aur V padhta hai, isliye blocks ka paas paas hona zaroori nahi.
 5. **Sharing.** Same system prompt wali do requests same physical blocks ko point kar sakti hain. Reference count track karta hai ki block kitni requests use kar rahi hain. Agar ek request ko shared block me likhna ho (jaise parallel samples jo alag ho jaate hain), use pehle private copy milti hai. Ye **copy-on-write** hai, bilkul OS ke `fork()` jaisa.
 6. **Result.** Waste kuch percent tak gir jaata hai. Same GPU 2–4 guna zyada concurrent requests rakhta hai, aur throughput bhi lagbhag utna badhta hai.
+
+```mermaid
+flowchart LR
+    subgraph OLD["Before: contiguous, reserve max length"]
+        direction TB
+        A1["Request A: 300 slots used"]:::hot
+        A2["3,796 slots reserved but empty"]:::dim
+        A1 --- A2
+    end
+    subgraph NEW["After: paged, 16-token blocks on demand"]
+        direction TB
+        N1["Request A: 19 blocks, anywhere in memory"]:::hot
+        N2["Waste: at most 15 slots"]
+        N3["Every other block is free for other requests"]
+        N1 --- N2
+        N2 --- N3
+    end
+    OLD -->|same GPU memory| NEW
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* 4,096 max wali 300-token request ka before vs after: contiguous allocation me reservation ka zyada hissa khaali rehta hai, paging me zyada se zyada ek adha bhara block.
 
 | Problem | Contiguous allocation | PagedAttention |
 |---|---|---|
@@ -232,6 +329,46 @@ flowchart LR
 6. **Chunked prefill.** Us lambe prefill ko chunks me todo (jaise 512 ya 2,048 tokens). Har step ek chunk plus saare active users ke decode tokens chalata hai. Decode users smoothly stream karte rehte hain, aur decode steps ka bacha hua compute prefill math me use ho jaata hai.
 7. **Preemption.** KV memory khatam ho jaaye to engine ek request ko pause karta hai, uske blocks free karta hai, aur baad me recompute ya reload karta hai. Logs me bahut preemptions dikhein to zyada memory chahiye ya concurrency limit kam karo.
 
+```mermaid
+stateDiagram-v2
+    state "Waiting in queue" as Waiting
+    state "Prefill" as Prefill
+    state "Decoding, one token per step" as Decoding
+    state "Preempted, blocks freed" as Preempted
+    state "Finished" as Finished
+    [*] --> Waiting
+    Waiting --> Prefill: free KV blocks available
+    Prefill --> Decoding: first token out
+    Decoding --> Decoding: next step
+    Decoding --> Finished: end token or max length
+    Decoding --> Preempted: KV memory full
+    Preempted --> Waiting: retry later
+    Finished --> [*]: KV blocks back to the pool
+```
+
+*Diagram:* Continuous batching me ek request ki zindagi: scheduler har step pe dobara check karta hai, isliye blocks free hote hi request andar aati hai aur khatam hote hi nikal jaati hai.
+
+```mermaid
+flowchart LR
+    subgraph S1["Step t"]
+        A1["A and C: 1 decode token each"]
+        D1["D prefill chunk 1: 2,048 tokens"]:::hot
+    end
+    subgraph S2["Step t+1"]
+        A2["A and C: 1 decode token each"]
+        D2["D prefill chunk 2: 2,048 tokens"]:::hot
+    end
+    subgraph S3["Step t+8"]
+        A3["A, C and D: all decoding"]
+    end
+    S1 --> S2
+    S2 --> S3
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Chunked prefill: D ka 16,000-token prompt 2,048-token chunks me kat ke A aur C ke decode tokens ke saath chalta hai, isliye A aur C rukte nahi, stream karte rehte hain.
+
 Ye idea Orca paper (2022) se aaya, jisne ise iteration-level scheduling kaha. Aaj vLLM, SGLang, TensorRT-LLM aur TGI sab ye karte hain.
 
 **Interview tip:** "Continuous batching throughput kaise badhati hai?" Bolo: "Static batching batch ko sabse lambe sequence ke khatam hone tak rokti hai, to chhoti requests ke slots khaali baithe rehte hain aur nayi requests queue me. Continuous batching har token step pe schedule karti hai: khatam sequences nikalte hain, waiting turant judte hain. Slots bhare rehte hain, tokens per second kai guna badhte hain, aur TTFT girta hai kyunki nayi requests batch khaali hone ka wait nahi karti. Chunked prefill lambe prompts ko sabka decode rokne nahi deta."
@@ -286,6 +423,22 @@ Ye idea Orca paper (2022) se aaya, jisne ise iteration-level scheduling kaha. Aa
 7. **Acceptance rate.** Agar har draft token α = 0.8 probability se accept hota hai aur k = 4, to har bade step pe expected tokens `(1 − α^(k+1)) / (1 − α) = (1 − 0.8^5) / 0.2 ≈ 3.4`. Asli speedup aksar 2–3 guna hota hai, kyunki draft aur verify ka bhi time lagta hai.
 8. **Kab kam help karta hai.** Bade batch pe GPU pehle se compute me busy hai, to extra verify kaam free nahi; fayda ghat jaata hai. Ye low se medium batch pe chamakta hai, jahan latency sabse zyada matter karti hai.
 
+```mermaid
+sequenceDiagram
+    participant D as Draft model 1B
+    participant T as Target model 70B
+    participant O as Output
+    D->>D: Guess 4 tokens fast - the order is late
+    D->>T: Send the 4 draft tokens
+    T->>T: One forward pass scores all 4 positions
+    T-->>O: Accept the, order, is
+    T-->>O: Reject late and write delayed instead
+    Note over T,O: 4 tokens for one big-model pass instead of four
+    T->>D: Continue drafting after delayed
+```
+
+*Diagram:* Bada model draft pe aankh band karke bharosa nahi karta: ek pass me saare guesses check karta hai, matching prefix rakhta hai aur pehla galat token badal deta hai, isliye output bina draft ke jaisa hi rehta hai.
+
 | Variant | Draft kahan se aata hai | Note |
 |---|---|---|
 | Draft model | Same family ka chhota model (same tokenizer) | Classic form; tokenizer same hona chahiye |
@@ -311,6 +464,21 @@ Ye idea Orca paper (2022) se aaya, jisne ise iteration-level scheduling kaha. Aa
 
 1. `0.0371` jaisa weight BF16 (16 bits) me store hota hai. INT8 weights ke group ko ek **scale** number se 256 levels pe map karta hai: `int_value = round(weight / scale)`. INT4 sirf 16 levels use karta hai.
 2. Scales har group (jaise har 128 weights) ke liye rakhe jaate hain, jisse error chhota rehta hai. Isse thodi memory badhti hai, to "4-bit" asal me ~4.25–5 bits per weight hai.
+
+```mermaid
+flowchart LR
+    W["Group of 128 BF16 weights, 16 bits each"] --> SC["One shared scale for the group"]
+    SC -->|int value is round of w divided by scale| I["INT4 values: 16 levels, 4 bits each"]:::hot
+    I --> ST["Stored: about 4.25 bits per weight with the scale"]
+    ST -->|4x fewer bytes per decode step| FAST["Faster memory-bound decode"]:::hot
+    ST -->|at matmul time, W4A16| DQ["Dequantize back to 16-bit"]
+    DQ --> MM["16-bit math on tensor cores"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Weight-only 4-bit: weights memory se 4 bits me aate hain (yahi speed ka fayda hai) aur math se thik pehle wapas 16 bits me khol diye jaate hain.
+
 3. **Bytes per parameter:**
 
 | Format | Bytes per param | 8B model | 70B model | Note |
@@ -374,10 +542,75 @@ print(out[0].outputs[0].text)
    - FP8: 70 GB weights. Technically load ho jaata hai, par overhead ke baad KV cache ke liye ~5 GB bachta hai; 320 KB per token pe ye total ~15k tokens, yaani bas mutthi bhar users. Practical nahi.
    - INT4 (AWQ/GPTQ): ~**35–40 GB**. Haan. KV cache ke liye ~30–35 GB bachta hai, lagbhag 100k tokens: 4k context wale ~25 users.
    - Common production answer: 2× H100 pe FP8, ya 4× H100 pe BF16 tensor parallelism ke saath, ya quality chal jaaye to ek GPU pe INT4.
+
+```mermaid
+flowchart TD
+    M["70B model on one 80 GB H100?"] --> BF["BF16: 140 GB of weights"]
+    BF -->|does not fit| X1["No"]:::dim
+    M --> F8["FP8: 70 GB of weights"]
+    F8 -->|about 5 GB left for KV, 15K tokens| X2["Loads, but only a handful of users"]:::dim
+    M --> I4["INT4: 35 to 40 GB of weights"]
+    I4 -->|30 to 35 GB left for KV| Y["Yes: about 25 users at 4K"]:::hot
+    M --> TP["Or split across GPUs: FP8 on 2, BF16 on 4"]
+    TP --> Y2["Common production answer"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Hamesha 80 GB me se weights ghatao aur dekho KV ke liye kitne tokens bache; sirf weights load hona nahi, wahi bachi jagah tay karti hai ki setup kaam ka hai ya nahi.
+
 3. **Tensor parallelism (TP):** har layer ki weight matrices GPUs me baanto. Har GPU har layer ka hissa karta hai, aur har layer ke baad GPUs results jodte hain (all-reduce). Iske liye NVLink jaise bahut tez links chahiye, isliye ye **ek server ke andar** (2, 4 ya 8 GPUs) use hota hai. Ye per-token latency kam karta hai kyunki har GPU weights ka sirf apna hissa padhta hai.
 4. **Pipeline parallelism (PP):** layers 1–40 GPU group 1 pe aur 41–80 group 2 pe. Stages ke beech sirf activations jaate hain, to ye slow network wale **servers ke paar** chal jaata hai. Nuksaan: stages ek doosre ka wait karte hain ("bubbles"), jo latency bigadta hai jab tak bahut requests flight me na hon.
 5. **Data parallelism (replicas):** model ki poori copies alag GPUs pe, load balancer ke peeche. Ek copy fit ho jaaye to throughput isi se scale karte ho.
 6. **Rough throughput reasoning.** H100 pe 8B BF16 model ka ek decode step ~16 GB plus KV cache padhta hai, to lagbhag 5–10 ms. 64 sequences batch me hon to upper bound `64 / 0.008 s ≈ 8,000 tokens/s`. Asli numbers kam hote hain (prefill interleaving, scheduling, kernel efficiency). Ise order-of-magnitude check samjho, phir benchmark karo.
+
+```mermaid
+flowchart LR
+    subgraph TPS["Tensor parallel: one server, NVLink"]
+        direction TB
+        L["Every layer's weight matrix"] --> G0["GPU 0: one quarter"]
+        L --> G1["GPU 1: one quarter"]
+        L --> G2["GPU 2: one quarter"]
+        L --> G3["GPU 3: one quarter"]
+        G0 --> AR["All-reduce after every layer"]:::hot
+        G1 --> AR
+        G2 --> AR
+        G3 --> AR
+    end
+    subgraph PPS["Pipeline parallel: across servers"]
+        direction TB
+        S1["Server 1: layers 1 to 40"] -->|only activations cross| S2["Server 2: layers 41 to 80"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Tensor parallel har layer ko slices me kaatta hai aur har layer ke baad fast sync chahiye; pipeline parallel layers ke stack ko kaatta hai aur stages ke beech sirf activations bhejta hai.
+
+```mermaid
+flowchart LR
+    subgraph GA["GPU 0"]
+        E12["Experts 1 and 2"]:::dim
+    end
+    subgraph GB["GPU 1"]
+        E34["Experts 3 and 4"]:::hot
+    end
+    subgraph GC["GPU 2"]
+        E56["Experts 5 and 6"]:::dim
+    end
+    subgraph GD["GPU 3"]
+        E78["Experts 7 and 8"]:::hot
+    end
+    T["Token in a batch"] --> RT["Router picks top-2 experts"]
+    RT -->|all-to-all send| E34
+    RT -->|all-to-all send| E78
+    E34 -->|result back| C["Combine weighted outputs"]
+    E78 -->|result back| C
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* MoE models ke liye expert parallelism: har GPU kuch experts rakhta hai aur token un GPUs tak jaata hai jinke paas uske chune hue experts hain, isliye kisi GPU ko saare experts nahi rakhne padte; batch me idle GPUs isliye load balancing zaroori hai.
 
 | | Tensor parallel | Pipeline parallel |
 |---|---|---|
@@ -408,6 +641,21 @@ print(out[0].outputs[0].text)
 3. Har request apna adapter batati hai. Engine **alag alag** adapters wali requests ko saath batch karta hai: base-model math share hota hai, aur special kernels har request ka apna chhota adapter math jodte hain. Ye approach S-LoRA aur Punica (2023) se aaya.
 4. Example: 50 adapters × 100 MB = 5 GB, plus 16 GB base. Ek GPU saare 50 customers serve karta hai.
 5. vLLM me: `--enable-lora --lora-modules support-bot=/path/to/adapter` ke saath start karo. Clients normal OpenAI-style call me `model="support-bot"` bhejte hain.
+
+```mermaid
+flowchart LR
+    R1["Request for support-bot"] --> B["One mixed batch"]
+    R2["Request for legal-bot"] --> B
+    R3["Request for sales-bot"] --> B
+    B --> BASE["Shared base model, 16 GB, one matmul for all"]:::hot
+    BASE --> A1["Plus support adapter, 100 MB"]
+    BASE --> A2["Plus legal adapter, 100 MB"]
+    BASE --> A3["Plus sales adapter, 100 MB"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Base model ka bhaari math poora batch share karta hai; har request upar se sirf apna chhota adapter jodti hai.
 
 **Interview tip:** "200 fine-tuned variants kaise serve karoge?" Bolo: "Unhe ek base model pe LoRA adapters ki tarah train karo, aur vLLM me multi-LoRA se serve karo. Memory me ek base copy, adapters zaroorat pe load, aur adapters ke across mixed batches. Cost traffic ke saath badhti hai, variants ki ginti ke saath nahi."
 

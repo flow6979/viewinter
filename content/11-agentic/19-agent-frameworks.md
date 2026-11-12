@@ -63,6 +63,28 @@ flowchart LR
 
 **Aise socho:** Ghar pe khana banana vs Swiggy ke liye cloud kitchen chalana. Ghar pe kadhai aur stove kaafi hai. Cloud kitchen me order tickets, fridge log, head chef ka plate check, aur CCTV chahiye. Framework woh kitchen setup hai. Din ke 500 orders pe badhiya, Maggi banane ke liye overkill.
 
+```mermaid
+flowchart LR
+    subgraph RAW["Raw loop: you write all of it"]
+        M1["Model call"] --> T1["Run tool"] --> A1["Append result"] --> M1
+    end
+    subgraph FW["Framework: same loop plus production parts"]
+        L["Model to tool loop"]
+        L --> ST["Typed state with merge rules"]
+        L --> CP[("Checkpointer: save after each step")]
+        L --> HI["Pause for human approval"]
+        L --> SS["Stream tokens to UI"]
+        L --> TR["Trace spans to dashboard"]
+        L --> HO["Handoffs to other agents"]
+    end
+    RAW -->|40 lines grow to about 900| FW
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CP,HI hot
+```
+
+*Diagram:* Loop dono taraf wahi 4 steps hai; right side ke highlighted parts woh hain jo warna tumhe haath se likhne padte (40 se 900 lines wala jump).
+
 **Kaise kaam karta hai, step by step:**
 
 1. Raw loop se shuru karo: model call, check karo tool maanga kya, chalao, result jodo, step cap ke saath repeat.
@@ -109,6 +131,24 @@ Ek worked number: ek team ka raw loop 40 lines tha. Postgres persistence, resume
 3. Code tool chalata hai: `"Mumbai: 31°C, humid, 80% chance of rain"` milta hai.
 4. Code result wapas bhejta hai. Model jawab deta hai: "Haan, le jao."
 5. Yaani 2 LLM calls aur 1 tool call. Neeche har framework bilkul yahi 4 steps karta hai.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Your code or framework
+    participant M as Model
+    participant W as get_weather tool
+    U->>C: Do I need an umbrella in Mumbai
+    C->>M: LLM call 1 with tool schema
+    M-->>C: tool_use get_weather city Mumbai
+    C->>W: get_weather Mumbai
+    W-->>C: 31 C, humid, 80 pct chance of rain
+    C->>M: LLM call 2 with tool_result
+    M-->>C: Yes, carry one - stop_reason end_turn
+    C-->>U: Yes, carry one
+```
+
+*Diagram:* 2 LLM calls aur 1 tool call; versions ke beech sirf beech wali lane badalti hai (raw loop: tum, LangGraph: create_agent, OpenAI: Runner).
 
 **Version 1: raw loop (Anthropic Python SDK).**
 
@@ -245,6 +285,24 @@ print(result.final_output)
 
 Example: refund agent ke 4 nodes (classify, fetch order, decide, approve). ₹5,000 se upar ke refund `interrupt` pe rukte hain aur human ka wait karte hain. Raat me pod restart hota hai. Subah human approve dabata hai, aur run saved checkpoint se resume hota hai, shuru se nahi.
 
+```mermaid
+flowchart LR
+    S["Start: thread_id user-42"] --> C1["classify"]
+    C1 --> F["fetch order"]
+    F --> D{"decide: amount above ₹5,000?"}
+    D -->|no| E["auto refund, end"]
+    D -->|yes| AP["approve node calls interrupt"]
+    AP -->|state saved, pod restarts overnight| CK[("Postgres checkpoint")]
+    CK -->|human clicks approve, resume| R["refund issued"]
+    C1 -.->|save| CK
+    F -.->|save| CK
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AP,CK hot
+```
+
+*Diagram:* Har node checkpoint me save karta hai; run interrupt pe rukta hai aur agli subah Postgres se resume hota hai, classify se dobara nahi.
+
 | | |
 |---|---|
 | Mental model | state machine / graph; control flow tumhara |
@@ -280,6 +338,26 @@ Example: refund agent ke 4 nodes (classify, fetch order, decide, approve). ₹5,
 
 Example: repo ke liye "fix failing test" bot. Allowed tools: read, edit, run tests. Ye test padhta hai, file edit karta hai, tests chalata hai, repeat. Tumne koi file tool ya compaction logic nahi likha, sirf options aur ek hook jo `src/` ke bahar writes rokta hai.
 
+```mermaid
+flowchart LR
+    APP["Your app: prompt plus options"] --> H["Agent SDK harness"]
+    H -->|call| CL["Claude model"]
+    CL -->|tool_use| H
+    H --> HK{"Hook: path inside src?"}
+    HK -->|yes| BT["Built-in tools: read, edit, bash, search"]
+    HK -->|no| BL["Blocked"]
+    H --> MCP["Your tools as MCP servers"]
+    H --> SA["Subagent: fresh context window"]
+    SA -->|summary only| H
+    H --> CO["Compaction when window fills"]
+    H -->|stream messages| APP
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class H hot
+```
+
+*Diagram:* Tum sirf options aur hook likhte ho; loop, built-in tools, subagents aur compaction harness sambhalta hai.
+
 | | |
 |---|---|
 | Mental model | ready-made general agent harness jise configure karte ho, graph nahi jo draw karo |
@@ -313,6 +391,25 @@ Example: repo ke liye "fix failing test" bot. Allowed tools: read, edit, run tes
 6. Har run trace hota hai: agent spans, LLM spans, tool spans, handoffs.
 
 Example: support bot. `triage = Agent(name="Triage", instructions="Route to the right desk.", handoffs=[billing_agent, refund_agent])`. User bolta hai "mera do baar charge hua". Triage `billing_agent` ko handoff karta hai. Pehle ek input guardrail check karta hai ki message jailbreak attempt to nahi; iski cost ek sasti model call hai.
+
+```mermaid
+flowchart LR
+    U["User: I was charged twice"] --> IG{"Input guardrail: jailbreak?"}
+    IG -->|tripped| X["Exception, run stops"]
+    IG -->|ok| TR["Triage agent"]
+    TR -->|handoff| BI["billing_agent"]
+    TR -.->|not chosen| RF["refund_agent"]
+    BI --> OG{"Output guardrail"}
+    OG --> ANS["Answer to user"]
+    TR -.-> TC[("Trace: agent, LLM, tool, handoff spans")]
+    BI -.-> TC
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class TR,BI hot
+    class RF dim
+```
+
+*Diagram:* Guardrail triage se pehle chalta hai; triage poori conversation billing_agent ko de deta hai (refund_agent idle rehta hai), aur har hop ek hi trace me aata hai.
 
 | | |
 |---|---|
@@ -404,6 +501,24 @@ print(result.output.carry_umbrella)     # asli bool, pehle se validated
 
 Example: market research. Researcher 5 sources search karta hai, Analyst 3 findings likhta hai, Writer 300-word brief banata hai. 3 agents, 3 tasks, lagbhag 6–10 LLM calls.
 
+```mermaid
+flowchart LR
+    subgraph SEQ["Sequential process"]
+        R1["Researcher: 5 sources"] --> A1["Analyst: 3 findings"] --> W1["Writer: 300-word brief"]
+    end
+    subgraph HIER["Hierarchical process"]
+        MG["Manager agent"] -->|delegate| R2["Researcher"]
+        R2 -->|result| MG
+        MG -->|delegate| A2["Analyst"]
+        MG -->|delegate| W2["Writer"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MG hot
+```
+
+*Diagram:* Sequential: har task ka output fixed order me agle ko jaata hai. Hierarchical: manager LLM decide karta hai aage kaun kaam karega, jisme extra calls lagti hain aur debug karna mushkil hota hai.
+
 | | |
 |---|---|
 | Mental model | role-play karne wale agents ki team jo tasks chalati hai |
@@ -434,6 +549,22 @@ Example: market research. Researcher 5 sources search karta hai, Analyst 3 findi
 4. Multi-step logic ke liye **Workflow** likho: steps jo events sunte hain aur naye events emit karte hain.
 
 Example: 2,000 PDF pages pe HR policy bot. LlamaIndex parse karta hai, lagbhag 6,000 chunks banata hai, index karta hai, aur agent ke do tools hain: `search_policy` aur `get_leave_balance`.
+
+```mermaid
+flowchart LR
+    PDF["2,000 PDF pages"] --> PR["Parse and chunk"]
+    PR -->|about 6,000 chunks| IX[("Vector index")]
+    IX --> QE["Query engine"]
+    QE -->|wrapped as tool| T1["search_policy"]
+    U["Employee question"] --> AG["Agent"]
+    AG --> T1
+    AG --> T2["get_leave_balance"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class IX hot
+```
+
+*Diagram:* Zyada kaam left half me hai (ingest aur index); right wala agent index ko bas ek aur tool ki tarah dekhta hai.
 
 | | |
 |---|---|
@@ -573,6 +704,24 @@ flowchart LR
 
 Example: primary model ka p99 (99th percentile latency) 12 second pe timeout hota hai. Gateway rule: "8 second ke baad chhote model pe fallback". Ab users ko max ~9 second dikhte hain, aur cost report batati hai fallback ne 3% traffic sambhala.
 
+```mermaid
+sequenceDiagram
+    participant A as App
+    participant G as Gateway
+    participant P as Primary model
+    participant B as Smaller backup model
+    A->>G: chat, model support-chat, team key
+    G->>G: check virtual key and team budget
+    G->>P: forward request
+    Note over G,P: no reply after 8 s
+    G->>B: fallback request
+    B-->>G: answer at about 9 s
+    G->>G: log tokens, cost, fallback used
+    G-->>A: answer in the same API format
+```
+
+*Diagram:* App ek hi call karta hai; gateway budget check karta hai, 8 s pe primary chhodta hai, fallback karta hai, aur log karta hai taaki 3% fallback metrics me dikhe.
+
 **Interview tip:** "Gateway kyun?" Bolo: "Providers ke paar ek API, central keys aur per-team budgets, retries aur fallbacks, cost logging aur PII redaction ki ek jagah. Aur kisi ek model vendor pe lock-in kam hota hai."
 
 **Common galti:**
@@ -588,6 +737,24 @@ Example: primary model ka p99 (99th percentile latency) 12 second pe timeout hot
 **Ye kyun chahiye:** Frameworks loop chalate hain, par agent utna hi kaam ka hai jitna data aur tools tak pahunch sake. Inhe framework se alag chunne se tum portable rehte ho.
 
 **Aise socho:** Framework delivery app hai. Vector DB achhe index wala warehouse. MCP standard plug socket jisme har appliance fit hota hai.
+
+```mermaid
+flowchart TD
+    APP["Your business code"] --> AD["Thin adapter: run_agent"]
+    AD --> FW["Framework: LangGraph, Agent SDK, CrewAI"]
+    FW --> OBS["Tracing and evals: Langfuse, LangSmith"]
+    FW --> GW["Gateway: LiteLLM, OpenRouter"]
+    GW --> P1["OpenAI"]
+    GW --> P2["Anthropic"]
+    GW --> P3["Gemini or open models"]
+    FW --> MCP["MCP servers: your tools"]
+    FW --> VDB[("Vector DB: pgvector, Qdrant")]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class FW hot
+```
+
+*Diagram:* Sirf highlighted box framework hai; tracing, gateway, MCP tools aur vector DB alag se chune jaate hain aur framework badalne pe bhi rehte hain.
 
 **Kaise kaam karta hai, step by step:**
 
@@ -646,6 +813,25 @@ flowchart TD
 **Ye kyun chahiye:** 2023–2025 me kai popular agent APIs deprecate ya rewrite hui (jaise LangChain ki purani agent classes ka LangGraph pe jaana, AutoGen ka 0.4 rewrite, Claude Code SDK ka naam Claude Agent SDK hona). Jin teams ne har jagah framework calls daali thi, unke upgrades dardnaak rahe.
 
 **Aise socho:** Furnished flat kiraye pe lena. Unka sofa use karna theek hai. Par documents aur keemti saamaan apne bag me rakho, taaki ek din me shift ho sako.
+
+```mermaid
+flowchart LR
+    subgraph LOCK["Locked in"]
+        B1["Business code"] --> F1["Framework classes everywhere"]
+        F1 --> D1[("DB schema = framework messages")]
+    end
+    subgraph FREE["Portable"]
+        B2["Business code"] --> AD["run_agent adapter: 1 module"]
+        OWN["Owned: prompts, MCP tools, eval sets, OTel traces"] --> AD
+        AD --> F2["Framework, replaceable"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class AD hot
+    class F2 dim
+```
+
+*Diagram:* Left me framework har file aur DB me ghus gaya hai; right me sirf adapter use chhoota hai, to swap matlab ek module dobara likhna aur evals chalana.
 
 **Kaise kaam karta hai, step by step:**
 

@@ -87,6 +87,18 @@ flowchart TD
 
 **Simplest-first ladder:** single LLM call (+ retrieval, tools) → workflow → agent → multi-agent. Har seedhi chadhne ka justification ek eval number hona chahiye, "cool lagta hai" nahi.
 
+```mermaid
+flowchart LR
+    A["Single LLM call + retrieval, tools"] -->|eval says not enough| B["Workflow"]
+    B -->|eval says not enough| C["Agent"]
+    C -->|eval says not enough| D["Multi-agent"]
+    class A hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Highlighted left wale sire se shuru karo aur ek step right tabhi jao jab eval number dikhaye ki current step fail ho raha hai; har step pe cost aur unpredictability badhti hai.
+
 | Problem ka shape | Pattern | Control kis ke paas |
 |---|---|---|
 | Fixed sequence, har step pichhle pe depend | Prompt chaining | Code |
@@ -214,14 +226,18 @@ out = app.invoke({"raw": "Rangeela cotton kurta, Jaipur print, sizes M L XL, MRP
 
 ```mermaid
 flowchart LR
-    U["Seller message"] --> C["Classifier: structured output"]
-    C -->|listing_issue| O["Listing help branch"]
-    C -->|payment_status| R["Payment branch"]
-    C -->|other or low confidence| H["Human handoff"]
-    O --> E["Reply"]
+    U["Priya: listing rejected, why?"] --> C["Classifier: structured output"]:::hot
+    C -->|listing_issue, 0.93 over 0.7| O["Listing help branch"]:::hot
+    C -->|payment_status| R["Payment branch"]:::dim
+    C -->|other or under 0.7| H["Human handoff"]:::dim
+    O --> E["Reply: image has a watermark"]:::hot
     R --> E
     H --> E
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Priya ke sawaal pe sirf highlighted branch chalti hai; payment branch ka prompt aur tools chhue bhi nahi jaate.
 
 **Ab terms:**
 - **Classifier / router:** wo step jo sirf category batata hai, kaam nahi karta.
@@ -306,6 +322,22 @@ flowchart LR
     T --> J
     J --> E["END"]
 ```
+
+```mermaid
+flowchart LR
+    Q["Is this Rangeela brand fake or a copy?"] --> P1["Prompt 1: yes"]
+    Q --> P2["Prompt 2: yes"]
+    Q --> P3["Prompt 3: no"]
+    P1 --> V{"Count votes"}
+    P2 --> V
+    P3 --> V
+    V -->|2 of 3 say yes| MR["Manual review"]:::hot
+    V -->|fewer than 2| OK["Listing goes live"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Voting: ek hi sawaal teen alag tareeke se ek saath poocha jaata hai; 3 me se 2 ki majority listing ko manual review me bhejti hai.
 
 **Ab terms:**
 - **Sectioning:** alag alag kaam ek saath. Fayda: latency kam, har branch focused. Guardrail ek branch me aur answer doosre me chalana bhi sectioning hai.
@@ -462,15 +494,18 @@ app = g.compile()
 
 ```mermaid
 flowchart LR
-    I["Seller question"] --> O["Orchestrator: plan subtasks"]
-    O -->|Send| W1["Worker: price"]
-    O -->|Send| W2["Worker: reviews"]
-    O -->|Send| W3["Worker: stock if needed"]
-    W1 --> SY["Synthesizer"]
-    W2 --> SY
-    W3 --> SY
-    SY --> E["Report"]
+    I["Why did sales drop 30 percent?"] --> O["Orchestrator plans 2 tasks"]:::hot
+    O -->|Send| W1["Worker: price"]:::hot
+    O -->|Send| W2["Worker: reviews"]:::hot
+    O -.->|not planned this time| W3["Worker: stock"]:::dim
+    W1 -->|competitors cut 100| SY["Synthesizer"]
+    W2 -->|12 size complaints| SY
+    SY --> E["Report: fix size chart, try 699"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Orchestrator ne runtime pe decide kiya ki sirf 2 workers chahiye; stock worker (dim) bheja hi nahi gaya, aur kisi doosre seller ke liye 4 ban sakte hain.
 
 **Ab terms aur farak:**
 

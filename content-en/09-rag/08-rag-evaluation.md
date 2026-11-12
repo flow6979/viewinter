@@ -19,6 +19,23 @@ Two things can fail in RAG: retrieval (the right chunk never arrived) and genera
 - You can have an LLM generate synthetic questions (give it a chunk, ask for a question), but some human review is required.
 - Version the golden set; run every pipeline change on the same set (like a regression test).
 
+```mermaid
+flowchart LR
+    L["Production logs"] --> S["Sample 100 real queries"]
+    S --> H["Human labels the gold doc id"]
+    H --> G[("Golden set v3")]:::hot
+    G --> R["Run the pipeline change"]
+    R --> M["Recall, nDCG, faithfulness"]
+    M --> D{"Better than baseline?"}
+    D -->|yes| SH["Ship"]
+    D -->|no| RV["Revert or retune"]
+    SH -->|bad online cases| G
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Every change runs against the same versioned set, like a regression test, and failures seen in production are added back into it.
+
 **Interview tip:** "First job: a golden set of 100 queries from logs. Without it, all tuning is blind."
 **Common mistake:** testing on 5–10 handpicked demo questions and declaring "it works".
 
@@ -37,6 +54,21 @@ Two things can fail in RAG: retrieval (the right chunk never arrived) and genera
 - **MRR:** gold chunk at rank 1 → 1.0, at rank 3 → 0.33. Sensitive to position.
 - **nDCG:** distinguishes "highly relevant" from "somewhat relevant" and weights top ranks more. Measure the impact of [reranking](05-reranking.md) with it.
 - From the notes: reranking on top of hybrid search improved **nDCG@5 by roughly 12–18 points**; elsewhere it gave only 2 points for 200ms of latency. That's why you measure.
+
+```mermaid
+flowchart LR
+    Q["Query, gold = leave-policy p4"] --> R1["rank 1: holiday list"]:::dim
+    R1 --> R2["rank 2: leave overview"]:::dim
+    R2 --> R3["rank 3: leave-policy p4, gold"]:::hot
+    R3 --> R4["rank 4"]:::dim
+    R4 --> R5["rank 5"]:::dim
+    R3 --> M1["Recall@5 = 1, gold is in the top 5"]
+    R3 --> M2["Reciprocal rank = 1/3 = 0.33"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Recall@5 only asks whether the gold chunk is in the list (yes); MRR also cares where it is, so rank 3 scores 0.33 instead of 1.0.
 
 ```python
 def mrr(results, gold):  # results: list of ranked id lists
@@ -63,6 +95,22 @@ def mrr(results, gold):  # results: list of ranked id lists
 - **LLM-as-judge:** give a strong LLM a rubric ("score 1–5: is every claim supported by the context?"). Cheap and scales.
 - Judge weaknesses: position bias, preferring longer answers, favouring its own model. Fix: a clear rubric, check agreement with humans on some samples, temperature 0.
 
+```mermaid
+flowchart LR
+    Q["Question"] --> RT["Retriever"]
+    RT --> C["Context chunks"]
+    C --> L["LLM"]
+    L --> A["Answer"]
+    MP["Context precision: how much noise"]:::hot -.-> C
+    MR["Context recall: needed facts present"]:::hot -.-> C
+    MF["Faithfulness: claims backed by context"]:::hot -.-> A
+    MA["Answer relevance: addresses the question"]:::hot -.-> A
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Context precision and recall grade what the retriever produced; faithfulness and answer relevance grade what the LLM wrote, so a low score points to the stage to fix.
+
 | Symptom | Which metric | Where to fix |
 |---|---|---|
 | Right chunk didn't arrive | Recall@k low | Chunking, hybrid, query rewrite |
@@ -78,6 +126,20 @@ def mrr(results, gold):  # results: list of ranked id lists
 - **A/B test:** put the new reranker on 10% of traffic and compare thumbs-up rate and latency.
 - Sample production logs and monitor faithfulness with an LLM judge (not on every request, because of cost).
 - Add bad online cases to the golden set; the set gets stronger over time.
+
+```mermaid
+flowchart LR
+    CH["Code or config change"] --> OFF["Offline eval on golden set, CI gate"]
+    OFF -->|passes| AB["A/B test on 10% of traffic"]
+    AB --> ON["Online signals: thumbs, regenerate, escalations"]
+    ON -->|wins| FULL["Roll out to 100%"]:::hot
+    ON -->|bad cases| GS[("Golden set")]
+    GS --> OFF
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Offline eval decides whether a change may ship; online signals decide whether it helped, and the bad cases they surface make the next offline run stronger.
 
 **Interview tip:** "Offline eval lets you ship a change; online eval tells you whether users actually benefited."
 

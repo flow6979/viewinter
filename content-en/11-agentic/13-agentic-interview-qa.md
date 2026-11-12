@@ -418,6 +418,23 @@ sequenceDiagram
 
 > **Example:** "Why LangGraph, why not plain Python?" Answer: "Persistence, HITL and streaming come for free; but for a 3-step pipeline, plain code + retries is enough."
 
+```mermaid
+flowchart LR
+    Q["Why not multi-agent?"] --> D["Default: single agent plus good tools"]
+    D --> S{"Switch when?"}
+    S -->|parallel subtasks| M["Multi-agent"]
+    S -->|different permissions| M
+    S -->|more than 15-20 tools| M
+    D --> ME["Measure: eval baseline vs multi-agent, cost per task"]
+    M --> ME
+    ME --> DEC["Decide with numbers"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class D,S,ME hot
+```
+
+*Diagram:* The three highlighted parts are the answer shape for any trade-off question: state the default, name when you would switch, and say how you would measure.
+
 | If they ask | Say | Because | When you would pick the other |
 |---|---|---|---|
 | "Why a framework, why not custom code?" | "A low-level framework like LangGraph; I avoid heavy abstractions so prompts and control flow stay visible" | persistence, HITL and streaming come for free | a very simple flow, or you need extreme control/perf |

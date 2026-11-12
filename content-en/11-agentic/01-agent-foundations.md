@@ -68,6 +68,22 @@ The full loop is in "The agent loop and ReAct", `tool_use`/`tool_result` in "Too
 
 Which step comes first, which comes next, when to stop: the LLM decided all of it. That is what makes it an agent.
 
+```mermaid
+flowchart LR
+    U["User: order late, refund please"] --> L["LLM decides next step"]:::hot
+    L -->|step 1| T1["get_order_status: 40 min late"]
+    T1 --> L
+    L -->|step 2, 40 is over 30| T2["check_refund_policy: full refund"]
+    T2 --> L
+    L -->|step 3| T3["issue_refund"]
+    T3 --> L
+    L -->|done| R["Reply: Refund done"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Every arrow out of the highlighted LLM node is a choice the model made; your code only runs the tool it asked for and hands the result back.
+
 **Now the terms:**
 
 - **LLM (brain):** thinks and picks the next action.
@@ -419,6 +435,18 @@ The math for the Swiggy run (assume system prompt + tool schemas = 800 tokens):
 
 In 3 turns the input became 3.4x. In a 20-step agent every step resends all earlier history, so cost grows roughly **quadratically** with steps.
 
+```mermaid
+flowchart LR
+    C1["Call 1 input: 800 setup + 30 user = 830"] -->|append tool_use + tool_result, +110| C2["Call 2 input: 940"]
+    C2 -->|append 2 more messages, +90| C3["Call 3 input: 1,030"]
+    C3 --> T["Billed input: 830 + 940 + 1,030 = 2,800"]:::hot
+    S["One single call would be 830"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each call resends everything before it, so the billed input (highlighted) is the sum of all three calls, 3.4x a single call.
+
 ### Context window
 
 - **Context window** = the maximum tokens a model can see in one call (128k–1M today).
@@ -500,6 +528,26 @@ print(d.eligible, d.amount_inr)                       # True 450  (typed Pydanti
 ```
 
 Section 3 fixes the order of tools, section 4 is a policy that must never break, and section 6 says when to stop. Without it, the agent keeps wandering in the loop.
+
+```mermaid
+flowchart LR
+    subgraph SP["System prompt"]
+        R["1 Role + goal"]
+        C["2 Context: tier, date, language"]
+        T["3 Tool usage"]
+        K["4 Constraints"]
+        O["5 Output"]
+        E["6 Escalation"]
+    end
+    T -->|get_kyc_status first| B1["Which tool, in what order"]
+    K -->|only last 4 digits of PAN| B2["Rule that never breaks"]
+    O -->|max 3 lines| B3["Reply shape"]
+    E -->|after 2 failed verifications| B4["Stop and call a human"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Each prompt section controls one behaviour of the loop; the escalation section (highlighted) is what stops the agent from wandering forever.
 
 **Now the terms:**
 
@@ -595,6 +643,17 @@ Zomato restaurant onboarding (documents → FSSAI check → listing) has a fixed
 
 **One example:** Paytm support evolution: L0 FAQ answer (single call) → L1 intent router → L2 tool agent (order lookup, refund) → L3 multi-agent (payments + KYC + disputes specialists) → L4 a background agent that monitors fraud patterns by itself and opens tickets.
 
+```mermaid
+flowchart LR
+    L0["L0 Single call: FAQ answer"] --> L1["L1 Router: intent to team"]
+    L1 --> L2["L2 Tool agent: refund loop"]
+    L2 --> L3["L3 Multi-agent: payments, KYC, disputes"]
+    L3 --> L4["L4 Autonomous: fraud monitor opens tickets"]
+    L0 -.->|LLM control, risk and guardrails grow| L4
+```
+
+*Diagram:* Each step to the right hands more of the control flow to the LLM, so the cost of a mistake and the guardrails you need grow with it.
+
 | Level | What | Who decides | Example | Risk |
 |---|---|---|---|---|
 | L0 Single call | prompt → answer | nobody | summarize ticket | low |
@@ -622,6 +681,20 @@ Zomato restaurant onboarding (documents → FSSAI check → listing) has a fixed
 1. `get_order_status("ORD-9")` → `"pending"`. Model: "not final yet", the same call again → `"pending"`.
 2. 9 times the same call, the same result. A bill for 9 LLM calls, no answer for the user.
 3. **Fix:** `max_steps=6` (fallback reply), repeat detection (same name + args + result → observation "status did not change, tell the user the current status"), and the prompt: "if pending, give the ETA, do not check again".
+
+```mermaid
+flowchart LR
+    L["LLM"] -->|get_order_status ORD-9| T["Tool result: pending"]
+    T --> RD{"Same name, args and result as last call?"}
+    RD -->|no| L
+    RD -->|yes| OB["Observation: status unchanged, tell the user"]:::hot
+    OB --> L
+    L -->|step 6 is max_steps| FB["Fallback reply"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Without the repeat check the loop circles 9 times; the two highlighted guards turn a stuck loop into an answer for the user.
 
 | Failure | Symptom | Fix |
 |---|---|---|

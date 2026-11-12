@@ -35,6 +35,19 @@ sequenceDiagram
 - Don't put PDF bytes on the queue; send a file path or S3 reference (Redis message size and memory).
 - Keep jobs idempotent: a client retry must not create a duplicate job writing conflicting state ([Idempotency](../01-topics/10-idempotency-retries.md)).
 
+```mermaid
+stateDiagram-v2
+    [*] --> queued: POST /ingest
+    queued --> processing: worker picks job
+    processing --> completed: all pages indexed
+    processing --> partial: some pages failed, e.g. OCR on p47
+    processing --> failed: file unreadable
+    partial --> completed: failed pages retried
+    completed --> [*]
+```
+
+*Diagram:* Per-page status lets a job end as partial: the other 199 pages are queryable while page 47 is retried.
+
 **Interview tip:** "No single timeout can serve both normal requests and 10-minute ingestion, so: async job + status endpoint."
 **Common mistake:** synchronous ingestion; the client disconnects, retries, and two jobs write partial chunks into the vector DB.
 
@@ -48,6 +61,26 @@ sequenceDiagram
 - Check `request.is_disconnected()` on each chunk; if the user left, stop generating, or you pay for tokens nobody reads.
 - The LLM client's default timeout (httpx 5s) is too short for streams; set a long one.
 
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant A as RAG API
+    participant V as Retriever
+    participant L as LLM
+    B->>A: GET /ask via EventSource
+    A-->>B: progress retrieving
+    A->>V: hybrid search plus rerank
+    V-->>A: top 5 chunks
+    A-->>B: context with sources
+    A-->>B: progress generating
+    A->>L: prompt with chunks, stream on
+    L-->>A: tokens
+    A-->>B: token events
+    A-->>B: done
+```
+
+*Diagram:* The browser gets progress events within milliseconds and the sources before the first token, so the screen is never blank during retrieval.
+
 **Interview tip:** "For users the most important number is time-to-first-token, not total time."
 
 ## Rate limits, batching and embedding cache
@@ -58,9 +91,56 @@ sequenceDiagram
 - **Embedding cache:** in the notes ~28% of chunks were duplicates (disclaimers, boilerplate). Key = `SHA-256(normalize(text) | model_name | model_version)`; switching models invalidates the cache automatically.
 - Two layers: in-process LRU (sub-ms) → Redis (2–5ms). Store vectors as raw float32 bytes (~6KB vs ~30KB JSON for 1536 dims).
 
+```mermaid
+flowchart LR
+    C["800 chunks"] --> B["Batches of about 8000 tokens"]
+    B --> S["Semaphore: max 10 in flight"]
+    S --> API["Embedding API"]
+    API -->|200 OK| OK[("Vectors stored")]
+    API -->|429| BO["Backoff 1s, 2s, 4s plus jitter"]:::hot
+    BO --> S
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Batching cuts the number of calls, the semaphore caps concurrency, and a 429 goes back through jittered backoff instead of failing the job.
+
+```mermaid
+flowchart LR
+    T["Chunk text"] --> K["Key: SHA-256 of text, model, version"]
+    K --> L1{"In-process LRU?"}
+    L1 -->|hit, sub-ms| V["Vector"]:::hot
+    L1 -->|miss| L2{"Redis?"}
+    L2 -->|hit, 2-5 ms| V
+    L2 -->|miss| API["Embedding API"]
+    API --> W["Write to Redis and LRU"]
+    W --> V
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Duplicate boilerplate (about 28% of chunks) is served from the LRU or Redis; only genuinely new text reaches the embedding API.
+
 ## ⭐ Caching, guardrails and access control
 
 **In one line:** save cost with answer caching, defend against prompt injection, and show users only the chunks they are allowed to see.
+
+```mermaid
+flowchart LR
+    U["Request plus user role"] --> IG["Input guardrail: PII, abuse"]
+    IG --> EC{"Exact or semantic cache hit, same tenant?"}
+    EC -->|hit| OUT["Response"]
+    EC -->|miss| RT["Retrieve with ACL pre-filter"]:::hot
+    RT --> RR["Rerank to top 5"]
+    RR --> L["LLM, context marked as data"]
+    L --> OG["Output check: supported by context?"]
+    OG --> W["Write cache"]
+    W --> OUT
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The cache is checked before any retrieval, and the ACL filter sits inside retrieval, so a chunk the user cannot see never reaches the LLM.
 
 - **Exact cache:** normalized query + filters + index version → answer. Cheap, but low hit rate.
 - **Semantic cache:** if a past query's embedding is close (cosine > ~0.95), return its answer. Big savings on FAQ-style traffic; a bad threshold returns wrong answers. The cache key must include tenant/user role ([Caching](../01-topics/05-caching.md)).
@@ -68,6 +148,21 @@ sequenceDiagram
 - **Guardrails:** PII/abuse filter on input, a "supported by context?" check on output, polite refusal for off-topic questions.
 - **Access control / multi-tenancy:** put `tenant_id`, `acl_groups` metadata on every chunk; apply a **pre-filter** during retrieval, not after the LLM. Separate namespace/index for large tenants ([metadata filter](../05-db/11-vector.md)).
 - **Freshness / re-indexing:** on doc update → delete old chunks + upsert new ones (by doc_id). Use content hashes to re-embed only changed chunks. Embedding model change → full re-index into a new index, then switch an alias (blue-green).
+
+```mermaid
+flowchart LR
+    subgraph BLUE["Live"]
+        A["Alias docs-live"] --> V1[("Index v1, model A")]
+    end
+    subgraph GREEN["Building"]
+        V2[("Index v2, model B, full re-embed")] --> E["Eval on golden set"]
+    end
+    E -->|passes| SW["Point alias at v2, keep v1 for rollback"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Queries keep hitting v1 through the alias while v2 is built and evaluated; the switch is one alias update, and so is a rollback.
 
 **Interview tip:** "The permission check is a filter inside retrieval; the LLM never receives a chunk the user can't see."
 **Common mistake:** all tenants' data in one index without filters, relying on "we'll tell the LLM not to show it".
@@ -86,6 +181,18 @@ sequenceDiagram
 - Cost levers: fewer chunks to the LLM, a smaller model for simple queries, semantic cache, embedding cache.
 - **Deploy:** API and workers in separate containers. The API scales on HTTP load, workers on queue depth (KEDA). Worker memory limit ~2GB; let the orchestrator restart on OOM. Graceful shutdown: on SIGTERM stop taking new jobs, finish running ones.
 - Priority order from the notes: async ingestion → streaming → rate limits → memory → caching (an optimization, last).
+
+```mermaid
+flowchart LR
+    LB["Load balancer"] --> API["API pods, scale on HTTP load"]
+    API -->|enqueue| Q[("Redis queue")]
+    Q --> W["Worker pods, 2GB memory limit"]
+    K["KEDA watches queue depth"] -.->|scale| W
+    W --> V[("Vector DB")]
+    API --> V
+```
+
+*Diagram:* API and workers scale on different signals, request load for the API and queue depth for workers, so a big upload burst never slows down queries.
 
 ## Read more
 

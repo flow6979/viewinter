@@ -14,6 +14,28 @@ Reranking matlab pehle sasta retriever bahut saare candidates laata hai, phir ek
 
 > **Example:** HR policy bot. "Notice period me leave encash hoga?" Sahi paragraph top-5 me hai par #4 pe; #1 pe generic "leave policy overview". LLM hedge karta hai ya galat answer deta hai. Chunking, embedding model, prompt badalne se kuch nahi hua; gold chunk ki **position** log karne pe asli problem dikhi.
 
+```mermaid
+flowchart LR
+    subgraph BE["Bi-encoder order"]
+        B1["1st Leave policy overview"]
+        B2["2nd Leave types"]
+        B3["3rd Notice period rules"]
+        B4["4th Encashment during notice"]:::hot
+    end
+    subgraph CE["After cross-encoder"]
+        C1["1st Encashment during notice, 0.94"]:::hot
+        C2["2nd Notice period rules, 0.71"]
+        C3["3rd Leave policy overview, 0.22"]:::dim
+    end
+    B4 -->|moves up| C1
+    B3 --> C2
+    B1 -->|moves down| C3
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Sahi paragraph pehle se retrieve ho chuka tha, position 4 pe; reranker use question ke saath padhta hai aur position 1 pe le aata hai.
+
 - Embedding models **rank karne ke liye train nahi** hote, semantic similarity ke liye hote hain. ANN **recall** ke liye optimized hai, precision ke liye nahi.
 - Har document query ko jaane bina independently encode hua, isliye cosine ek "blunt instrument" hai. Top-20 ka order kaafi had tak noise hai.
 - Analogy: jaal sahi machhli pakad leta hai, par kaun pehle aayi, wo random hai.
@@ -43,6 +65,17 @@ flowchart LR
 - Context ko reranked order me assemble karo; best chunk upar (LLM "lost in the middle" me beech wala ignore karta hai).
 - **Debug:** NDCG@5 low hai? Gold answer top-50 me hi nahi → retrieval problem. Top-50 me hai par neeche score → reranker problem.
 
+```mermaid
+flowchart TD
+    L["NDCG@5 is low"] --> G{"Gold chunk in top 50?"}
+    G -->|no| R["Retrieval problem: hybrid, chunking, query rewrite"]
+    G -->|yes, but ranked low| X["Reranker problem: model, truncation, wrong query passed"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Gold chunk ka rank log karo: top 50 me hai hi nahi to retrieval fix karo; hai par neeche hai to reranker fix karo.
+
 **Interview tip:** "Main top 50 retrieve karta hoon, cross-encoder se rerank karke top 5 LLM ko deta hoon. N bada recall ke liye, K chhota precision aur token cost ke liye."
 
 **Common galti:** top-5 ko rerank karke top-3 lena. Itne kam candidates me reranker kuch khaas nahi badal sakta.
@@ -50,6 +83,26 @@ flowchart LR
 ## ⭐ Bi-encoder vs cross-encoder
 
 **Ek line me:** bi-encoder query aur doc ko **alag** encode karta hai (fast, precompute ho sakta), cross-encoder dono ko **saath** ek model me daalta hai (slow, par bahut accurate).
+
+```mermaid
+flowchart LR
+    subgraph BI["Bi-encoder: separate"]
+        Q1["Query"] --> E1["Encoder"]
+        D1["Doc"] --> E2["Encoder, offline"]
+        E1 --> V1["q vector"]
+        E2 --> V2["d vector"]
+        V1 --> S1["cosine 0.78"]
+        V2 --> S1
+    end
+    subgraph CR["Cross-encoder: together"]
+        P["CLS query SEP doc SEP"] --> T["One transformer, every query token attends to every doc token"]:::hot
+        T --> S2["relevance 0.94"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Bi-encoder me query aur doc ke words kabhi milte hi nahi, sirf final vectors milte hain; cross-encoder dono ko ek pass me padhta hai, jo precise hai par har candidate pe alag chalana padta hai.
 
 | | Bi-encoder | Cross-encoder |
 |---|---|---|
@@ -83,6 +136,21 @@ def rerank(query, candidates, top_k=5):
 ## Options: open-source, Cohere Rerank, FlashRank, LLM
 
 **Ek line me:** FlashRank se shuru karo (sasta, fast), quality ceiling chahiye to cross-encoder ya Cohere, aur LLM reranking sirf high-stakes cases me.
+
+```mermaid
+flowchart TD
+    S["Pick a reranker"] --> A{"Budget under 50 ms on CPU?"}
+    A -->|yes| FR["FlashRank, about 20 ms"]:::hot
+    A -->|no| B{"High stakes, offline batch OK?"}
+    B -->|yes| LLM["LLM listwise, 2-5 s"]
+    B -->|no| C{"Want zero ops?"}
+    C -->|yes| CO["Cohere Rerank plus local fallback"]
+    C -->|no| MI["Self-host MiniLM or bge-reranker"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Latency budget se shuru karo: tight CPU SLA pe FlashRank, zyada tar cases me hosted ya self-hosted cross-encoder, LLM reranking sirf slow aur high-stakes kaam ke liye.
 
 | Option | Latency (N=50, roughly) | Kab |
 |---|---|---|

@@ -16,6 +16,19 @@ Embedding and BM25 basics are already on the site: [Vector databases](../05-db/1
 
 > **Example:** a bot over Swiggy's internal API docs. Query: "What are the retry semantics for `ERR_CONN_RESET_4XX`?" Dense search returns "connection handling best practices" pages; the section that contains the exact code ranks **11th**. BM25 puts it at #1. The reverse: for "what happens when the gateway can't reach upstream?" BM25 fails and dense finds the right page instantly.
 
+```mermaid
+flowchart LR
+    Q["Query: retry semantics for ERR_CONN_RESET_4XX"] --> D["Dense search"]
+    Q --> B["BM25"]
+    D --> D1["rank 1: connection best practices"]
+    D --> D11["rank 11: section with the exact code"]:::dim
+    B --> B1["rank 1: section with the exact code"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Dense search blurs the error code into general connection docs; BM25 matches the rare token exactly and ranks the right section first.
+
 - **Dense** (embeddings, e.g. 768-dim): "car" ≈ "automobile". Strong for synonyms, paraphrase, conceptual questions.
 - **Dense's problem:** an identifier is an irreducible token; its specificity gets "averaged out" in the embedding. This is the **vocabulary mismatch problem**. Not a bug, a design trade-off.
 - **Sparse** (BM25): inverted index, exact token match. Strong for codes, SKUs (`SKU-7821-B`), legal clauses (`Section 4(b)(iii)`), version strings, proper nouns.
@@ -41,6 +54,35 @@ Embedding and BM25 basics are already on the site: [Vector databases](../05-db/1
 - **SPLADE's cons:** transformer inference on the query (roughly 100–300ms); no learned expansion for new out-of-vocabulary codes, where BM25 is better.
 - Production tip: precompute document SPLADE vectors at index time (Qdrant supports sparse vectors natively), encode only the query at query time.
 
+```mermaid
+flowchart LR
+    T["Query term: ERR_CONN_RESET_4XX"] --> TF["TF with saturation, k1 1.2-2.0"]
+    T --> IDF["IDF: rare term, high weight"]:::hot
+    T --> LN["Length norm, b 0.75"]
+    TF --> S["BM25 score for this doc"]
+    IDF --> S
+    LN --> S
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* BM25 combines three things per query term: how often it appears (with diminishing returns), how rare it is, and how long the doc is.
+
+```mermaid
+flowchart LR
+    Q["Query: HTTP connection timeout"] --> SP["SPLADE encoder"]
+    SP --> W1["http 1.8"]
+    SP --> W2["timeout 2.1"]
+    SP --> W3["socket 0.9, expanded"]:::hot
+    SP --> W4["tcp 0.7, expanded"]:::hot
+    SP --> W5["503 0.5, expanded"]:::hot
+    SP --> Z["30k other vocab terms = 0"]:::dim
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* SPLADE keeps the exact query terms and adds learned related terms with smaller weights; everything else in the vocabulary stays zero.
+
 | | BM25 | SPLADE | Dense |
 |---|---|---|---|
 | What it matches | exact tokens | tokens + learned synonyms | meaning |
@@ -62,6 +104,41 @@ Embedding and BM25 basics are already on the site: [Vector databases](../05-db/1
   - Final: **C → A → D → B → E**. C is high in both lists, so it beats A (only dense's #1). **Agreement beats one system's love.**
 - **Why k=60:** it smooths the rank cliff. Rank 1 = 1/61 ≈ 0.0164, rank 10 = 1/70 ≈ 0.0143. With k=0, rank 1 = 1.0 and rank 2 = 0.5, far too steep. The original RRF paper found 60 works well empirically.
 - **Small corpus (≈50–300 docs/pages):** use k = 10–20. In the author's 80-document pilot, hybrid with k=60 did worse than dense-only; switching to k=10 fixed it.
+
+```mermaid
+flowchart LR
+    subgraph DN["Dense ranks"]
+        DA["A rank 1"]
+        DB["B rank 2"]
+        DC["C rank 3"]
+        DD["D rank 4"]
+    end
+    subgraph SP["Sparse ranks"]
+        SC["C rank 1"]
+        SD["D rank 2"]
+        SE["E rank 3"]
+        SA["A rank 4"]
+    end
+    subgraph FU["RRF k=60"]
+        FC["1st C 0.0323"]:::hot
+        FA["2nd A 0.0320"]
+        FD["3rd D 0.0318"]
+        FB["4th B 0.0161"]:::dim
+        FE["5th E 0.0159"]:::dim
+    end
+    DC -->|1/63| FC
+    SC -->|1/61| FC
+    DA -->|1/61| FA
+    SA -->|1/64| FA
+    DD -->|1/64| FD
+    SD -->|1/62| FD
+    DB -->|1/62| FB
+    SE -->|1/63| FE
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* C is rank 3 in one list and rank 1 in the other, so it collects two good shares and beats A, which is first in only one list.
 
 ```python
 def rrf(ranked_lists, k=60):
@@ -96,6 +173,19 @@ flowchart LR
 - **CombSUM / CombMNZ:** sum of normalized scores (MNZ boosts docs found by several systems). In practice RRF matches or beats them.
 - **Learned fusion:** a small model (logistic regression) over features + scores. Consider it once you have thousands of labeled query-relevance pairs.
 
+```mermaid
+flowchart LR
+    R["Raw BM25: X 95, Y 3, Z 2, W 1"] --> MM["Min-max normalize"]
+    MM --> N["X 1.0, Y 0.02, Z 0.01, W 0.0"]:::hot
+    N --> BAD["Y, Z, W squashed, their dense signal lost"]
+    R --> RR["RRF: ranks 1, 2, 3, 4"]
+    RR --> OK["Scale and outliers ignored"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* One doc that repeats a term 200 times flattens every other doc after min-max; RRF only sees ranks, so the outlier does not matter.
+
 ## ⭐ When to use which
 
 | Situation | Choice |
@@ -112,6 +202,25 @@ flowchart LR
   - **Index sync:** the BM25 index and the vector index are separate artifacts; updates/deletes must hit both atomically. Stale BM25 = weird bugs. Elasticsearch/OpenSearch can hold both in one place.
   - Measure: 50 real queries, Precision@5 and MRR before/after. The author's result: **MRR 0.41 (dense) → 0.67 (hybrid)**.
 - Next step after hybrid: [Reranking](05-reranking.md).
+
+```mermaid
+sequenceDiagram
+    participant A as RAG API
+    participant B as BM25 index
+    participant V as Vector index
+    participant F as RRF fuser
+    par BM25 call
+        A->>B: keyword query, about 50 ms
+    and Vector call
+        A->>V: ANN query, about 100 ms
+    end
+    B-->>A: top 50 ids
+    V-->>A: top 50 ids
+    A->>F: fuse both lists
+    F-->>A: fused list, total about 120 ms
+```
+
+*Diagram:* BM25 and ANN run at the same time, so total latency is the slower call (about 120 ms), not the sum (about 180 ms).
 
 **Interview tip:** "For most teams BM25 + dense + RRF is the destination. SPLADE or learned fusion only when the eval set shows a gain."
 

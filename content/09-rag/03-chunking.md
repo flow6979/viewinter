@@ -14,6 +14,20 @@ Chunking = documents ko chhote pieces me todna jinko embed karke retrieve kiya j
 
 > **Example:** Company ki leave policy PDF. Fixed 500 tokens pe kaato to "Maternity leave" ka heading ek chunk me aur uski table agle chunk me chali jaati hai. Structure-aware chunking heading + table ko ek saath rakhta hai.
 
+```mermaid
+flowchart LR
+    subgraph FX["Fixed 500 tokens"]
+        F1["Chunk 7: text ending with Maternity leave heading"] --> F2["Chunk 8: table rows, no heading"]:::dim
+    end
+    subgraph ST["Structure-aware"]
+        S1["One chunk: Maternity leave heading plus full table"]:::hot
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Fixed cut heading ko table se alag kar deta hai, to chunk 8 me numbers hain par topic nahi; structure-aware chunking dono ko ek chunk me rakhta hai.
+
 | Strategy | Kaise todta hai | Kab use karo |
 |---|---|---|
 | Fixed-size | har N tokens, overlap ke saath | uniform text, quick baseline |
@@ -26,6 +40,36 @@ Chunking = documents ko chhote pieces me todna jinko embed karke retrieve kiya j
 - **Recursive:** pehle bade separator (`\n\n`) pe todne ki koshish, chunk bada ho to chhote separator pe. Natural boundaries zyada respect hoti hain.
 - **Semantic:** consecutive sentences ke embeddings compare karo; similarity achanak gire to wahan split. Ingestion pe extra embedding cost.
 - **Structure-aware:** document ka apna structure use karo. Table aur code block kabhi mat kaato.
+
+```mermaid
+flowchart TD
+    T["Section text, 5000 chars"] --> P["Split on blank lines, paragraphs"]
+    P --> C1{"Piece over 2000 chars?"}
+    C1 -->|no| K["Keep as chunk"]:::hot
+    C1 -->|yes| L["Split on single newline"]
+    L --> C2{"Still over 2000?"}
+    C2 -->|no| K
+    C2 -->|yes| S["Split on sentence end, then on space"]
+    S --> K
+    K --> M["Merge small neighbours up to 2000, add 200 overlap"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Recursive splitter chhota separator tabhi use karta hai jab piece ab bhi bada ho, isliye zyada tar cuts paragraph ya sentence boundary pe lagte hain.
+
+```mermaid
+flowchart LR
+    S1["S1: leave types"] -->|sim 0.82| S2["S2: leave days"]
+    S2 -->|sim 0.79| S3["S3: carry forward"]
+    S3 -->|sim 0.31| X["Topic shift: cut here"]:::hot
+    X --> S4["S4: laptop policy"]
+    S4 -->|sim 0.85| S5["S5: laptop return"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Ek topic ke andar padosi sentences ki similarity high rehti hai aur topic badalte hi 0.31 pe gir jaati hai; semantic chunker wahi cut karta hai: S1-S3 aur S4-S5 do chunks bante hain.
 
 ```python
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -58,6 +102,18 @@ chunks = splitter.split_text(policy_text)
 - Embedding model ki **max input** se bada chunk mat banao; warna silently truncate ho jaata hai.
 - Size guess mat karo: 2–3 sizes pe recall@k naapo. → [RAG evaluation](08-rag-evaluation.md)
 
+```mermaid
+flowchart LR
+    C1["Chunk 1: tokens 0-511"] --> O["Overlap: tokens 462-511, holds the boundary sentence"]:::hot
+    O --> C2["Chunk 2: tokens 462-973"]
+    C2 --> O2["Overlap: tokens 924-973"]:::hot
+    O2 --> C3["Chunk 3: tokens 924-1435"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* 512-token chunks aur 50 overlap me har chunk ke aakhri 50 tokens agle chunk ki shuruaat me repeat hote hain, isliye cut pe padne wala sentence kam se kam ek chunk me poora milta hai.
+
 **Interview tip:** "Chunk size query type pe depend karta hai: short factual queries ke liye chhota, explanatory ke liye bada. Final number eval se aata hai."
 
 **Common galti:** "bada chunk = zyada context = better" maan lena. Bade chunk ka embedding kai topics ka average ban jaata hai aur retrieve hi nahi hota.
@@ -68,11 +124,22 @@ chunks = splitter.split_text(policy_text)
 
 ```mermaid
 flowchart LR
-    Q["Query"] --> S["Search small child chunks"]
-    S --> M["Matched child, 200 tokens"]
-    M --> P["Fetch parent section, 1500 tokens"]
+    Q["Query"] --> IDX
+    subgraph IDX["Vector index: children only, 200 tokens each"]
+        C1["child 1"]:::dim
+        C2["child 2, best match"]:::hot
+        C3["child 3"]:::dim
+    end
+    subgraph PS["Parent store, no embeddings"]
+        P["Parent section, 1500 tokens"]:::hot
+    end
+    C2 -->|parent_id| P
     P --> L["LLM prompt"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
 ```
+
+*Diagram:* Search sirf chhote children pe hota hai; match hue child ka parent_id poora 1500-token section laata hai, aur LLM wahi padhta hai.
 
 - Index me sirf child embeddings; har child ke metadata me `parent_id`.
 - Retrieval ke baad `parent_id` se parent text laao; ek parent ke kai children match hon to dedupe karo.
@@ -93,6 +160,19 @@ RAG-specific extras:
 - `parent_id`, `chunk_index`: parent-child aur neighbouring chunks laane ke liye.
 - `content_type`: text / table / code, alag handling ke liye.
 - Chhota sa doc-level context ("Ye chunk FY24 annual report ke Risk section se hai") chunk ke aage jodne se retrieval improve hota hai (contextual chunking).
+
+```mermaid
+flowchart LR
+    R["Raw chunk: its limit is 10 days"] --> H["Prepend heading path: HR Policy / Leave / Maternity"]
+    H --> E["Embed the enriched text"]:::hot
+    E --> V[("Vector DB")]
+    M["Metadata: page 14, parent_id, content_type"] --> V
+    V --> F["Filter, cite page 14, fetch parent"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Heading path ek vague chunk ko embed hone se pehle uska topic de deta hai; metadata saath chalta hai filters, page citation aur parent lookup ke liye.
 
 **Interview tip:** "Har chunk ke aage uska heading path jodunga, taaki 'iski limit 10 din hai' jaisa chunk bhi apne topic se match ho."
 

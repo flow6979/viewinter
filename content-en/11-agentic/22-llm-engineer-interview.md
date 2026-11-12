@@ -82,6 +82,21 @@ A token is a piece of text from a fixed vocabulary, built by BPE (byte pair enco
 **Q: Walk me through one forward pass.**
 Token IDs → embedding vectors → N transformer blocks (each = attention + feed-forward MLP, with residual connections and normalisation) → a final layer that maps to logits over the vocabulary → softmax → probabilities for the next token.
 
+```mermaid
+flowchart LR
+    T["Token IDs: 4 tokens"] --> E["Embeddings: 4 x 4096"]
+    E --> B1["Block 1: attention plus MLP"]
+    B1 --> BN["... N blocks, e.g. 32"]
+    BN --> LG["Logits: one score per vocab token, 128K"]
+    LG --> SM["Softmax"]
+    SM --> NX["Next-token probabilities"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class B1,BN hot
+```
+
+*Diagram:* The shape stays 4 x 4096 through every block; only the last step turns the final position into scores over the whole vocabulary.
+
 **Q: What does attention compute?**
 Each token makes a query (Q), key (K) and value (V) vector. Scores = Q·Kᵀ / √d, a causal mask hides future tokens, softmax turns scores into weights, and the output is the weighted sum of V. Dividing by √d keeps scores from growing with dimension and saturating softmax.
 
@@ -102,6 +117,28 @@ GPU floating-point maths is not perfectly associative. Results change with batch
 
 **Q: What is a Mixture of Experts model?**
 The feed-forward part of each layer is split into many "experts". A small router picks the top-k experts (often 2 to 8) for each token. Mixtral 8x7B has about 47B total parameters but only about 13B active per token; DeepSeek-V3 has 671B total and about 37B active. Compute per token follows active parameters; GPU memory must still hold all of them.
+
+```mermaid
+flowchart LR
+    TK["Token vector"] --> R{"Router: top-2 of 8"}
+    R -->|gate 0.7| E2["Expert 2"]
+    R -->|gate 0.3| E5["Expert 5"]
+    R -.-> E1["Expert 1"]
+    R -.-> E3["Expert 3"]
+    R -.-> E4["Expert 4"]
+    R -.-> E6["Expert 6"]
+    R -.-> E7["Expert 7"]
+    R -.-> E8["Expert 8"]
+    E2 --> S["Weighted sum: 0.7 x E2 + 0.3 x E5"]
+    E5 --> S
+    S --> O["Output to next layer"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class E2,E5 hot
+    class E1,E3,E4,E6,E7,E8 dim
+```
+
+*Diagram:* Only the 2 highlighted experts run for this token; the other 6 still sit in GPU memory, which is why compute follows active parameters but memory follows total.
 
 **Q: Trade-offs of MoE in serving?**
 Cheaper compute per token and better quality per FLOP. But you need memory for all experts, routing can be unbalanced (some experts overloaded), and multi-GPU serving needs expert parallelism with all-to-all communication. Small-batch latency gains are smaller than the active-parameter count suggests.
@@ -137,6 +174,24 @@ To produce each new token, the GPU must read every weight from memory once. For 
 **Q: Prefill vs decode, and TTFT vs TPOT?**
 Prefill processes all prompt tokens in parallel; it is compute-bound and sets TTFT (time to first token). Decode makes one token per step; it is memory-bound and sets TPOT (time per output token, also called inter-token latency). Long prompts hurt TTFT; long answers hurt total latency.
 
+```mermaid
+flowchart LR
+    subgraph PF["Prefill: compute-bound"]
+        P["All 2,000 prompt tokens in one pass"] --> KV[("KV cache filled")]
+    end
+    subgraph DC["Decode: memory-bound"]
+        D1["Token 1"] --> D2["Token 2"] --> D3["Token 3 to 300"]
+    end
+    KV -->|TTFT ends here| D1
+    KV -.->|weights and cache read every step| D2
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class P hot
+    class D1,D2,D3 hot
+```
+
+*Diagram:* Prefill is one big parallel pass that sets TTFT; decode is 300 small steps, each re-reading all weights, which sets TPOT.
+
 **Q: What is the KV cache, and how big is it?**
 For every past token and every layer, the model stores the key and value vectors so it never recomputes them. Size per token = 2 (K and V) × layers × KV heads × head dim × bytes. Llama 3 8B: 2 × 32 × 8 × 128 × 2 bytes = 128 KB per token, so an 8K-token request uses about 1 GB.
 
@@ -157,6 +212,19 @@ Weight-only INT8 or INT4 (methods like GPTQ and AWQ) cut memory and speed up mem
 
 **Q: How does speculative decoding work?**
 A small, fast draft model (or extra prediction heads like Medusa or EAGLE) guesses the next 3–5 tokens. The big model checks all guesses in one forward pass and keeps the longest correct run. With the right acceptance rule the output distribution is exactly the big model's. It helps most at low batch sizes, where the GPU has spare compute.
+
+```mermaid
+sequenceDiagram
+    participant D as Draft model, small
+    participant T as Target model, big
+    D->>D: guess 4 tokens - the cat sat on
+    D->>T: check all 4 in one forward pass
+    T-->>D: accept the cat sat, reject on
+    T->>T: emit its own token for position 4 - down
+    Note over D,T: 4 tokens for about one big-model step
+```
+
+*Diagram:* The big model verifies 4 guesses in one pass, keeps the 3 that match, and adds its own 4th, so it moves several tokens per expensive step.
 
 **Q: Tensor parallelism vs pipeline parallelism?**
 Tensor parallelism splits each layer's matrices across GPUs; it needs fast links (NVLink) and is used inside one node to cut latency. Pipeline parallelism puts different layers on different GPUs; it suits multi-node setups but adds pipeline bubbles. For serving a 70B model, tensor parallelism across 2–8 GPUs in one node is the default.
@@ -180,6 +248,22 @@ Bigger batches raise tokens per second per GPU but make each user's tokens slowe
 | Replica throughput (assume, then benchmark) | roughly 2,000–3,000 output tokens/s | use 2,500 |
 | Replicas needed | 30,000 / 2,500 = 12, plus 30% headroom | ≈ 16 replicas = 32 H100s |
 
+```mermaid
+flowchart LR
+    subgraph REP["One replica: 2 x H100 = 160 GB"]
+        W["Weights FP8: 70 GB"]
+        OV["Overhead: about 15 GB"]
+        KV["KV cache: about 75 GB"]
+    end
+    KV -->|2.6 GB per 8K request| C["about 28 concurrent requests"]
+    C -->|x 16 replicas| T["32 H100s for 100 req per s"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class KV hot
+```
+
+*Diagram:* Almost half of each replica is KV cache, and that half, not the weights, decides how many users fit at once.
+
 > **Say:** "These are planning numbers. Before committing, I would benchmark with real prompt and output lengths at our SLO, because throughput changes 2–3× with length mix."
 
 **Common mistake:** sizing GPUs by weights only and forgetting the KV cache, which often needs as much memory as the weights.
@@ -191,11 +275,43 @@ Bigger batches raise tokens per second per GPU but make each user's tokens slowe
 **Q: When do you fine-tune instead of prompting or RAG?**
 RAG for knowledge that changes or must be cited. Prompting for anything a good instruction plus examples solves. Fine-tune for a consistent style, format or narrow skill; to make a small model match a big one on one task (cheaper, faster); or when the prompt is so long that it costs too much. Fine-tuning is a poor way to add facts.
 
+```mermaid
+flowchart TD
+    S["Model fails your eval"] --> Q1{"Fixed by better instructions plus examples?"}
+    Q1 -->|yes| PR["Prompting"]
+    Q1 -->|no| Q2{"Missing or changing knowledge, needs citations?"}
+    Q2 -->|yes| RAG["RAG"]
+    Q2 -->|no| Q3{"Style, format, narrow skill, or prompt too costly?"}
+    Q3 -->|yes| FT["Fine-tune: SFT with LoRA"]
+    Q3 -->|no| BIG["Bigger or reasoning model"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class FT hot
+```
+
+*Diagram:* Try the cheap fixes in order; fine-tuning is the answer for behaviour and format, not for facts.
+
 **Q: What is SFT, and what is the one bug everyone makes?**
 SFT (supervised fine-tuning) trains on input-output pairs with next-token loss. Compute loss only on the assistant tokens, not the prompt, and use exactly the chat template the model was trained with. A template mismatch quietly ruins quality.
 
 **Q: How does LoRA work, with numbers?**
 LoRA (2021) freezes the weight matrix W and learns a low-rank update ΔW = B·A, where A is r × d and B is d × r. For a 4096 × 4096 matrix that is 16.8M parameters; with rank r = 16, LoRA trains 2 × 4096 × 16 ≈ 131K, under 1%. Adapters can be merged into W for zero extra latency, or kept separate for multi-adapter serving.
+
+```mermaid
+flowchart LR
+    X["Input x: 4096"] --> W["W frozen: 4096 x 4096 = 16.8M"]
+    X --> A["A: 16 x 4096, trained"]
+    A --> B["B: 4096 x 16, trained"]
+    W --> S["Sum: W x plus B A x"]
+    B --> S
+    S --> Y["Output: 4096"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class A,B hot
+    class W dim
+```
+
+*Diagram:* The big matrix never changes; only the thin A and B path (about 131K numbers) is trained, and its output is added on top.
 
 **Q: LoRA hyperparameters that matter?**
 Rank r (8–64 is common), alpha (scaling, often 1–2× r), which modules get adapters (all linear layers usually beats only attention), and learning rate (higher than full fine-tuning, around 1e-4 to 2e-4).
@@ -214,6 +330,25 @@ DPO (direct preference optimization, 2023) uses the same preference pairs but sk
 
 **Q: What is GRPO?**
 GRPO (group relative policy optimization, from DeepSeekMath and used for DeepSeek-R1) samples a group of answers, say 8, for each prompt and scores each one. Each answer's advantage = (its reward − group mean) / group std. No separate value (critic) model is needed, which saves memory. With checkable rewards (unit tests pass, maths answer matches) this is called RLVR (RL with verifiable rewards).
+
+```mermaid
+flowchart LR
+    subgraph RL["RLHF: 4 models"]
+        R1["Preference pairs"] --> R2["Train reward model"] --> R3["PPO with KL penalty"]
+    end
+    subgraph DP["DPO: 2 models"]
+        D1["Preference pairs"] --> D2["Direct loss vs frozen reference"]
+    end
+    subgraph GR["GRPO: no critic"]
+        G1["8 answers per prompt"] --> G2["Score each, e.g. tests pass"] --> G3["Advantage = reward minus group mean"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class R2 dim
+    class D2,G3 hot
+```
+
+*Diagram:* DPO removes the reward model and RL loop; GRPO keeps RL but replaces the critic with a group average, which fits checkable rewards.
 
 **Q: What is reward hacking?**
 The model finds a way to get high reward without doing the task: very long answers if the judge likes length, deleting failing tests if the reward is "tests pass". Fix it with a KL penalty, better and harder-to-fool rewards, length controls, and reading samples by hand.
@@ -239,6 +374,20 @@ Parse and clean docs → chunk (300–800 tokens with structure) → embed → s
 
 **Q: Answers are wrong. How do you debug RAG?**
 Split it into two questions. Was the right chunk retrieved (check recall@k on a labelled set)? If not, fix chunking, hybrid search, query rewriting, or the reranker. If it was retrieved, is the answer faithful to it? If not, fix the prompt, put the best chunk first, or use a stronger model.
+
+```mermaid
+flowchart TD
+    W["Wrong answer"] --> Q1{"Right chunk in top k? check recall at k"}
+    Q1 -->|no, retrieval bug| FX1["Fix chunking, hybrid search, query rewrite, reranker"]
+    Q1 -->|yes, generation bug| Q2{"Answer faithful to the chunk?"}
+    Q2 -->|no| FX2["Fix prompt, best chunk first, stronger model"]
+    Q2 -->|yes| FX3["Check the eval label or the source doc"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class Q1 hot
+```
+
+*Diagram:* The first question splits every RAG bug into two different fix lists, so ask it before touching the prompt.
 
 **Q: Why hybrid search plus reranking?**
 Vectors match meaning but miss exact terms like error codes and product IDs; BM25 (keyword ranking) catches those. A cross-encoder reranker reads the query and each chunk together, so it is far more accurate than either, but too slow for millions of docs, so it runs only on the top 50.
@@ -285,6 +434,21 @@ Combine a rubric-based LLM judge (calibrated against 100–200 human labels), ch
 ## ⭐ Design round 1: LLM inference platform for internal teams
 
 > **Prompt:** "Design a platform that serves open-weight models (Llama, Qwen, Mistral) to 40 internal teams. Some teams need chat latency, some run batch jobs, some bring their own LoRA adapters."
+
+```mermaid
+flowchart LR
+    C["1. Clarify: 3 min"] --> R["2. Requirements: 4 min"]
+    R --> N["3. Numbers: 5 min"]
+    N --> A["4. Architecture: 12 min"]
+    A --> K["5. Key decisions: 6 min"]
+    K --> F["6. Failure modes: 5 min"]
+    F --> S["Say: one-line summary"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class N hot
+```
+
+*Diagram:* All four design rounds below follow this skeleton in about 35 minutes; the numbers step is the one most candidates skip and interviewers reward.
 
 **1. Clarify.** Ask: which models and sizes? Peak load and the mix of chat vs batch? Latency SLOs? Data rules (no data leaves our VPC)? Do teams bring fine-tunes? Budget and GPU types available?
 
@@ -344,6 +508,23 @@ flowchart LR
 
 **1. Clarify.** What does "match" mean, measured how? Volume and cost today? Latency target? Do we have past tickets with human-approved replies? Can the big model's outputs be used for training under its terms? Which languages (Hindi, Hinglish)?
 
+```mermaid
+flowchart LR
+    D["50K past chats"] -->|PII removed, keep resolved, high CSAT| K["about 17K good"]
+    K --> SY["Plus filtered synthetic gaps"]
+    SY --> TR["SFT with LoRA, r 16"]
+    TR --> DPO["DPO if tone errors remain"]
+    DPO --> EV{"Eval on frozen 500 golden cases"}
+    EV -->|fails| TR
+    EV -->|within 2 pts of big model| SH["Shadow for a week"]
+    SH --> RT["Router canary 5 pct: easy intents to small model"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class EV hot
+```
+
+*Diagram:* Data shrinks to about a third after cleaning, the frozen golden set is the gate, and even after passing, the small model only takes the intents the router trusts it with.
+
 **2. Data.**
 1. Pull 50K past conversations; remove PII (names, phones, card numbers).
 2. Keep only good ones: resolved, high CSAT, no escalation. Expect 30–40% to survive.
@@ -398,6 +579,22 @@ flowchart LR
 | LLM first token | 200–300 ms | Small fast model, short prompt, prompt caching |
 | TTS first audio | 100–150 ms | Streaming TTS that starts on the first sentence |
 | Network and telephony | 50–100 ms | Servers in the same region as the telephony provider |
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant V as VAD
+    participant S as STT
+    participant L as LLM
+    participant T as TTS
+    C->>V: stops speaking at 0 ms
+    V->>S: turn end detected at 250 ms
+    S->>L: final text at 400 ms
+    L->>T: first tokens at 650 ms
+    T-->>C: first audio at about 780 ms
+```
+
+*Diagram:* Times are cumulative from the moment the caller stops; every stage streams into the next, which is the only way to stay under 800 ms.
 
 **3. Architecture.**
 
@@ -574,6 +771,20 @@ print(sample_top_p(logits, temperature=0))         # always 0
 | What failed | One honest failure and the lesson | "Fine-tuning for facts failed; refund rules changed monthly, so we moved them to retrieval." |
 | Result | Business numbers | "Handle time down 34%, CSAT flat, cost per ticket down 70%." |
 | Next | What you would do with more time | "Online judge sampling and DPO from agents' edits." |
+
+```mermaid
+flowchart LR
+    B["Baseline prompt: 58 pct accepted"] -->|hybrid search plus reranker| I1["71 pct"]
+    I1 -->|policy snippets in prompt| I2["79 pct"]
+    I2 -->|LoRA on 8B, top intents| I3["79 pct at 1/8 the cost"]
+    I1 -.->|tried: fine-tune for facts| X["Failed: refund rules change monthly"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class I3 hot
+    class X dim
+```
+
+*Diagram:* Tell the project as this chain: each arrow is one change with its number, plus one honest dead end.
 
 **Interview tip:** "What would you do differently?" Have a real answer ready, like "build the eval set in week 1, not week 4".
 

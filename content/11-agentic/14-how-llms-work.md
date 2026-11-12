@@ -102,6 +102,23 @@ Chhota training corpus, har word kitni baar aaya: `hug` ×10, `pug` ×5, `pun` �
 5. **Phir se.** `h ug` (10 + 5 = 15) top pe. `hug` add. Ab `hug` ek token hai aur `hugs` = `hug` + `s`.
 6. **Target size pe ruko.** Real tokenizers ye tab tak karte hain jab tak vocabulary 32K se 200K tokens ki na ho jaaye. Merges ki ordered list save hoti hai aur naye text pe replay hoti hai.
 
+```mermaid
+flowchart LR
+    C["Corpus: hug x10, pug x5, pun x12, bun x4, hugs x5"] --> S0["Start: single letters b g h n p s u"]
+    S0 --> M1["Count pairs: u+g = 20 is top"]
+    M1 --> T1["Merge 1: new token ug"]:::hot
+    T1 --> M2["Count again: u+n = 16 is top"]
+    M2 --> T2["Merge 2: new token un"]:::hot
+    T2 --> M3["Count again: h+ug = 15 is top"]
+    M3 --> T3["Merge 3: new token hug"]:::hot
+    T3 --> R["Repeat until 32K to 200K tokens"]
+    R --> L["Saved merge list is replayed on new text"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Dark boxes follow karo: har round sabse frequent padosi pair ko ek naya token bana deta hai, isliye hug jaise common chunks ek hi token ban jaate hain.
+
 Modern tokenizers BPE ko characters pe nahi, **bytes** pe chalate hain. Isliye koi bhi text, emoji ya language encode ho jaati hai, kuch bhi "unknown" nahi hota.
 
 **Tokens vs words, numbers me:**
@@ -116,6 +133,23 @@ Modern tokenizers BPE ko characters pe nahi, **bytes** pe chalate hain. Isliye k
 Hindi mehengi kyun? Tokenizer zyada tar English data pe train hua, to kam Hindi letter groups ko apna token mila. Hindi word bahut chhote tukdon me toot-ta hai. APIs per token bill karti hain, to wahi answer Hindi me 2–3 guna mehenga ho sakta hai aur context window bhi zyada khaata hai. Nayi, badi vocabulary wale tokenizers ye gap kam karte hain.
 
 **"strawberry" me letters ginna kyun fail hota hai:** Model letters dekhta hi nahi. Wo kuch aisa dekhta hai `str` + `aw` + `berry` (exact split tokenizer pe depend), jo teen IDs ban jaate hain. r ginne ke liye usse har token ki spelling yaad honi chahiye. Aksar nahi hoti. Isi wajah se words ulta karna, characters ginna aur lambe numbers pe kuch arithmetic bhi mushkil hota hai.
+
+```mermaid
+flowchart LR
+    W["strawberry"] --> TK["Tokenizer"]
+    TK --> P1["str"]
+    TK --> P2["aw"]
+    TK --> P3["berry"]
+    P1 --> IDS["3 integer IDs, for example 496, 675, 15717"]
+    P2 --> IDS
+    P3 --> IDS
+    IDS --> M["Model sees only IDs, never letters"]:::hot
+    M -->|how many r| G["Must recall the spelling of each token, often guesses"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Model tak pahunchne se pehle word 3 tukdon me kat jaata hai; teeno r IDs ke andar chhupe hain, isliye ginna padhna nahi balki yaad ka test hai (IDs sirf example hain).
 
 **Badi vocabulary ek trade-off hai:**
 - Badi vocabulary: text pe kam tokens, to har sentence fast aur sasta, aur bahut languages ke liye behtar.
@@ -166,6 +200,24 @@ print("tokens:", len(enc.encode(prompt)), "words:", len(prompt.split()))
 5. 3 numbers wale vectors ka chhota example: `cat = [0.9, 0.1, 0.0]`, `dog = [0.8, 0.2, 0.1]`, `invoice = [0.0, 0.1, 0.9]`. Cat aur dog ek hi taraf point karte hain (cosine ≈ 0.98). Cat aur invoice nahi (cosine ≈ 0.01).
 6. Model ke andar ye pehle vectors sirf shuruaat hain. Attention layers ke baad har vector apne context ka matlab bhi le leta hai. To "river bank" aur "bank loan" me "bank" ke vectors alag ho jaate hain.
 
+```mermaid
+flowchart LR
+    subgraph TB["Embedding table: 32,000 rows x 4,096 numbers"]
+        R0["row 0"]:::dim
+        R1["row 4,821"]:::hot
+        R2["row 31,999"]:::dim
+    end
+    ID["Token ID 4,821: bank"] -->|look up one row| R1
+    R1 --> V["Starting vector: 4,096 numbers"]
+    V --> L["Attention layers mix in context"]
+    L -->|in river bank| WV["bank vector leans to water"]
+    L -->|in bank loan| MV["bank vector leans to money"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Embedding bas ek learned table ki ek row hai; wahi starting row attention ke baad padosi words ke hisaab se alag-alag vectors ban jaati hai.
+
 **Semantic search se connection:** Ek alag **embedding model** (jaise sentence-transformer ya embeddings API) poore sentence ko ek vector banata hai. Tum apne documents ke vectors vector database me rakhte ho. Query time pe sawal ko embed karke sabse paas ke document vectors dhoondhte ho. "Mera paisa wapas kaise milega?" se "Refund policy" naam ka doc mil jaata hai, chahe ek bhi word match na ho. Yahi RAG ka core hai.
 
 **Interview tip:** "LLM ke andar ke embeddings aur search wale embeddings me kya farak hai?" Bolo: "LLM ke andar har token ka vector hota hai jo layer by layer refine hota hai. Search ke liye alag model use karte hain jo aise train hua hai ki ek sentence ya chunk ka ek vector matlab pakad le, aam taur pe contrastive training se. Idea same, model aur goal alag."
@@ -200,6 +252,23 @@ print("tokens:", len(enc.encode(prompt)), "words:", len(prompt.split()))
 2-number value vectors lo jahan pehla number "paani" aur dusra "paisa" hai: `V_the = [0, 0]`, `V_river = [1, 0]`, `V_bank = [0.5, 0.5]` (akele me confusing).
 
 Bank ka output = 0.10 × [0, 0] + 0.66 × [1, 0] + 0.24 × [0.5, 0.5] = **[0.78, 0.12]**. Naya "bank" vector zor se "paani" ki taraf jhukta hai. "the bank approved my loan" me "loan" ko high weight milta, aur bank "paisa" ki taraf jhukta. Context se matlab aise badalta hai.
+
+```mermaid
+flowchart LR
+    Q["Query of bank"] -->|dot product| KT["Key of the"]
+    Q -->|dot product| KR["Key of river"]:::hot
+    Q -->|dot product| KB["Key of bank"]
+    KT -->|score 0.1 to weight 0.10| S["Softmax: weights add up to 1"]
+    KR -->|score 2.0 to weight 0.66| S
+    KB -->|score 1.0 to weight 0.24| S
+    FUT["Later tokens"]:::dim -.->|causal mask, weight 0| S
+    S --> MIX["Weighted sum of the value vectors"]
+    MIX --> OUT["New bank vector: 0.78 water, 0.12 money"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Q ko har pichhle K se compare karo, softmax scores ko weights banata hai, aur wahi weights V vectors ko mix karte hain; river ko 0.66 mila, isliye bank ab river bank hai. Future tokens mask hokar weight 0 paate hain.
 
 **Causal mask.** Generate karte waqt token future nahi dekh sakta. Isliye aage ki positions ke scores softmax se pehle minus infinity kar diye jaate hain, jisse unka weight bilkul 0 ho jaata hai. Token 3 sirf token 1, 2 aur 3 pe attend kar sakta hai. Isiliye in models ko "causal" ya "decoder-only" kehte hain.
 
@@ -294,6 +363,36 @@ print(np.round(w, 2))   # lower-triangular: token i sirf tokens 0..i pe attend k
    - Llama 3 8B, 8 KV heads wala GQA: 2 × 32 × 8 × 128 × 2 = **128 KB per token**. Wahi chat 0.5 GB.
 5. 4 guna chhota cache matlab same GPU pe 4 guna zyada concurrent users ya 4 guna lamba context.
 
+```mermaid
+flowchart LR
+    subgraph MHA["MHA: 4 KV heads cached"]
+        direction TB
+        a1["Q1"] --> ak1["KV 1"]
+        a2["Q2"] --> ak2["KV 2"]
+        a3["Q3"] --> ak3["KV 3"]
+        a4["Q4"] --> ak4["KV 4"]
+    end
+    subgraph GQA["GQA: 2 KV heads cached"]
+        direction TB
+        b1["Q1"] --> bk1["KV A"]
+        b2["Q2"] --> bk1
+        b3["Q3"] --> bk2["KV B"]
+        b4["Q4"] --> bk2
+    end
+    subgraph MQA["MQA: 1 KV head cached"]
+        direction TB
+        c1["Q1"] --> ck["KV"]
+        c2["Q2"] --> ck
+        c3["Q3"] --> ck
+        c4["Q4"] --> ck
+    end
+    class ak1,ak2,ak3,ak4,bk1,bk2,ck hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* 4 query heads ke saath banaya hai: dark boxes wo hain jo har token ke liye KV cache me store hote hain. Query heads utne hi rehte hain; sirf K/V heads kam hote hain (Llama 3: 32 query heads 8 KV heads share karte hain, cache 4 guna chhota).
+
 | | MHA | GQA | MQA |
 |---|---|---|---|
 | KV heads (32 query heads ke liye) | 32 | 8 (typical) | 1 |
@@ -325,6 +424,33 @@ DeepSeek models aur aage jaate hain MLA (multi-head latent attention) se, jo cac
 5. **Context extension:** 4K ya 8K positions pe trained model uske aage naye, untrained angles dekhta hai aur toot jaata hai. Fixes angles ko daba ya kheench dete hain taaki lambi positions jaani-pehchaani lagein:
    - **Position interpolation:** positions ko ek factor (jaise 4) se divide karo, to 32K positions trained 8K range pe map ho jaati hain.
    - **NTK-aware scaling aur YaRN:** tez ghoomne wale pairs (paas ki detail) ko kam aur dheere wale (lambi doori) ko zyada scale karo. YaRN ko sirf chhota fine-tune chahiye. Llama 3.1 aisi hi RoPE scaling se 128K tokens tak pahunchta hai.
+
+```mermaid
+flowchart LR
+    Q["Query at position 10"] -->|rotate by 10 x theta| RQ["Rotated Q"]
+    K["Key at position 7"] -->|rotate by 7 x theta| RK["Rotated K"]
+    RQ --> DOT["Dot product"]
+    RK --> DOT
+    DOT -->|the two rotations cancel except the gap| G["Score depends only on distance 3"]:::hot
+    G --> SAME["Positions 103 and 100 give the same score"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* RoPE Q aur K ko unki position jitna ghumata hai; dot product me sirf farak bachta hai, isliye attention ko absolute position nahi, relative doori dikhti hai.
+
+```mermaid
+flowchart LR
+    P["New prompt reaches position 32,000"] -->|no fix| U["Angle never seen in training, output breaks"]:::dim
+    P -->|position interpolation, divide by 4| I["Looks like position 8,000"]
+    P -->|YaRN, stretch slow pairs, keep fast pairs| Y["Long range fits, nearby detail kept"]
+    I --> T["Inside the trained 0 to 8K range"]:::hot
+    Y --> T
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Context extension lambi positions ko wapas un angles ki range me daba deta hai jo model ne seekhe hain; YaRN sirf slow ghoomne wale pairs dabata hai, isliye paas ke words ka order sharp rehta hai.
 
 **Interview tip:** "Learned positions ki jagah RoPE kyun?" Bolo: "RoPE Q aur K ko ghuma ke position encode karta hai, to attention score sirf relative distance pe depend karta hai. Koi parameter nahi jodta, aur YaRN jaise interpolation tricks se chhote fine-tune ke saath context ko training length se kaafi aage badha sakte ho."
 
@@ -373,6 +499,17 @@ sequenceDiagram
     end
 ```
 
+```mermaid
+flowchart LR
+    W["7B model: 14 GB of weights in GPU memory"] -->|read once per step, about 4 ms| B1["Batch of 1: 1 token per read"]:::dim
+    W -->|same read, about the same 4 ms| B64["Batch of 64: 64 tokens per read"]:::hot
+    B64 --> C["Cost per output token falls about 64x"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Har decode step ki keemat saare weights padhna hai; wahi ek read 64 users me share karne se output tokens saste ho jaate hain, yahi batching ka fayda hai.
+
 **Interview tip:** "Prompt bhejne pe kya hota hai, walk me through." Bolo: "Text tokenize hoke IDs banta hai. Har ID ka embedding vector lookup hota hai. Prefill me saare prompt tokens har transformer layer se parallel jaate hain, attention causal mask use karta hai, aur K, V cache hote hain. Last position ka vector vocabulary pe logits me project hota hai, softmax probabilities deta hai, aur sampler ek token chunta hai. Phir decode KV cache ke saath ek-ek token repeat karta hai jab tak stop token ya max tokens na aaye. Tokens detokenize hoke stream hote hain."
 
 **Common galti:**
@@ -404,6 +541,21 @@ sequenceDiagram
 5. **Min-p:** wo tokens rakho jinki probability kam se kam `min_p × top probability` ho. min_p = 0.2 pe cut-off 0.2 × 0.659 = 0.132 hai, to `purple` (0.099) hat jaata hai. High temperature pe achha chalta hai.
 6. **Repetition controls:** repetition penalty pehle aa chuke tokens ke logits kam karta hai (jaise positive logit ko 1.1 se divide). OpenAI-style APIs `frequency_penalty` (har repeat pe badhta) aur `presence_penalty` (flat, token ek baar aaya to) deti hain. Halka use karo; high values naam aur code bigaad deti hain.
 7. **Zyada tar libraries me order:** penalties, phir temperature, phir top-k / top-p / min-p filters, phir sample.
+
+```mermaid
+flowchart LR
+    L["Logits: hot 2.0, sweet 1.0, purple 0.1"] -->|divide by T = 1, softmax| SM["Probabilities 0.659, 0.242, 0.099"]
+    SM -->|top-p 0.9 keeps the top tokens until the sum hits 0.9| H["hot 0.659"]:::hot
+    SM --> S["sweet 0.242"]:::hot
+    SM -.->|cut, outside the nucleus| P["purple 0.099"]:::dim
+    H --> RN["Renormalise: hot 0.731, sweet 0.269"]
+    S --> RN
+    RN --> PICK["Sample one token"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Temperature probabilities ka shape badalta hai, top-p lambi tail kaat deta hai (purple bahar), aur bache hue tokens renormalise hokar unme se ek token chuna jaata hai.
 
 **Kaunse kaam ke liye kaunsi settings:**
 
@@ -485,6 +637,23 @@ print({w: picks.count(w) for w in vocab})          # lagbhag 730 hot, 270 sweet,
 4. **Lost in the middle:** 2023 ki ek study ("Lost in the Middle") ne dikhaya ki models lambe context ke shuru aur end ke facts beech wale facts se kahin behtar use karte hain. Total length badhne pe accuracy bhi girti hai, long-context models pe bhi.
 5. **Kya karo:** sirf relevant chunks retrieve karo, instructions shuru me aur sawal end me rakho, purane turns summarise karo, aur stable prefix rakho taaki prompt caching use reuse kar sake. Detail [Memory & Context](05-memory-context.md) me.
 
+```mermaid
+flowchart LR
+    subgraph WIN["One context window, for example 128K tokens"]
+        direction LR
+        SP["System prompt and tools: start, well used"]:::hot
+        DOCS["Retrieved docs and old turns: middle, often missed"]:::dim
+        UQ["User question: end, well used"]:::hot
+        OUT["Output and thinking tokens: also count"]
+        SP --> DOCS --> UQ --> OUT
+    end
+    OUT -->|every token adds| COST["Money, prefill time, KV cache memory"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Model jo bhi use karta hai, uska apna output bhi, sab ek hi window share karte hain; shuru aur end ke facts achhe se use hote hain, beech wale lost-in-the-middle ka shikaar hote hain.
+
 **Interview tip:** "Hamare paas 1M-token model hai. Har prompt me saare docs kyun na daal dein?" Bolo: "Har call pe cost aur latency tokens ke saath badhti hai, KV cache limit karta hai kitne users serve kar sakte hain, aur lambe noisy context me lost-in-the-middle ki wajah se quality girti hai. Top relevant chunks ka retrieval aam taur pe sasta, tez aur zyada accurate hai. Long context ek bade document ke one-off analysis ke liye badhiya hai."
 
 **Common galti:**
@@ -499,6 +668,26 @@ print({w: picks.count(w) for w in vocab})          # lagbhag 730 hot, 270 sweet,
 
 **Aise socho:** Bada hospital jisme har floor pe 8 specialists hain. Reception (router) pe har patient ko 2 sabse suitable doctors ke paas bheja jaata hai, saare 8 ke paas nahi. Hospital ke paas 8 doctors ki knowledge hai, par har patient sirf 2 doctors ka time leta hai. Building ko phir bhi saare 8 doctors ke kamre rakhne padte hain.
 
+```mermaid
+flowchart LR
+    T["Token vector after shared attention"] --> R["Router: 8 scores"]
+    R -->|top-2, weight 0.7| E3["Expert 3"]:::hot
+    R -->|top-2, weight 0.3| E6["Expert 6"]:::hot
+    R -.-> E1["Expert 1"]:::dim
+    R -.-> E2["Expert 2"]:::dim
+    R -.-> E4["Expert 4"]:::dim
+    R -.-> E5["Expert 5"]:::dim
+    R -.-> E7["Expert 7"]:::dim
+    R -.-> E8["Expert 8"]:::dim
+    E3 --> SUM["Weighted sum: 0.7 x E3 + 0.3 x E6"]
+    E6 --> SUM
+    SUM --> NX["Output to the next layer"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Ek token ke liye ek MoE layer: router saare 8 experts ko score karta hai par sirf top 2 (dark) chalte hain; unke outputs 0.7 / 0.3 me mix hote hain aur baaki 6 is token ke liye idle baithe rehte hain.
+
 **How it works, step by step (Mixtral 8x7B):**
 1. Har layer me attention hamesha ki tarah shared hai. Akele FFN ki jagah 8 expert FFNs hain.
 2. **Router** ek chhoti linear layer hai. Har token ke liye 8 scores deta hai, har expert ka ek.
@@ -508,6 +697,28 @@ print({w: picks.count(w) for w in vocab})          # lagbhag 730 hot, 270 sweet,
 6. **Numbers:** Mixtral me lagbhag **47B total** parameters hain (56B nahi, kyunki attention aur embeddings shared hain) par per token sirf lagbhag **13B active**. To per token ye 13B model jaisa compute karta hai.
 7. **Memory:** saare 47B parameters VRAM me rehne chahiye, kyunki koi bhi token koi bhi expert maang sakta hai. 2 bytes each pe ye lagbhag 94 GB hai. To memory 47B model jitni chahiye.
 8. **Training trick:** load-balancing loss router ko saare experts barabar use karne ke liye dhakelta hai. Warna kuch experts saara traffic le lete hain aur baaki kabhi seekhte hi nahi.
+
+```mermaid
+flowchart LR
+    subgraph VRAM["GPU memory: all 8 experts loaded, about 47B params, 94 GB"]
+        E1["Expert 1"]:::hot
+        E2["Expert 2"]:::hot
+        E3["Expert 3"]:::dim
+        E4["Expert 4"]:::dim
+        E5["Expert 5"]:::hot
+        E6["Expert 6"]:::dim
+        E7["Expert 7"]:::hot
+        E8["Expert 8"]:::dim
+    end
+    A["Token chai"] --> E2
+    A --> E5
+    B["Token GPU"] --> E1
+    B --> E7
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Same layer me do tokens alag experts chunte hain, isliye har expert ko VRAM me rehna padta hai: compute per token 13B model jaisa, par memory 47B model jitni.
 
 | | Dense 13B | MoE 47B total / 13B active | Dense 47B |
 |---|---|---|---|
@@ -545,6 +756,44 @@ Bade examples: DeepSeek-V3 me 671B total aur lagbhag 37B active hain, bahut saar
 4. **Self-consistency:** maan lo temperature 0.7 ke aas-paas 5 independent reasoning paths sample karo aur majority final answer lo. 5 me se 4 "42" bolein to answer 42. 5 guna tokens lagte hain par maths-type tasks pe achha accuracy gain milta hai.
 5. **Reasoning effort knobs:** kai APIs effort ya thinking-token budget set karne deti hain (low, medium, high). Zyada budget = slow, mehenga, mushkil tasks pe aam taur pe zyada accurate.
 
+```mermaid
+flowchart LR
+    P["Maths problem with a checkable answer"] --> G["Model samples a group of 4 answers"]
+    G --> A1["Answer 1: correct"]:::hot
+    G --> A2["Answer 2: wrong"]:::dim
+    G --> A3["Answer 3: correct"]:::hot
+    G --> A4["Answer 4: wrong"]:::dim
+    A1 --> V["Reward each answer against the group average"]
+    A2 --> V
+    A3 --> V
+    A4 --> V
+    V -->|push up above-average thinking| U["Update the weights"]
+    U -->|repeat on many problems| G
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* GRPO, DeepSeek-R1 ke peeche ka RL loop: jo answers apne group ke average se behtar hain unhe reward milta hai, isliye kaam check karne jaisi aadatein khud ban jaati hain.
+
+```mermaid
+flowchart LR
+    Q["Hard question"] -->|temperature 0.7| P1["Path 1 says 42"]
+    Q --> P2["Path 2 says 42"]
+    Q --> P3["Path 3 says 17"]:::dim
+    Q --> P4["Path 4 says 42"]
+    Q --> P5["Path 5 says 42"]
+    P1 --> V["Majority vote"]
+    P2 --> V
+    P3 --> V
+    P4 --> V
+    P5 --> V
+    V --> A["Final answer 42, 4 of 5"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Self-consistency answer ke time 5 guna tokens kharch karta hai: alag-alag reasoning paths vote karte hain, aur akela alag answer (17) haar jaata hai.
+
 **Kab use karo vs kab nahi:**
 
 | Reasoning model use karo | Standard model use karo |
@@ -577,6 +826,22 @@ Common production pattern: reasoning model ek baar plan karta hai, aur saste tez
 4. **Reasoning RL (optional):** verifiable tasks pe RL, upar wale section jaisa.
 5. Aam taur pe aakhri stages tum khud LoRA jaise methods se customise karte ho. Dekho [Fine-tuning and Post-training](16-fine-tuning.md).
 
+```mermaid
+flowchart LR
+    D["Web, books, code: trillions of tokens"] --> PT["Pretraining: predict the next token"]
+    PT --> BM["Base model: only continues text"]
+    BM --> SFT["SFT: prompt and ideal answer examples"]
+    SFT --> IM["Instruct model: follows the chat format"]
+    IM --> PREF["Preference tuning: RLHF or DPO on A-better-than-B pairs"]
+    PREF --> CM["Chat model you call through the API"]:::hot
+    CM -.->|optional| RRL["Reasoning RL on checkable tasks"]
+    CM -.->|your part| LORA["Your own LoRA fine-tune"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Teen stages raw text ko assistant banate hain: pretraining knowledge deta hai, SFT format, preference tuning judgement; dotted steps optional extras hain.
+
 **Interview tip:** "Base model aur instruct model me kya farak hai?" Bolo: "Base model sirf pretrained hai, to text aage badhata hai. Instruct ya chat model SFT aur preference tuning se guzra hai, to instructions follow karta hai, chat template use karta hai aur harmful requests mana karta hai."
 
 **Common galti:**
@@ -596,6 +861,20 @@ Common production pattern: reasoning model ek baar plan karta hai, aur saste tez
 3. Sampling ko phir bhi ek token chunna hai. Wo ek chunta hai, maan lo "2014", aur confident sentence me likh deta hai.
 4. Aage ke tokens "2014" pe conditioned hain, to model guess ke aas-paas consistent kahani bana deta hai.
 5. Common triggers: rare facts, recent events, exact numbers, citations aur URLs, lambe contexts, aur leading questions ("X kyun hua?" jab X hua hi nahi).
+
+```mermaid
+flowchart LR
+    Q["Founding year of a small company?"] -->|no source in prompt| NB["Probabilities spread: 2014 0.22, 2016 0.20, 2012 0.18"]
+    NB -->|sampler must still pick one| G["2014"]:::dim
+    G -->|next tokens build on it| F["Confident, fluent, wrong answer"]:::dim
+    Q -->|RAG puts the source in the prompt| WB["Source text: founded in 2016"]
+    WB -->|probability concentrates| R["2016 at 0.95"]:::hot
+    R --> C["Grounded answer with a citation"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Upar wala path: knowledge nahi to probabilities flat hain, sampler phir bhi ek guess chun leta hai, aur baaki text usi ko defend karta hai. Neeche wala path: source dene se ek answer saaf taur pe sabse likely ban jaata hai.
 
 **Standard fixes:**
 

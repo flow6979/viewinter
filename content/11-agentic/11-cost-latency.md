@@ -271,6 +271,25 @@ graph = builder.compile(cache=InMemoryCache())  # prod me Redis-backed cache
 4. Prompt caching abhi bhi on hai. Bill: 16,000 naye tokens × $3/1M = $0.048, 20,000 cached × $0.30/1M = $0.006, output $0.033.
 5. **Naya bill: $0.087 per task** (pehle $0.1275). Step 6 ab 12k nahi, 7.5k tokens bhejta hai, to TTFT bhi girta hai.
 
+```mermaid
+flowchart LR
+    subgraph IN["Agent ke paas kya hai"]
+        RAW["get_holdings raw JSON: 40 fields, 1,500 tokens"]
+        OLD["Chat ke purane turns"]
+        NEW["Last 8 messages"]
+    end
+    RAW -->|sirf symbol, qty, avg_price, sector| CMP["Compacted result: 600 tokens"]
+    OLD -->|chhota model| SUM["Running summary"]
+    CMP --> CTX["LLM ko jaane wala context: ~4k tokens"]
+    SUM --> CTX
+    NEW -->|jaise ke taise| CTX
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class CMP,SUM hot
+```
+
+*Diagram:* Do levers context chhota karte hain (highlighted): tool result sirf 4 zaroori fields tak kat-ta hai aur purane turns summary ban jaate hain; sirf last 8 messages jaise ke taise jaate hain.
+
 > **Example:** HDFC ka 40-turn support chat. Poori history har turn bhejoge to turn 40 pe 30k tokens input = ~$0.09 per turn. Last 8 messages + ek running summary se 4k tokens = ~$0.012 per turn.
 
 **Tareeke:**
@@ -303,6 +322,25 @@ graph = builder.compile(cache=InMemoryCache())  # prod me Redis-backed cache
 3. Naya flow: step 1 → `get_portfolio_overview` + `get_sector_map` + `get_news` ek saath. Step 2 → `calc_pnl`. Step 3 → final answer.
 4. Input: 4.5k, 5.1k, 5.7k (cache aur trimming on). Output: 300 + 300 + 700.
 5. **Naya bill: $0.0438 per task** (pehle $0.087). Aur 3 LLM waits kam, to latency bhi kam (Latency section me timeline).
+
+```mermaid
+flowchart LR
+    subgraph BEFORE["Pehle: 6 LLM calls, $0.087"]
+        direction TB
+        B1["1: get_holdings"] --> B2["2: get_prices"] --> B3["3: get_sector_map"] --> B4["4: get_news"] --> B5["5: calc_pnl"] --> B6["6: answer"]
+    end
+    subgraph AFTER["Baad me: 3 LLM calls, $0.0438"]
+        direction TB
+        A1["1: get_portfolio_overview + get_sector_map + get_news parallel"] --> A2["2: calc_pnl"] --> A3["3: answer"]
+    end
+    BEFORE -->|tools merge, parallel calls| AFTER
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class A1 hot
+    class B1,B2,B3,B4,B5,B6 dim
+```
+
+*Diagram:* Holdings aur prices ek coarse tool me merge, aur teen independent lookups ek hi turn me chalte hain (highlighted), to 6 LLM round trips 3 ban jaate hain.
 
 > **Example:** Razorpay merchant-support agent pehle `get_merchant`, `get_settlements`, `get_disputes` teen alag calls me 3 loop iterations leta tha. Ek `get_merchant_overview(merchant_id)` tool ne ise ek step bana diya.
 
@@ -583,6 +621,21 @@ async def stream_run(graph, question: str, thread_id: str):
 5. Subah results file aati hai. Har result `custom_id` se listing pe map hota hai.
 6. Batch discount ~50%: **~$90 per raat**. Saal bhar me ~$33,000 bachat.
 
+```mermaid
+flowchart LR
+    L["5 lakh nayi listings"] --> J["requests.jsonl: har listing ki ek line, custom_id = listing id"]
+    J -->|upload| B["Batch API"]
+    B -->|async, 24h ke andar| P["Provider bulk me chalata hai"]
+    P --> R["results.jsonl, kisi bhi order me"]
+    R -->|custom_id se match| DB["Listings update"]
+    B -.->|lagbhag 50 percent off| C["$180 ki jagah $90 per night"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class R,DB hot
+```
+
+*Diagram:* Requests ek JSONL file me jaati hain aur ghanton baad kisi bhi order me wapas aati hain, isliye results custom_id se match hote hain (highlighted), position se kabhi nahi; price lagbhag aadha.
+
 **Points:**
 
 - JSONL file of requests upload → provider async process karta hai (typically within 24h) → results file.
@@ -698,6 +751,24 @@ async def run_with_budget(graph, user_id: str, thread_id: str, msg: str):
 4. **Ek baar ka kharcha** (data, training, eval pipeline): maan lo ~$15,000 (illustrative).
 5. **Break-even:** roz ki bachat ~$17,500. Ek din me paisa wapas.
 6. **Ulta case:** wahi kaam sirf 2,000 tickets/day pe. Bachat ~$17.5/day. $15,000 wapas aane me ~850 din. Fine-tune mat karo, prompting pe raho.
+
+```mermaid
+flowchart TD
+    Q["Big model pe ek task bahut mehenga"] --> K{"Kya ye facts ya fresh data ka kaam hai?"}
+    K -->|haan| RAG["Prompting plus RAG pe raho"]
+    K -->|nahi| N{"Narrow, stable aur high volume?"}
+    N -->|nahi| PR["Prompting hi rakho"]
+    N -->|haan| E{"Eval set ready hai?"}
+    E -->|nahi| EV["Pehle eval set banao"]
+    E -->|haan| BE{"Daily bachat ek baar ka kharcha jaldi lauta degi?"}
+    BE -->|20 lakh per day, 1 din me wapas| D["Chhota model distill karo"]
+    BE -->|2,000 per day, 850 din| PR
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class D hot
+```
+
+*Diagram:* Fine-tuning aakhri branch hai, pehli nahi: facts RAG me jaate hain, aur sirf narrow, high-volume task jiske paas eval set ho aur break-even jaldi ho (PhonePe case) distillation tak pahunchta hai.
 
 | | Prompting (+RAG) | Fine-tuning / distillation |
 |---|---|---|

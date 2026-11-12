@@ -70,6 +70,23 @@ Neeche har section is chain ka ek dabba hai. Ek hi example poore page me chalega
 | plate me galat dish | galat jawab, HTTP 200 ke saath |
 | har station ki slip aur photo | har span ka prompt, tool input, output |
 
+```mermaid
+flowchart LR
+    U["Priya refund ke baare me poochti hai"] --> AG["Support agent"]
+    AG -->|HTTP 200 in 1.8s| APM["APM: p95 1.8s, errors 0.1 percent, sab green"]
+    AG -->|prompt aur tool I/O wale spans| TR["LLM trace"]
+    TR --> T1["get_order: Paneer Tikka ₹180"]
+    TR --> T2["LLM jawab: full refund ₹450"]
+    T1 --> MM["Mismatch: wada ₹450, asal ₹180"]
+    T2 --> MM
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class MM hot
+    class APM dim
+```
+
+*Diagram:* Ek hi request do nazar se: APM (dimmed) sirf fast HTTP 200 dekhta hai, jabki trace dikhata hai ki tool ne ₹180 bola aur model ne ₹450 ka wada kiya.
+
 **Ek line me:** APM batata hai service up hai aur fast hai; LLM observability batata hai ki **jawab sahi tha ya nahi**, kyunki failures silent, semantic aur non-deterministic hote hain.
 
 | | Traditional APM | LLM/agent observability |
@@ -229,6 +246,22 @@ Debugging us pehle span se shuru hoti hai jiska output galat hua. Har fixed trac
 4. Debug ke liye jo chahiye (total, items, price, status) sab bacha. Private data gaya hi nahi.
 5. `user_id` bhi raw nahi gaya, hash gaya: `u_hash_91`. Asli identity alag secure store me hai.
 
+```mermaid
+flowchart LR
+    RAW["get_order raw result: total, items, phone, address"] --> RD["Redactor: Presidio ya regex"]
+    RD -->|phone aur address placeholder bane| SP["Span output"]
+    UID["Raw user_id"] -->|hash| HS["u_hash_91"]
+    HS --> SP
+    SP --> EX["Trace exporter"]
+    EX --> BE["Tracing backend, har engineer dekh sakta hai"]
+    UID -.->|sirf asli identity| SS["Alag secure store"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class RD,HS hot
+```
+
+*Diagram:* Redaction aur hashing (highlighted) exporter se pehle hain, isliye tracing backend tak sirf placeholders aur hashed user id pahunchte hain; asli identity alag store me rehti hai.
+
 **Kya log karna hai:**
 
 | Field | Kyun |
@@ -295,6 +328,25 @@ Debugging us pehle span se shuru hoti hai jiska output galat hua. Har fixed trac
 
 3. Langfuse, Phoenix ya Datadog, koi bhi backend in naamon ko pehchanta hai. Cost aur token dashboard apne aap ban jaata hai.
 4. Span 2 (tool) pe `gen_ai.operation.name = execute_tool`, `gen_ai.tool.name = get_order`, `gen_ai.tool.call.id = call_abc` lagta hai. Root span pe `invoke_agent`.
+
+```mermaid
+flowchart LR
+    subgraph TRACE["Ek trace, standard gen_ai names"]
+        RA["invoke_agent refund-agent"] --> C1["chat gpt-4.1-mini"]
+        RA --> TL["execute_tool get_order"]
+        RA --> C2["chat gpt-4.1-mini, input_tokens 2300, output_tokens 120"]
+    end
+    TRACE -->|ek baar instrument| EXP["OTel exporter"]
+    EXP --> LF["Langfuse"]
+    EXP --> PH["Phoenix"]
+    EXP --> DD["Datadog"]
+    EXP --> GR["Grafana"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+    class EXP hot
+```
+
+*Diagram:* Spans convention se named hain (invoke_agent, chat, execute_tool), isliye Langfuse se Datadog jaana sirf exporter (highlighted) pe ek change hai.
 
 **Ek line me:** OTel GenAI conventions LLM/agent spans ke liye standard attribute names (`gen_ai.*`) define karti hain, taaki koi bhi backend same data samjhe. OpenInference Arize ka similar convention hai.
 

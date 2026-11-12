@@ -14,6 +14,28 @@ Reranking means a cheap retriever first brings back many candidates, then a **sm
 
 > **Example:** an HR policy bot. "Can leave be encashed during the notice period?" The right paragraph is in the top-5 but at #4; #1 is a generic "leave policy overview". The LLM hedges or answers wrongly. Changing chunking, the embedding model and the prompt did nothing; logging the **position** of the gold chunk revealed the real problem.
 
+```mermaid
+flowchart LR
+    subgraph BE["Bi-encoder order"]
+        B1["1st Leave policy overview"]
+        B2["2nd Leave types"]
+        B3["3rd Notice period rules"]
+        B4["4th Encashment during notice"]:::hot
+    end
+    subgraph CE["After cross-encoder"]
+        C1["1st Encashment during notice, 0.94"]:::hot
+        C2["2nd Notice period rules, 0.71"]
+        C3["3rd Leave policy overview, 0.22"]:::dim
+    end
+    B4 -->|moves up| C1
+    B3 --> C2
+    B1 -->|moves down| C3
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The right paragraph was already retrieved, at position 4; the reranker reads it together with the question and moves it to position 1.
+
 - Embedding models are **not trained to rank**; they are trained for semantic similarity. ANN is optimized for **recall**, not precision.
 - Every document was encoded independently, without knowing the query, so cosine is a "blunt instrument". The order of the top-20 is largely noise.
 - Analogy: the net catches the right fish, but which one lands first is random.
@@ -43,6 +65,17 @@ flowchart LR
 - Assemble the context in reranked order with the best chunk on top (LLMs "lose the middle" and ignore what is buried there).
 - **Debug:** low NDCG@5? Gold answer not in the top-50 → retrieval problem. In the top-50 but scored low → reranker problem.
 
+```mermaid
+flowchart TD
+    L["NDCG@5 is low"] --> G{"Gold chunk in top 50?"}
+    G -->|no| R["Retrieval problem: hybrid, chunking, query rewrite"]
+    G -->|yes, but ranked low| X["Reranker problem: model, truncation, wrong query passed"]:::hot
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Log the gold chunk's rank: missing from the top 50 means fix retrieval; present but ranked low means fix the reranker.
+
 **Interview tip:** "I retrieve the top 50, rerank with a cross-encoder and pass the top 5 to the LLM. Large N for recall, small K for precision and token cost."
 
 **Common mistake:** reranking the top-5 down to the top-3. With so few candidates the reranker can't change much.
@@ -50,6 +83,26 @@ flowchart LR
 ## ⭐ Bi-encoder vs cross-encoder
 
 **In one line:** a bi-encoder encodes query and doc **separately** (fast, can be precomputed); a cross-encoder feeds them **together** into one model (slow, but much more accurate).
+
+```mermaid
+flowchart LR
+    subgraph BI["Bi-encoder: separate"]
+        Q1["Query"] --> E1["Encoder"]
+        D1["Doc"] --> E2["Encoder, offline"]
+        E1 --> V1["q vector"]
+        E2 --> V2["d vector"]
+        V1 --> S1["cosine 0.78"]
+        V2 --> S1
+    end
+    subgraph CR["Cross-encoder: together"]
+        P["CLS query SEP doc SEP"] --> T["One transformer, every query token attends to every doc token"]:::hot
+        T --> S2["relevance 0.94"]
+    end
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* The bi-encoder never lets query and doc words meet, only their final vectors; the cross-encoder reads both in one pass, which is precise but must run once per candidate.
 
 | | Bi-encoder | Cross-encoder |
 |---|---|---|
@@ -83,6 +136,21 @@ def rerank(query, candidates, top_k=5):
 ## Options: open-source, Cohere Rerank, FlashRank, LLM
 
 **In one line:** start with FlashRank (cheap, fast); if you need a higher quality ceiling use a cross-encoder or Cohere; use LLM reranking only for high-stakes cases.
+
+```mermaid
+flowchart TD
+    S["Pick a reranker"] --> A{"Budget under 50 ms on CPU?"}
+    A -->|yes| FR["FlashRank, about 20 ms"]:::hot
+    A -->|no| B{"High stakes, offline batch OK?"}
+    B -->|yes| LLM["LLM listwise, 2-5 s"]
+    B -->|no| C{"Want zero ops?"}
+    C -->|yes| CO["Cohere Rerank plus local fallback"]
+    C -->|no| MI["Self-host MiniLM or bge-reranker"]
+    classDef hot fill:#111,color:#fff
+    classDef dim fill:#fff
+```
+
+*Diagram:* Start from the latency budget: FlashRank for tight CPU SLAs, a hosted or self-hosted cross-encoder for most cases, LLM reranking only for slow, high-stakes work.
 
 | Option | Latency (N=50, roughly) | When |
 |---|---|---|
